@@ -124,7 +124,9 @@ tasks.processTestResources {
             eachFile {
                 relativePath = RelativePath(
                     true,
-                    *relativePath.segments.drop(1).toTypedArray()
+                    *relativePath.segments
+                        .filter { it != "libwebp-test-data-$webpTestDataCommit" }
+                        .toTypedArray()
                 )
             }
             includeEmptyDirs = false
