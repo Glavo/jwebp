@@ -81,7 +81,14 @@ final class LossyYuv {
             int chromaWidth,
             int bytesPerPixel
     ) {
-        setPixel(rowBuffer, rowBufferOffset, yRow[yOffset] & 0xFF, getFancyChromaValue(uRow1[uOffset1], uRow1[uOffset1], uRow2[uOffset2], uRow2[uOffset2]), getFancyChromaValue(vRow1[vOffset1], vRow1[vOffset1], vRow2[vOffset2], vRow2[vOffset2]), bytesPerPixel);
+        setPixel(
+                rowBuffer,
+                rowBufferOffset,
+                yRow[yOffset] & 0xFF,
+                getFancyChromaValue(uRow1[uOffset1] & 0xFF, uRow1[uOffset1] & 0xFF, uRow2[uOffset2] & 0xFF, uRow2[uOffset2] & 0xFF),
+                getFancyChromaValue(vRow1[vOffset1] & 0xFF, vRow1[vOffset1] & 0xFF, vRow2[vOffset2] & 0xFF, vRow2[vOffset2] & 0xFF),
+                bytesPerPixel
+        );
 
         int dst = rowBufferOffset + bytesPerPixel;
         int yIndex = yOffset + 1;
@@ -209,15 +216,15 @@ final class LossyYuv {
         return Math.max(0, Math.min(255, value >> 6));
     }
 
-    private static int yuvToR(int y, int v) {
+    static int yuvToR(int y, int v) {
         return clip(mulhi(y, 19077) + mulhi(v, 26149) - 14234);
     }
 
-    private static int yuvToG(int y, int u, int v) {
+    static int yuvToG(int y, int u, int v) {
         return clip(mulhi(y, 19077) - mulhi(u, 6419) - mulhi(v, 13320) + 8708);
     }
 
-    private static int yuvToB(int y, int u) {
+    static int yuvToB(int y, int u) {
         return clip(mulhi(y, 19077) + mulhi(u, 33050) - 17685);
     }
 

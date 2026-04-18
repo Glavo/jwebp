@@ -301,15 +301,15 @@ final class LossyPrediction {
         a[(y0 + 3) * stride + x0 + 3] = (byte) left[3];
     }
 
-    private static int avg3(int left, int center, int right) {
+    static int avg3(int left, int center, int right) {
         return (left + 2 * center + right + 2) >> 2;
     }
 
-    private static int avg2(int left, int right) {
+    static int avg2(int left, int right) {
         return (left + right + 1) >> 1;
     }
 
-    private static int[] topPixels(byte[] a, int x0, int y0, int stride) {
+    static int[] topPixels(byte[] a, int x0, int y0, int stride) {
         int pos = (y0 - 1) * stride + x0;
         return new int[]{
                 a[pos] & 0xFF,
@@ -332,7 +332,7 @@ final class LossyPrediction {
         };
     }
 
-    private static int[] edgePixels(byte[] a, int x0, int y0, int stride) {
+    static int[] edgePixels(byte[] a, int x0, int y0, int stride) {
         int pos = (y0 - 1) * stride + x0 - 1;
         return new int[]{
                 a[pos + 4 * stride] & 0xFF,
