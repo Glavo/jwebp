@@ -1,24 +1,43 @@
 plugins {
-    id("java")
+    id("java-library")
 }
 
 group = "org.glavo"
 version = "1.0-SNAPSHOT"
+
+val osName = System.getProperty("os.name").lowercase()
+val javafxPlatform = when {
+    osName.contains("win") -> "win"
+    osName.contains("mac") -> "mac"
+    else -> "linux"
+}
+val javafxVersion = "25.0.2"
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
+    api("org.openjfx:javafx-base:$javafxVersion:$javafxPlatform")
+    api("org.openjfx:javafx-graphics:$javafxVersion:$javafxPlatform")
+    implementation("com.twelvemonkeys.imageio:imageio-webp:3.13.1")
+
     testImplementation(platform("org.junit:junit-bom:6.0.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-tasks.withType<JavaCompile> {
-    options.release.set(8)
+java {
+    modularity.inferModulePath.set(true)
+    withSourcesJar()
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+    options.release.set(17)
 }
 
 tasks.test {
     useJUnitPlatform()
+    systemProperty("java.awt.headless", "true")
 }
