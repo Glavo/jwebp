@@ -1,20 +1,16 @@
 package org.glavo.javafx.webp.internal.codec;
 
-/**
- * Integer alpha blending helpers based on the WebP animation reference implementation.
- */
+/// Integer alpha blending helpers based on the WebP animation reference implementation.
 public final class AlphaBlending {
 
     private AlphaBlending() {
     }
 
-    /**
-     * Blends a single non-premultiplied RGBA source pixel over a destination pixel.
-     *
-     * @param src the source RGBA pixel
-     * @param dst the destination RGBA pixel
-     * @return the blended non-premultiplied RGBA pixel
-     */
+    /// Blends a single non-premultiplied RGBA source pixel over a destination pixel.
+    ///
+    /// @param src the source RGBA pixel
+    /// @param dst the destination RGBA pixel
+    /// @return the blended non-premultiplied RGBA pixel
     public static byte[] blend(byte[] src, byte[] dst) {
         int srcA = src[3] & 0xFF;
         if (srcA == 0) {

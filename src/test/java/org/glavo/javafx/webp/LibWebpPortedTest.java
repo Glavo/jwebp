@@ -18,14 +18,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-/**
- * Tests ported from libwebp's public decoder validation strategy.
- *
- * <p>libwebp's upstream repository currently keeps most decoder tests in fuzz targets and
- * regression cases under {@code tests/fuzzer}. This class ports the same intent to JUnit:
- * example-image verification, API-style decode coverage for valid inputs, and malformed-regression
- * inputs that must never trigger unexpected runtime failures.
- */
+/// Tests ported from libwebp's public decoder validation strategy.
+///
+/// libwebp's upstream repository currently keeps most decoder tests in fuzz targets and
+/// regression cases under `tests/fuzzer`. This class ports the same intent to JUnit:
+/// example-image verification, API-style decode coverage for valid inputs, and malformed-regression
+/// inputs that must never trigger unexpected runtime failures.
 final class LibWebpPortedTest {
 
     private static final String LIBWEBP_EXAMPLE_WEBP = "libwebp/examples/test.webp";
@@ -324,9 +322,7 @@ final class LibWebpPortedTest {
         void run() throws Exception;
     }
 
-    /**
-     * Forward-only stream that limits read calls to small chunks and does not support mark/reset.
-     */
+    /// Forward-only stream that limits read calls to small chunks and does not support mark/reset.
     private static final class ChunkedInputStream extends InputStream {
         private final byte[] data;
         private final int chunkSize;

@@ -2,9 +2,7 @@ package org.glavo.javafx.webp.internal;
 
 import org.glavo.javafx.webp.WebPImageLoadOptions;
 
-/**
- * Calculates the decoded output dimensions from JavaFX-style image loading options.
- */
+/// Calculates the decoded output dimensions from JavaFX-style image loading options.
 public record ScalePlan(
         int sourceWidth,
         int sourceHeight,
@@ -13,17 +11,15 @@ public record ScalePlan(
         boolean smooth
 ) {
 
-    /**
-     * Computes a scale plan that mirrors the documented semantics of JavaFX {@code Image}.
-     *
-     * <p>The calculations intentionally happen once per image so that both eager and streaming
-     * decoding share the same target dimensions.
-     *
-     * @param sourceWidth the intrinsic width
-     * @param sourceHeight the intrinsic height
-     * @param options the user-supplied load options
-     * @return the resulting scale plan
-     */
+    /// Computes a scale plan that mirrors the documented semantics of JavaFX `Image`.
+    ///
+    /// The calculations intentionally happen once per image so that both eager and streaming
+    /// decoding share the same target dimensions.
+    ///
+    /// @param sourceWidth the intrinsic width
+    /// @param sourceHeight the intrinsic height
+    /// @param options the user-supplied load options
+    /// @return the resulting scale plan
     public static ScalePlan create(int sourceWidth, int sourceHeight, WebPImageLoadOptions options) {
         int targetWidth = sourceWidth;
         int targetHeight = sourceHeight;

@@ -1,8 +1,6 @@
 package org.glavo.javafx.webp.internal.lossy;
 
-/**
- * VP8 loop filter implementation.
- */
+/// VP8 loop filter implementation.
 final class LossyLoopFilter {
 
     private LossyLoopFilter() {

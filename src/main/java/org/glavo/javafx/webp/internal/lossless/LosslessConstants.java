@@ -1,25 +1,17 @@
 package org.glavo.javafx.webp.internal.lossless;
 
-/**
- * Shared lossless WebP constants lifted from the WebP lossless bitstream specification.
- */
+/// Shared lossless WebP constants lifted from the WebP lossless bitstream specification.
 public final class LosslessConstants {
 
-    /**
-     * Number of code-length alphabet symbols.
-     */
+    /// Number of code-length alphabet symbols.
     public static final int CODE_LENGTH_CODES = 19;
 
-    /**
-     * Canonical traversal order for code-length codes.
-     */
+    /// Canonical traversal order for code-length codes.
     public static final int[] CODE_LENGTH_CODE_ORDER = {
             17, 18, 0, 1, 2, 3, 4, 5, 16, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
     };
 
-    /**
-     * Back-reference distance map defined by the VP8L format.
-     */
+    /// Back-reference distance map defined by the VP8L format.
     public static final int[][] DISTANCE_MAP = {
             {0, 1}, {1, 0}, {1, 1}, {-1, 1}, {0, 2}, {2, 0}, {1, 2}, {-1, 2},
             {2, 1}, {-2, 1}, {2, 2}, {-2, 2}, {0, 3}, {3, 0}, {1, 3}, {-1, 3},

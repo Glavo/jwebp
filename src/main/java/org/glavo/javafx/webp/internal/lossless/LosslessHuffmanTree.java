@@ -4,9 +4,7 @@ import org.glavo.javafx.webp.WebPException;
 
 import java.util.Arrays;
 
-/**
- * Huffman tree implementation for VP8L.
- */
+/// Huffman tree implementation for VP8L.
 public final class LosslessHuffmanTree {
 
     private static final int MAX_ALLOWED_CODE_LENGTH = 15;
@@ -34,34 +32,28 @@ public final class LosslessHuffmanTree {
         this.secondaryTable = secondaryTable;
     }
 
-    /**
-     * Builds a single-symbol Huffman tree.
-     *
-     * @param symbol the only symbol in the tree
-     * @return the resulting tree
-     */
+    /// Builds a single-symbol Huffman tree.
+    ///
+    /// @param symbol the only symbol in the tree
+    /// @return the resulting tree
     public static LosslessHuffmanTree single(int symbol) {
         return new LosslessHuffmanTree(symbol);
     }
 
-    /**
-     * Builds a two-symbol Huffman tree for the simplest explicit form.
-     *
-     * @param zero the symbol selected by bit {@code 0}
-     * @param one the symbol selected by bit {@code 1}
-     * @return the resulting tree
-     */
+    /// Builds a two-symbol Huffman tree for the simplest explicit form.
+    ///
+    /// @param zero the symbol selected by bit `0`
+    /// @param one the symbol selected by bit `1`
+    /// @return the resulting tree
     public static LosslessHuffmanTree pair(int zero, int one) {
         return new LosslessHuffmanTree(0x1, new int[]{(1 << 12) | zero, (1 << 12) | one}, new int[0]);
     }
 
-    /**
-     * Builds a canonical Huffman tree from code lengths.
-     *
-     * @param codeLengths the code lengths indexed by symbol
-     * @return the resulting tree
-     * @throws WebPException if the code lengths do not form a valid canonical tree
-     */
+    /// Builds a canonical Huffman tree from code lengths.
+    ///
+    /// @param codeLengths the code lengths indexed by symbol
+    /// @return the resulting tree
+    /// @throws WebPException if the code lengths do not form a valid canonical tree
     public static LosslessHuffmanTree implicit(int[] codeLengths) throws WebPException {
         int[] histogram = new int[MAX_ALLOWED_CODE_LENGTH + 1];
         int symbolCount = 0;
@@ -165,22 +157,18 @@ public final class LosslessHuffmanTree {
         return new LosslessHuffmanTree(primaryTableMask, primaryTable, secondaryTable);
     }
 
-    /**
-     * Returns whether this tree contains only a single symbol.
-     *
-     * @return {@code true} for a degenerate one-symbol tree
-     */
+    /// Returns whether this tree contains only a single symbol.
+    ///
+    /// @return `true` for a degenerate one-symbol tree
     public boolean isSingleNode() {
         return singleNode;
     }
 
-    /**
-     * Reads one symbol from the bitstream.
-     *
-     * @param bitReader the lossless bit reader
-     * @return the decoded symbol
-     * @throws WebPException if the bitstream is invalid
-     */
+    /// Reads one symbol from the bitstream.
+    ///
+    /// @param bitReader the lossless bit reader
+    /// @return the decoded symbol
+    /// @throws WebPException if the bitstream is invalid
     public int readSymbol(LosslessBitReader bitReader) throws WebPException {
         if (singleNode) {
             return symbol;
@@ -201,12 +189,10 @@ public final class LosslessHuffmanTree {
         return secondaryEntry >>> 4;
     }
 
-    /**
-     * Peeks at the next symbol if it can be resolved entirely from the primary table.
-     *
-     * @param bitReader the lossless bit reader
-     * @return the peeked symbol, or {@code null} if a secondary table lookup would be required
-     */
+    /// Peeks at the next symbol if it can be resolved entirely from the primary table.
+    ///
+    /// @param bitReader the lossless bit reader
+    /// @return the peeked symbol, or `null` if a secondary table lookup would be required
     public PeekedSymbol peekSymbol(LosslessBitReader bitReader) {
         if (singleNode) {
             return new PeekedSymbol(0, symbol);
@@ -231,12 +217,10 @@ public final class LosslessHuffmanTree {
         return codeword;
     }
 
-    /**
-     * Primary-table peek result.
-     *
-     * @param bits the number of bits that would be consumed
-     * @param symbol the decoded symbol value
-     */
+    /// Primary-table peek result.
+    ///
+    /// @param bits the number of bits that would be consumed
+    /// @param symbol the decoded symbol value
     public record PeekedSymbol(int bits, int symbol) {
     }
 }

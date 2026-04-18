@@ -23,13 +23,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Simple JavaFX viewer for local WebP files.
- *
- * <p>The application is intentionally lightweight and uses the public decoder API directly.
- * Static images are displayed immediately and animated WebP files are played back in an
- * {@link ImageView} according to the frame durations exposed by {@link WebPDecoder}.
- */
+/// Simple JavaFX viewer for local WebP files.
+///
+/// The application is intentionally lightweight and uses the public decoder API directly.
+/// Static images are displayed immediately and animated WebP files are played back in an
+/// [ImageView] according to the frame durations exposed by [WebPDecoder].
 public final class WebPViewerApp extends Application {
 
     private final ImageView imageView = new ImageView();
@@ -39,20 +37,16 @@ public final class WebPViewerApp extends Application {
     private Stage stage;
     private Playback playback;
 
-    /**
-     * Launches the viewer application.
-     *
-     * @param args optional command line arguments; the first argument may point to a WebP file
-     */
+    /// Launches the viewer application.
+    ///
+    /// @param args optional command line arguments; the first argument may point to a WebP file
     public static void main(String[] args) {
         launch(args);
     }
 
-    /**
-     * Builds and shows the primary viewer window.
-     *
-     * @param primaryStage the primary JavaFX stage supplied by the runtime
-     */
+    /// Builds and shows the primary viewer window.
+    ///
+    /// @param primaryStage the primary JavaFX stage supplied by the runtime
     @Override
     public void start(Stage primaryStage) {
         this.stage = primaryStage;
@@ -94,9 +88,7 @@ public final class WebPViewerApp extends Application {
         }
     }
 
-    /**
-     * Stops any active playback when the application exits.
-     */
+    /// Stops any active playback when the application exits.
     @Override
     public void stop() {
         stopPlayback();
@@ -191,13 +183,11 @@ public final class WebPViewerApp extends Application {
         return chooser;
     }
 
-    /**
-     * Holds decoded playback state for one loaded file.
-     *
-     * <p>The helper keeps pre-converted JavaFX {@link Image} instances and advances the
-     * presentation with a self-rescheduling {@link PauseTransition} so that frame-specific
-     * durations are honored without forcing a fixed-timestep animation loop.
-     */
+    /// Holds decoded playback state for one loaded file.
+    ///
+    /// The helper keeps pre-converted JavaFX [Image] instances and advances the
+    /// presentation with a self-rescheduling [PauseTransition] so that frame-specific
+    /// durations are honored without forcing a fixed-timestep animation loop.
     private final class Playback {
         private final Path path;
         private final WebPImage image;
@@ -238,12 +228,10 @@ public final class WebPViewerApp extends Application {
             scheduleNextFrame();
         }
 
-        /**
-         * Arms playback for the current frame.
-         *
-         * <p>WebP permits zero-duration frames. To keep such files viewable in JavaFX, the viewer
-         * normalizes non-positive durations to one display pulse instead of immediately recursing.
-         */
+        /// Arms playback for the current frame.
+        ///
+        /// WebP permits zero-duration frames. To keep such files viewable in JavaFX, the viewer
+        /// normalizes non-positive durations to one display pulse instead of immediately recursing.
         private void scheduleNextFrame() {
             if (!image.isAnimated() || frameImages.size() <= 1) {
                 return;

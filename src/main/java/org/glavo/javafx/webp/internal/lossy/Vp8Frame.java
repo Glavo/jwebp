@@ -1,11 +1,9 @@
 package org.glavo.javafx.webp.internal.lossy;
 
-/**
- * Decoded VP8 frame planes.
- *
- * <p>The VP8 bitstream stores one full-resolution luma plane plus half-resolution chroma planes.
- * This object keeps those planes until the caller requests RGB or RGBA pixels.
- */
+/// Decoded VP8 frame planes.
+///
+/// The VP8 bitstream stores one full-resolution luma plane plus half-resolution chroma planes.
+/// This object keeps those planes until the caller requests RGB or RGBA pixels.
 final class Vp8Frame {
 
     int width;

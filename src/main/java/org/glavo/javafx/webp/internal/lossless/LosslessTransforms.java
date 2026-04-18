@@ -1,36 +1,24 @@
 package org.glavo.javafx.webp.internal.lossless;
 
-/**
- * Reverse transforms for VP8L decoded pixels.
- */
+/// Reverse transforms for VP8L decoded pixels.
 public final class LosslessTransforms {
 
-    /**
-     * Predictor transform tag.
-     */
+    /// Predictor transform tag.
     public static final int PREDICTOR = 0;
 
-    /**
-     * Color transform tag.
-     */
+    /// Color transform tag.
     public static final int COLOR = 1;
 
-    /**
-     * Subtract-green transform tag.
-     */
+    /// Subtract-green transform tag.
     public static final int SUBTRACT_GREEN = 2;
 
-    /**
-     * Color indexing transform tag.
-     */
+    /// Color indexing transform tag.
     public static final int COLOR_INDEXING = 3;
 
     private LosslessTransforms() {
     }
 
-    /**
-     * Encoded reverse-transform description.
-     */
+    /// Encoded reverse-transform description.
     public static final class Transform {
         final int kind;
         final int sizeBits;
@@ -61,20 +49,16 @@ public final class LosslessTransforms {
         }
     }
 
-    /**
-     * Returns the lossless block subsample size used by transform metadata planes.
-     *
-     * @param size the full image dimension
-     * @param bits the log2 block size
-     * @return the metadata plane size
-     */
+    /// Returns the lossless block subsample size used by transform metadata planes.
+    ///
+    /// @param size the full image dimension
+    /// @param bits the log2 block size
+    /// @return the metadata plane size
     public static int subsampleSize(int size, int bits) {
         return (size + (1 << bits) - 1) >> bits;
     }
 
-    /**
-     * Applies the predictor transform.
-     */
+    /// Applies the predictor transform.
     public static void applyPredictorTransform(byte[] imageData, int width, int height, int sizeBits, byte[] predictorData) {
         int blockXSize = subsampleSize(width, sizeBits);
         imageData[3] = (byte) ((imageData[3] + 255) & 0xFF);
@@ -116,9 +100,7 @@ public final class LosslessTransforms {
         }
     }
 
-    /**
-     * Applies the color transform.
-     */
+    /// Applies the color transform.
     public static void applyColorTransform(byte[] imageData, int width, int sizeBits, byte[] transformData) {
         int blockXSize = subsampleSize(width, sizeBits);
         for (int y = 0; y < imageData.length / (width * 4); y++) {
@@ -144,9 +126,7 @@ public final class LosslessTransforms {
         }
     }
 
-    /**
-     * Applies the subtract-green transform.
-     */
+    /// Applies the subtract-green transform.
     public static void applySubtractGreenTransform(byte[] imageData) {
         for (int index = 0; index < imageData.length; index += 4) {
             imageData[index] = (byte) ((imageData[index] + imageData[index + 1]) & 0xFF);
@@ -154,9 +134,7 @@ public final class LosslessTransforms {
         }
     }
 
-    /**
-     * Applies the color indexing transform.
-     */
+    /// Applies the color indexing transform.
     public static void applyColorIndexingTransform(byte[] imageData, int width, int height, int tableSize, byte[] tableData) {
         if (tableSize > 16) {
             byte[][] table = new byte[256][4];

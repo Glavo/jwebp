@@ -4,25 +4,21 @@ import javafx.scene.image.PixelFormat;
 import javafx.scene.image.PixelWriter;
 import javafx.scene.image.WritableImage;
 
-/**
- * JavaFX image conversion helpers.
- */
+/// JavaFX image conversion helpers.
 public final class FxImages {
 
     private FxImages() {
     }
 
-    /**
-     * Converts non-premultiplied RGBA bytes to a JavaFX {@link WritableImage}.
-     *
-     * <p>JavaFX writable pixel formats expect premultiplied BGRA data, so the method performs the
-     * required channel swizzle and alpha premultiplication explicitly.
-     *
-     * @param width the image width
-     * @param height the image height
-     * @param rgba tightly packed non-premultiplied RGBA pixels
-     * @return a new writable JavaFX image
-     */
+    /// Converts non-premultiplied RGBA bytes to a JavaFX [WritableImage].
+    ///
+    /// JavaFX writable pixel formats expect premultiplied BGRA data, so the method performs the
+    /// required channel swizzle and alpha premultiplication explicitly.
+    ///
+    /// @param width the image width
+    /// @param height the image height
+    /// @param rgba tightly packed non-premultiplied RGBA pixels
+    /// @return a new writable JavaFX image
     public static WritableImage toWritableImage(int width, int height, byte[] rgba) {
         byte[] bgraPre = new byte[rgba.length];
         for (int src = 0, dst = 0; src < rgba.length; src += 4, dst += 4) {

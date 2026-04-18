@@ -1,12 +1,10 @@
 package org.glavo.javafx.webp.internal.lossy;
 
-/**
- * Shared VP8 lossy constants and enums.
- *
- * <p>This class intentionally starts with the mode and segment definitions that are required by
- * the prediction and reconstruction helpers. Additional probability tables are added alongside the
- * main VP8 decoder port, where they are actually consumed.
- */
+/// Shared VP8 lossy constants and enums.
+///
+/// This class intentionally starts with the mode and segment definitions that are required by
+/// the prediction and reconstruction helpers. Additional probability tables are added alongside the
+/// main VP8 decoder port, where they are actually consumed.
 final class LossyCommon {
 
     static final int MAX_SEGMENTS = 4;

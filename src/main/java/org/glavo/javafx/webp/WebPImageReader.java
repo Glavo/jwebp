@@ -16,14 +16,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 
-/**
- * Forward-only reader for WebP content.
- *
- * <p>The reader parses the RIFF container sequentially, buffers only the encoded frame payloads
- * needed for later decode, and decodes frames on demand in presentation order. Scaling is applied
- * immediately after each frame is decoded or composited so callers do not need to allocate both
- * source-sized and target-sized frame lists.
- */
+/// Forward-only reader for WebP content.
+///
+/// The reader parses the RIFF container sequentially, buffers only the encoded frame payloads
+/// needed for later decode, and decodes frames on demand in presentation order. Scaling is applied
+/// immediately after each frame is decoded or composited so callers do not need to allocate both
+/// source-sized and target-sized frame lists.
 public final class WebPImageReader implements AutoCloseable {
 
     private static final byte[] TRANSPARENT = {0, 0, 0, 0};
@@ -47,18 +45,16 @@ public final class WebPImageReader implements AutoCloseable {
         this.scalePlan = scalePlan;
     }
 
-    /**
-     * Opens a streaming reader for a generic byte stream.
-     *
-     * <p>The stream is consumed during the open step so the reader can retain only the encoded
-     * frame payloads that are required for later decode. The supplied stream remains owned by the
-     * returned reader and is closed when {@link #close()} is called.
-     *
-     * @param source the WebP byte stream
-     * @param options scaling options that mirror JavaFX {@code Image} loading parameters
-     * @return a new streaming reader
-     * @throws WebPException if the stream cannot be parsed or decoded
-     */
+    /// Opens a streaming reader for a generic byte stream.
+    ///
+    /// The stream is consumed during the open step so the reader can retain only the encoded
+    /// frame payloads that are required for later decode. The supplied stream remains owned by the
+    /// returned reader and is closed when [#close()] is called.
+    ///
+    /// @param source the WebP byte stream
+    /// @param options scaling options that mirror JavaFX `Image` loading parameters
+    /// @return a new streaming reader
+    /// @throws WebPException if the stream cannot be parsed or decoded
     public static WebPImageReader open(InputStream source, WebPImageLoadOptions options) throws WebPException {
         try {
             ParsedWebPImage image = WebPSequentialParser.parse(source);
@@ -72,15 +68,13 @@ public final class WebPImageReader implements AutoCloseable {
         }
     }
 
-    /**
-     * Opens a streaming reader for a file.
-     *
-     * @param path the WebP file path
-     * @param options scaling options that mirror JavaFX {@code Image} loading parameters
-     * @return a new streaming reader
-     * @throws IOException if the file cannot be opened
-     * @throws WebPException if the file cannot be parsed or decoded
-     */
+    /// Opens a streaming reader for a file.
+    ///
+    /// @param path the WebP file path
+    /// @param options scaling options that mirror JavaFX `Image` loading parameters
+    /// @return a new streaming reader
+    /// @throws IOException if the file cannot be opened
+    /// @throws WebPException if the file cannot be parsed or decoded
     public static WebPImageReader open(Path path, WebPImageLoadOptions options) throws IOException, WebPException {
         InputStream input = Files.newInputStream(path);
         try {
@@ -103,129 +97,103 @@ public final class WebPImageReader implements AutoCloseable {
         }
     }
 
-    /**
-     * Returns the intrinsic source width.
-     *
-     * @return the source canvas width in pixels
-     */
+    /// Returns the intrinsic source width.
+    ///
+    /// @return the source canvas width in pixels
     public int getSourceWidth() {
         return image.sourceWidth();
     }
 
-    /**
-     * Returns the intrinsic source height.
-     *
-     * @return the source canvas height in pixels
-     */
+    /// Returns the intrinsic source height.
+    ///
+    /// @return the source canvas height in pixels
     public int getSourceHeight() {
         return image.sourceHeight();
     }
 
-    /**
-     * Returns the decoded output width after applying load options.
-     *
-     * @return the output width in pixels
-     */
+    /// Returns the decoded output width after applying load options.
+    ///
+    /// @return the output width in pixels
     public int getWidth() {
         return scalePlan.targetWidth();
     }
 
-    /**
-     * Returns the decoded output height after applying load options.
-     *
-     * @return the output height in pixels
-     */
+    /// Returns the decoded output height after applying load options.
+    ///
+    /// @return the output height in pixels
     public int getHeight() {
         return scalePlan.targetHeight();
     }
 
-    /**
-     * Returns whether the source image contains transparency.
-     *
-     * @return {@code true} if any decoded frame may carry alpha
-     */
+    /// Returns whether the source image contains transparency.
+    ///
+    /// @return `true` if any decoded frame may carry alpha
     public boolean hasAlpha() {
         return image.hasAlpha();
     }
 
-    /**
-     * Returns whether the source container is animated.
-     *
-     * @return {@code true} for animated WebP containers
-     */
+    /// Returns whether the source container is animated.
+    ///
+    /// @return `true` for animated WebP containers
     public boolean isAnimated() {
         return image.animated();
     }
 
-    /**
-     * Returns whether the source contains lossy VP8 frame data.
-     *
-     * @return {@code true} if any frame is lossy
-     */
+    /// Returns whether the source contains lossy VP8 frame data.
+    ///
+    /// @return `true` if any frame is lossy
     public boolean isLossy() {
         return image.lossy();
     }
 
-    /**
-     * Returns the number of frames declared by the source container.
-     *
-     * <p>Static images return {@code 1}.
-     *
-     * @return the number of presentation frames
-     */
+    /// Returns the number of frames declared by the source container.
+    ///
+    /// Static images return `1`.
+    ///
+    /// @return the number of presentation frames
     public int getFrameCount() {
         return image.frames().size();
     }
 
-    /**
-     * Returns the animation loop count.
-     *
-     * <p>Static images report a loop count of {@code 1}.
-     *
-     * @return the loop count
-     */
+    /// Returns the animation loop count.
+    ///
+    /// Static images report a loop count of `1`.
+    ///
+    /// @return the loop count
     public LoopCount getLoopCount() {
         return image.loopCount();
     }
 
-    /**
-     * Returns the total duration of one animation cycle.
-     *
-     * <p>Static images report {@code 0}.
-     *
-     * @return the total cycle duration in milliseconds
-     */
+    /// Returns the total duration of one animation cycle.
+    ///
+    /// Static images report `0`.
+    ///
+    /// @return the total cycle duration in milliseconds
     public long getLoopDurationMillis() {
         return image.loopDurationMillis();
     }
 
-    /**
-     * Returns the extracted metadata.
-     *
-     * @return the metadata container
-     */
+    /// Returns the extracted metadata.
+    ///
+    /// @return the metadata container
     public WebPMetadata getMetadata() {
         return image.metadata();
     }
 
-    /**
-     * Returns whether all frames have already been consumed.
-     *
-     * @return {@code true} when no more frames are available
-     */
+    /// Returns whether all frames have already been consumed.
+    ///
+    /// @return `true` when no more frames are available
     public boolean isComplete() {
         return nextFrameIndex >= image.frames().size();
     }
 
-    /**
-     * Decodes the next frame, if available.
-     *
-     * <p>Each returned frame is already composited to the full canvas for animated images and
-     * already scaled according to the load options supplied when the reader was opened.
-     *
-     * @return the next frame, or {@link Optional#empty()} when the stream is exhausted
-     * @throws WebPException if decoding fails
-     */
+    /// Decodes the next frame, if available.
+    ///
+    /// Each returned frame is already composited to the full canvas for animated images and
+    /// already scaled according to the load options supplied when the reader was opened.
+    ///
+    /// @return the next frame, or [Optional#empty()] when the stream is exhausted
+    /// @throws WebPException if decoding fails
     public Optional<WebPFrame> readNextFrame() throws WebPException {
         ensureOpen();
         if (nextFrameIndex >= image.frames().size()) {

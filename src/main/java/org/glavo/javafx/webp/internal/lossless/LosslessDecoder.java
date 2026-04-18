@@ -6,12 +6,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Pure-Java VP8L decoder.
- *
- * <p>The implementation follows the structure of the reference {@code image-webp} lossless
- * decoder. It decodes to tightly packed non-premultiplied RGBA pixels.
- */
+/// Pure-Java VP8L decoder.
+///
+/// The implementation follows the structure of the reference `image-webp` lossless
+/// decoder. It decodes to tightly packed non-premultiplied RGBA pixels.
 public final class LosslessDecoder {
 
     private static final int GREEN = 0;
@@ -31,25 +29,21 @@ public final class LosslessDecoder {
     private int width;
     private int height;
 
-    /**
-     * Creates a decoder for one VP8L payload.
-     *
-     * @param data the encoded VP8L bytes
-     */
+    /// Creates a decoder for one VP8L payload.
+    ///
+    /// @param data the encoded VP8L bytes
     public LosslessDecoder(byte[] data) {
         this.bitReader = new LosslessBitReader(data);
     }
 
-    /**
-     * Decodes a VP8L frame into RGBA pixels.
-     *
-     * @param width the expected width
-     * @param height the expected height
-     * @param implicitDimensions whether the VP8L header should be skipped because dimensions are
-     *                           defined externally, as in ALPH chunks
-     * @param buffer the RGBA destination buffer
-     * @throws WebPException if the bitstream is malformed or inconsistent
-     */
+    /// Decodes a VP8L frame into RGBA pixels.
+    ///
+    /// @param width the expected width
+    /// @param height the expected height
+    /// @param implicitDimensions whether the VP8L header should be skipped because dimensions are
+    ///                           defined externally, as in ALPH chunks
+    /// @param buffer the RGBA destination buffer
+    /// @throws WebPException if the bitstream is malformed or inconsistent
     public void decodeFrame(int width, int height, boolean implicitDimensions, byte[] buffer) throws WebPException {
         resetState();
 

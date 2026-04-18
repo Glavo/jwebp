@@ -3,14 +3,10 @@ package org.glavo.javafx.webp.internal.codec;
 import org.glavo.javafx.webp.WebPException;
 import org.glavo.javafx.webp.internal.lossless.LosslessDecoder;
 
-/**
- * Utilities for extended WebP features such as alpha reconstruction and animation composition.
- */
+/// Utilities for extended WebP features such as alpha reconstruction and animation composition.
 public final class ExtendedWebP {
 
-    /**
-     * Filtering methods defined by the WebP ALPH chunk format.
-     */
+    /// Filtering methods defined by the WebP ALPH chunk format.
     public enum FilteringMethod {
         NONE,
         HORIZONTAL,
@@ -18,31 +14,27 @@ public final class ExtendedWebP {
         GRADIENT
     }
 
-    /**
-     * Parsed ALPH chunk payload.
-     *
-     * @param filteringMethod the alpha predictor mode
-     * @param data decoded alpha bytes, one per pixel
-     */
+    /// Parsed ALPH chunk payload.
+    ///
+    /// @param filteringMethod the alpha predictor mode
+    /// @param data decoded alpha bytes, one per pixel
     public record AlphaChunk(FilteringMethod filteringMethod, byte[] data) {
     }
 
     private ExtendedWebP() {
     }
 
-    /**
-     * Parses an ALPH chunk payload and returns the decoded alpha data.
-     *
-     * <p>The alpha chunk may either store raw bytes or a nested lossless WebP image. The current
-     * backend supports the compressed representation expected in real WebP files and delegates the
-     * nested lossless decoding to the VP8L decoder.
-     *
-     * @param payload the ALPH chunk payload
-     * @param width the target width
-     * @param height the target height
-     * @return the parsed alpha chunk
-     * @throws WebPException if the alpha payload is malformed
-     */
+    /// Parses an ALPH chunk payload and returns the decoded alpha data.
+    ///
+    /// The alpha chunk may either store raw bytes or a nested lossless WebP image. The current
+    /// backend supports the compressed representation expected in real WebP files and delegates the
+    /// nested lossless decoding to the VP8L decoder.
+    ///
+    /// @param payload the ALPH chunk payload
+    /// @param width the target width
+    /// @param height the target height
+    /// @return the parsed alpha chunk
+    /// @throws WebPException if the alpha payload is malformed
     public static AlphaChunk parseAlphaChunk(byte[] payload, int width, int height) throws WebPException {
         if (payload.length < 1) {
             throw new WebPException("ALPH chunk is too small");
@@ -98,16 +90,14 @@ public final class ExtendedWebP {
         return new AlphaChunk(filteringMethod, decodedAlpha);
     }
 
-    /**
-     * Returns the alpha predictor value for the given pixel.
-     *
-     * @param x the x coordinate
-     * @param y the y coordinate
-     * @param width the frame width
-     * @param filteringMethod the ALPH predictor mode
-     * @param rgbaBuffer the partially reconstructed RGBA frame
-     * @return the predictor byte
-     */
+    /// Returns the alpha predictor value for the given pixel.
+    ///
+    /// @param x the x coordinate
+    /// @param y the y coordinate
+    /// @param width the frame width
+    /// @param filteringMethod the ALPH predictor mode
+    /// @param rgbaBuffer the partially reconstructed RGBA frame
+    /// @return the predictor byte
     public static int getAlphaPredictor(int x, int y, int width, FilteringMethod filteringMethod, byte[] rgbaBuffer) {
         return switch (filteringMethod) {
             case NONE -> 0;
@@ -151,25 +141,23 @@ public final class ExtendedWebP {
         };
     }
 
-    /**
-     * Composites one decoded frame over an RGBA canvas.
-     *
-     * @param canvas the canvas RGBA pixels, always sized to the full image
-     * @param canvasWidth the canvas width
-     * @param canvasHeight the canvas height
-     * @param clearColor the optional color used to clear the previous frame region
-     * @param frame the frame pixels, encoded as RGB or RGBA depending on {@code frameHasAlpha}
-     * @param frameX the frame x offset
-     * @param frameY the frame y offset
-     * @param frameWidth the frame width
-     * @param frameHeight the frame height
-     * @param frameHasAlpha whether the frame pixels are RGBA
-     * @param useAlphaBlending whether alpha pixels should blend over the canvas
-     * @param previousFrameWidth the previous frame width
-     * @param previousFrameHeight the previous frame height
-     * @param previousFrameX the previous frame x offset
-     * @param previousFrameY the previous frame y offset
-     */
+    /// Composites one decoded frame over an RGBA canvas.
+    ///
+    /// @param canvas the canvas RGBA pixels, always sized to the full image
+    /// @param canvasWidth the canvas width
+    /// @param canvasHeight the canvas height
+    /// @param clearColor the optional color used to clear the previous frame region
+    /// @param frame the frame pixels, encoded as RGB or RGBA depending on `frameHasAlpha`
+    /// @param frameX the frame x offset
+    /// @param frameY the frame y offset
+    /// @param frameWidth the frame width
+    /// @param frameHeight the frame height
+    /// @param frameHasAlpha whether the frame pixels are RGBA
+    /// @param useAlphaBlending whether alpha pixels should blend over the canvas
+    /// @param previousFrameWidth the previous frame width
+    /// @param previousFrameHeight the previous frame height
+    /// @param previousFrameX the previous frame x offset
+    /// @param previousFrameY the previous frame y offset
     public static void compositeFrame(
             byte[] canvas,
             int canvasWidth,

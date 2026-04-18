@@ -1,26 +1,22 @@
 package org.glavo.javafx.webp.internal;
 
-/**
- * Pure byte-array RGBA scaling routines used by the decoder backend.
- *
- * <p>The scaler operates on tightly packed non-premultiplied RGBA data and therefore avoids all
- * desktop imaging APIs. The {@code smooth} path uses bilinear interpolation while the fast path
- * uses nearest-neighbor sampling.
- */
+/// Pure byte-array RGBA scaling routines used by the decoder backend.
+///
+/// The scaler operates on tightly packed non-premultiplied RGBA data and therefore avoids all
+/// desktop imaging APIs. The `smooth` path uses bilinear interpolation while the fast path
+/// uses nearest-neighbor sampling.
 public final class PixelScaler {
 
     private PixelScaler() {
     }
 
-    /**
-     * Scales an RGBA image according to the supplied plan.
-     *
-     * @param source the source RGBA pixels
-     * @param sourceWidth the source width
-     * @param sourceHeight the source height
-     * @param scalePlan the scaling configuration
-     * @return the scaled RGBA pixels, or a copy of the source if scaling is not required
-     */
+    /// Scales an RGBA image according to the supplied plan.
+    ///
+    /// @param source the source RGBA pixels
+    /// @param sourceWidth the source width
+    /// @param sourceHeight the source height
+    /// @param scalePlan the scaling configuration
+    /// @return the scaled RGBA pixels, or a copy of the source if scaling is not required
     public static byte[] scaleRgba(byte[] source, int sourceWidth, int sourceHeight, ScalePlan scalePlan) {
         if (sourceWidth == scalePlan.targetWidth() && sourceHeight == scalePlan.targetHeight()) {
             return source.clone();

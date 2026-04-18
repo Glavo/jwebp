@@ -1,8 +1,6 @@
 package org.glavo.javafx.webp.internal.lossy;
 
-/**
- * YUV to RGB conversion helpers used by the VP8 decoder.
- */
+/// YUV to RGB conversion helpers used by the VP8 decoder.
 final class LossyYuv {
 
     private static final int YUV_FIX = 16;

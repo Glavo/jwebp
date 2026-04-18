@@ -12,9 +12,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Integration tests for the public WebP decoding API.
- */
+/// Integration tests for the public WebP decoding API.
 final class WebPDecoderTest {
 
     @Test

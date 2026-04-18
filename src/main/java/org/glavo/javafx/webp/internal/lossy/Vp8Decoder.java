@@ -13,15 +13,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Pure-Java VP8 keyframe decoder.
- *
- * <p>The implementation follows the structure of the reference decoder in
- * {@code external/image-webp}: parse the frame header, decode macroblock prediction modes and
- * residual coefficients, reconstruct YUV planes, then apply the in-loop deblocking filter. Only
- * VP8 keyframes are supported because WebP still images and animated frame subchunks store
- * keyframe payloads.
- */
+/// Pure-Java VP8 keyframe decoder.
+///
+/// The implementation follows the structure of the reference decoder in
+/// `external/image-webp`: parse the frame header, decode macroblock prediction modes and
+/// residual coefficients, reconstruct YUV planes, then apply the in-loop deblocking filter. Only
+/// VP8 keyframes are supported because WebP still images and animated frame subchunks store
+/// keyframe payloads.
 public final class Vp8Decoder {
 
     private final InputStream input;
@@ -73,17 +71,15 @@ public final class Vp8Decoder {
         }
     }
 
-    /**
-     * Reads the VP8 frame header and initializes partition state.
-     *
-     * <p>The returned frame object is not yet fully reconstructed. It carries dimensions, loop
-     * filter parameters and allocated YUV planes, which is enough for subsequent macroblock decode
-     * stages.
-     *
-     * @param input the raw VP8 payload stream
-     * @return a frame object initialized from the VP8 header
-     * @throws WebPException if the VP8 stream is malformed
-     */
+    /// Reads the VP8 frame header and initializes partition state.
+    ///
+    /// The returned frame object is not yet fully reconstructed. It carries dimensions, loop
+    /// filter parameters and allocated YUV planes, which is enough for subsequent macroblock decode
+    /// stages.
+    ///
+    /// @param input the raw VP8 payload stream
+    /// @return a frame object initialized from the VP8 header
+    /// @throws WebPException if the VP8 stream is malformed
     static Vp8Frame decodeFrameHeader(InputStream input) throws WebPException {
         try {
             Vp8Decoder decoder = new Vp8Decoder(input);
@@ -97,18 +93,16 @@ public final class Vp8Decoder {
         }
     }
 
-    /**
-     * Decodes one raw VP8 frame payload to tightly packed RGBA pixels.
-     *
-     * <p>The input stream must expose exactly the payload bytes of a {@code VP8 } chunk. The
-     * decoder reconstructs the internal YUV planes first and only performs color conversion once
-     * the whole frame is available, matching the ordering used by the reference implementation.
-     *
-     * @param input the raw VP8 frame payload
-     * @param fancyUpsampling whether to use the high-quality chroma upsampler
-     * @return tightly packed non-premultiplied RGBA pixels
-     * @throws WebPException if the VP8 bitstream is malformed
-     */
+    /// Decodes one raw VP8 frame payload to tightly packed RGBA pixels.
+    ///
+    /// The input stream must expose exactly the payload bytes of a `VP8` chunk. The
+    /// decoder reconstructs the internal YUV planes first and only performs color conversion once
+    /// the whole frame is available, matching the ordering used by the reference implementation.
+    ///
+    /// @param input the raw VP8 frame payload
+    /// @param fancyUpsampling whether to use the high-quality chroma upsampler
+    /// @return tightly packed non-premultiplied RGBA pixels
+    /// @throws WebPException if the VP8 bitstream is malformed
     public static byte[] decodeRgba(InputStream input, boolean fancyUpsampling) throws WebPException {
         try {
             Vp8Frame frame = new Vp8Decoder(input).decodeFrameInternal();

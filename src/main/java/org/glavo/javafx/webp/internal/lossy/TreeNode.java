@@ -1,8 +1,6 @@
 package org.glavo.javafx.webp.internal.lossy;
 
-/**
- * One node in the VP8 boolean-decoder probability tree.
- */
+/// One node in the VP8 boolean-decoder probability tree.
 final class TreeNode {
 
     static final TreeNode UNINIT = new TreeNode((byte) 0, (byte) 0, 0, (byte) 0);

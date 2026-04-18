@@ -1,8 +1,6 @@
 package org.glavo.javafx.webp.internal.codec;
 
-/**
- * All relevant RIFF chunk identifiers used by WebP containers.
- */
+/// All relevant RIFF chunk identifiers used by WebP containers.
 public enum WebPRiffChunk {
     RIFF("RIFF"),
     WEBP("WEBP"),
@@ -23,12 +21,10 @@ public enum WebPRiffChunk {
         this.fourCc = fourCc;
     }
 
-    /**
-     * Maps a FourCC string to its chunk type.
-     *
-     * @param fourCc the ASCII chunk identifier
-     * @return the matching chunk type, or {@link #UNKNOWN}
-     */
+    /// Maps a FourCC string to its chunk type.
+    ///
+    /// @param fourCc the ASCII chunk identifier
+    /// @return the matching chunk type, or [#UNKNOWN]
     public static WebPRiffChunk fromFourCc(String fourCc) {
         for (WebPRiffChunk value : values()) {
             if (value != UNKNOWN && value.fourCc.equals(fourCc)) {
@@ -38,11 +34,9 @@ public enum WebPRiffChunk {
         return UNKNOWN;
     }
 
-    /**
-     * Returns the canonical FourCC string when one exists.
-     *
-     * @return the ASCII chunk identifier, or an empty string for {@link #UNKNOWN}
-     */
+    /// Returns the canonical FourCC string when one exists.
+    ///
+    /// @return the ASCII chunk identifier, or an empty string for [#UNKNOWN]
     public String fourCc() {
         return fourCc;
     }

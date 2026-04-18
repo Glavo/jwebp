@@ -2,12 +2,10 @@ package org.glavo.javafx.webp.internal.lossy;
 
 import org.glavo.javafx.webp.WebPException;
 
-/**
- * VP8 boolean arithmetic decoder.
- *
- * <p>The implementation mirrors the split fast-path / cold-path structure of the reference crate
- * so that the eventual Java VP8 decoder can stay structurally close to the source material.
- */
+/// VP8 boolean arithmetic decoder.
+///
+/// The implementation mirrors the split fast-path / cold-path structure of the reference crate
+/// so that the eventual Java VP8 decoder can stay structurally close to the source material.
 final class LossyArithmeticDecoder {
 
     private static final int FINAL_BYTES_REMAINING_EOF = -0xE;

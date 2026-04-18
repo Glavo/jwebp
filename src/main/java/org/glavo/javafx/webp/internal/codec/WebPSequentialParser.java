@@ -11,13 +11,11 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Sequential WebP container parser that buffers encoded frame payloads but does not rely on
- * seeking or desktop APIs.
- *
- * <p>The parser consumes a forward-only stream and extracts frame descriptors, metadata and
- * animation timing. Actual pixel decoding is delegated to the VP8L or VP8 codecs.
- */
+/// Sequential WebP container parser that buffers encoded frame payloads but does not rely on
+/// seeking or desktop APIs.
+///
+/// The parser consumes a forward-only stream and extracts frame descriptors, metadata and
+/// animation timing. Actual pixel decoding is delegated to the VP8L or VP8 codecs.
 public final class WebPSequentialParser {
 
     private static final int FLAG_ANIMATION = 1 << 1;
@@ -29,13 +27,11 @@ public final class WebPSequentialParser {
     private WebPSequentialParser() {
     }
 
-    /**
-     * Parses a WebP container from a forward-only stream.
-     *
-     * @param input the WebP byte stream
-     * @return the parsed container data
-     * @throws IOException if the stream is truncated or malformed
-     */
+    /// Parses a WebP container from a forward-only stream.
+    ///
+    /// @param input the WebP byte stream
+    /// @return the parsed container data
+    /// @throws IOException if the stream is truncated or malformed
     public static ParsedWebPImage parse(InputStream input) throws IOException {
         String riff = InputStreams.readFourCc(input);
         if (!"RIFF".equals(riff)) {
@@ -309,13 +305,11 @@ public final class WebPSequentialParser {
         );
     }
 
-    /**
-     * Parses dimensions from a VP8 keyframe chunk.
-     *
-     * @param payload the raw VP8 chunk payload
-     * @return the decoded frame dimensions
-     * @throws WebPException if the payload is truncated or malformed
-     */
+    /// Parses dimensions from a VP8 keyframe chunk.
+    ///
+    /// @param payload the raw VP8 chunk payload
+    /// @return the decoded frame dimensions
+    /// @throws WebPException if the payload is truncated or malformed
     public static Dimensions parseVp8Dimensions(byte[] payload) throws WebPException {
         ByteArrayReader reader = new ByteArrayReader(payload);
         if (payload.length < 10) {
@@ -339,13 +333,11 @@ public final class WebPSequentialParser {
         return new Dimensions(width, height);
     }
 
-    /**
-     * Parses the VP8L chunk header.
-     *
-     * @param payload the raw VP8L chunk payload
-     * @return the decoded VP8L header
-     * @throws WebPException if the payload is truncated or malformed
-     */
+    /// Parses the VP8L chunk header.
+    ///
+    /// @param payload the raw VP8L chunk payload
+    /// @return the decoded VP8L header
+    /// @throws WebPException if the payload is truncated or malformed
     public static LosslessHeader parseVp8LHeader(byte[] payload) throws WebPException {
         ByteArrayReader reader = new ByteArrayReader(payload);
         if (payload.length < 5) {
@@ -379,22 +371,18 @@ public final class WebPSequentialParser {
         return new ChunkPayload(fourCc, WebPRiffChunk.fromFourCc(fourCc), payload, size);
     }
 
-    /**
-     * Parsed VP8 dimensions.
-     *
-     * @param width the frame width
-     * @param height the frame height
-     */
+    /// Parsed VP8 dimensions.
+    ///
+    /// @param width the frame width
+    /// @param height the frame height
     public record Dimensions(int width, int height) {
     }
 
-    /**
-     * Parsed VP8L header data.
-     *
-     * @param width the frame width
-     * @param height the frame height
-     * @param alphaUsed whether the VP8L bitstream declares an alpha channel
-     */
+    /// Parsed VP8L header data.
+    ///
+    /// @param width the frame width
+    /// @param height the frame height
+    /// @param alphaUsed whether the VP8L bitstream declares an alpha channel
     public record LosslessHeader(int width, int height, boolean alphaUsed) {
     }
 

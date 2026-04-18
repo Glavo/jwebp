@@ -1,8 +1,6 @@
 package org.glavo.javafx.webp.internal.lossy;
 
-/**
- * Inverse transform helpers used by the VP8 decoder.
- */
+/// Inverse transform helpers used by the VP8 decoder.
 final class LossyTransform {
 
     private static final long CONST1 = 20091;

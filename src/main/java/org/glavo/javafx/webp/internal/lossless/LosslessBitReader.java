@@ -2,11 +2,9 @@ package org.glavo.javafx.webp.internal.lossless;
 
 import org.glavo.javafx.webp.WebPException;
 
-/**
- * Bit reader for VP8L streams.
- *
- * <p>Bits are consumed least-significant-bit first as required by the WebP lossless format.
- */
+/// Bit reader for VP8L streams.
+///
+/// Bits are consumed least-significant-bit first as required by the WebP lossless format.
 public final class LosslessBitReader {
 
     private final byte[] data;
@@ -14,20 +12,16 @@ public final class LosslessBitReader {
     private long buffer;
     private int bitCount;
 
-    /**
-     * Creates a new bit reader for a chunk payload.
-     *
-     * @param data the encoded VP8L bytes
-     */
+    /// Creates a new bit reader for a chunk payload.
+    ///
+    /// @param data the encoded VP8L bytes
     public LosslessBitReader(byte[] data) {
         this.data = data;
     }
 
-    /**
-     * Ensures that up to 56 bits are available in the local buffer.
-     *
-     * @throws WebPException if the stream is malformed
-     */
+    /// Ensures that up to 56 bits are available in the local buffer.
+    ///
+    /// @throws WebPException if the stream is malformed
     public void fill() throws WebPException {
         while (bitCount < 56 && bytePosition < data.length) {
             buffer |= ((long) data[bytePosition] & 0xFFL) << bitCount;
@@ -36,12 +30,10 @@ public final class LosslessBitReader {
         }
     }
 
-    /**
-     * Returns the low {@code bits} bits of the current buffer without consuming them.
-     *
-     * @param bits the number of bits to inspect
-     * @return the peeked value
-     */
+    /// Returns the low `bits` bits of the current buffer without consuming them.
+    ///
+    /// @param bits the number of bits to inspect
+    /// @return the peeked value
     public long peek(int bits) {
         if (bits == 64) {
             return buffer;
@@ -49,21 +41,17 @@ public final class LosslessBitReader {
         return buffer & ((1L << bits) - 1L);
     }
 
-    /**
-     * Returns the full raw bit buffer.
-     *
-     * @return the current bit buffer
-     */
+    /// Returns the full raw bit buffer.
+    ///
+    /// @return the current bit buffer
     public long peekFull() {
         return buffer;
     }
 
-    /**
-     * Consumes the requested number of bits.
-     *
-     * @param bits the number of bits to consume
-     * @throws WebPException if not enough bits are available
-     */
+    /// Consumes the requested number of bits.
+    ///
+    /// @param bits the number of bits to consume
+    /// @throws WebPException if not enough bits are available
     public void consume(int bits) throws WebPException {
         if (bitCount < bits) {
             throw new WebPException("Corrupt VP8L bitstream");
@@ -72,13 +60,11 @@ public final class LosslessBitReader {
         bitCount -= bits;
     }
 
-    /**
-     * Reads an unsigned integer composed of the requested number of bits.
-     *
-     * @param bits the number of bits to read
-     * @return the decoded value
-     * @throws WebPException if the bitstream is truncated
-     */
+    /// Reads an unsigned integer composed of the requested number of bits.
+    ///
+    /// @param bits the number of bits to read
+    /// @return the decoded value
+    /// @throws WebPException if the bitstream is truncated
     public int readBits(int bits) throws WebPException {
         if (bitCount < bits) {
             fill();
@@ -88,11 +74,9 @@ public final class LosslessBitReader {
         return value;
     }
 
-    /**
-     * Returns the number of buffered bits.
-     *
-     * @return the bit count in the local buffer
-     */
+    /// Returns the number of buffered bits.
+    ///
+    /// @return the bit count in the local buffer
     public int bitCount() {
         return bitCount;
     }
