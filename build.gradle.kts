@@ -14,7 +14,7 @@ plugins {
 group = "org.glavo"
 
 if (version == Project.DEFAULT_VERSION) {
-    version = "0.1.0" // + "-SNAPSHOT"
+    version = "0.2.0" + "-SNAPSHOT"
 }
 
 description = "Pure Java implementation of WebP decoding library"
