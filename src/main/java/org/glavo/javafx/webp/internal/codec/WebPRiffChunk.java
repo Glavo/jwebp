@@ -18,6 +18,8 @@ package org.glavo.javafx.webp.internal.codec;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Objects;
 
 /// All relevant RIFF chunk identifiers used by WebP containers.
@@ -36,6 +38,16 @@ public enum WebPRiffChunk {
     XMP("XMP "),
     UNKNOWN(null);
 
+    private static final WebPRiffChunk[] SORTED_CHUNKS = Arrays.stream(values())
+            .filter(c -> c.fourCC != null)
+            .sorted(Comparator.comparing(c -> c.fourCC))
+            .toArray(WebPRiffChunk[]::new);
+
+    @SuppressWarnings("DataFlowIssue")
+    private static final FourCC[] SORTED_FOURCC_VALUES = Arrays.stream(SORTED_CHUNKS)
+            .map(c -> c.fourCC)
+            .toArray(FourCC[]::new);
+
     private final @Nullable FourCC fourCC;
 
     WebPRiffChunk(@Nullable String fourCC) {
@@ -47,12 +59,8 @@ public enum WebPRiffChunk {
     /// @param fourCC the chunk identifier
     /// @return the matching chunk type, or [#UNKNOWN]
     public static WebPRiffChunk fromFourCC(FourCC fourCC) {
-        for (WebPRiffChunk value : values()) {
-            if (Objects.equals(value.fourCC, fourCC)) {
-                return value;
-            }
-        }
-        return UNKNOWN;
+        int index = Arrays.binarySearch(SORTED_FOURCC_VALUES, fourCC);
+        return index >= 0 ? SORTED_CHUNKS[index] : UNKNOWN;
     }
 
     /// Returns the canonical FourCC value when one exists.

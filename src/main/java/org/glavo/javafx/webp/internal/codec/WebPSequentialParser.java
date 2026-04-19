@@ -276,7 +276,7 @@ public final class WebPSequentialParser {
         byte @Nullable [] imageChunk = null;
         boolean lossless = false;
         while (frame.remaining() > 0) {
-            FourCC fourCc = frame.readFourCc();
+            FourCC fourCc = frame.readFourCC();
             WebPRiffChunk type = WebPRiffChunk.fromFourCC(fourCc);
             long chunkSize = frame.readU32LE();
             if (chunkSize > Integer.MAX_VALUE) {

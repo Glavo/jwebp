@@ -36,8 +36,7 @@ public final class InputStreams {
     /// @return the chunk identifier
     /// @throws IOException if the stream is truncated or unreadable
     public static FourCC readFourCC(InputStream input) throws IOException {
-        byte[] fourCc = readFully(input, 4);
-        return new FourCC(fourCc[0], fourCc[1], fourCc[2], fourCc[3]);
+        return FourCC.of(readFully(input, 4));
     }
 
     /// Reads an unsigned 16-bit little-endian integer.

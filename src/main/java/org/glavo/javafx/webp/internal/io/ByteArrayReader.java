@@ -140,9 +140,8 @@ public final class ByteArrayReader {
     ///
     /// @return the chunk identifier
     /// @throws WebPException if the buffer is truncated
-    public FourCC readFourCc() throws WebPException {
-        byte[] fourCc = readBytes(4);
-        return new FourCC(fourCc[0], fourCc[1], fourCc[2], fourCc[3]);
+    public FourCC readFourCC() throws WebPException {
+        return FourCC.of(readBytes(4));
     }
 
     /// Reads a fixed-size byte array.
