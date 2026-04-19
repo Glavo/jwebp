@@ -8,6 +8,9 @@ A dependency-free, pure Java WebP decoder library that supports lossless and los
 
 This project was ported with Codex assistance from [image-rs/image-webp](https://github.com/image-rs/image-webp).
 
+We have ported test cases from image-rs and libwebp to verify its correctness,
+and it has been used in [Hello Minecraft! Launcher](https://github.com/HMCL-dev/HMCL).
+
 ## Features
 
 - Pure Java implementation with no native dependencies.
