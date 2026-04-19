@@ -112,6 +112,7 @@ tasks.register<JavaExec>("run") {
 
 // Test
 
+// https://chromium.googlesource.com/webm/libwebp-test-data
 val webpTestDataCommit = "53f4c95f055bf3509ceacce7e88894b78287a2f2"
 val webpTestDataZip = layout.buildDirectory.file("downloads/libwebp-test-data-${webpTestDataCommit}.zip")
 
