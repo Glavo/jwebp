@@ -111,22 +111,21 @@ public final class WebPFXImage extends WritableImage {
         );
     }
 
-    private List<KeyFrame> createKeyFrames() {
+    private KeyFrame[] createKeyFrames() {
         if (frames.size() <= 1) {
-            return List.of();
+            return new KeyFrame[0];
         }
 
-        List<KeyFrame> keyFrames = new ArrayList<>(frames.size() + 1);
+        KeyFrame[] keyFrames = new KeyFrame[frames.size() + 1];
         long currentStartMillis = 0L;
         for (int i = 0; i < frames.size(); i++) {
-            int frameIndex = i;
-            keyFrames.add(new KeyFrame(Duration.millis(currentStartMillis), event -> renderFrame(frameIndex)));
-            WebPFrame frame = frames.get(i);
-            currentStartMillis += Math.max(1, frame.getDurationMillis());
+            final int frameIndex = i;
+            keyFrames[i] = new KeyFrame(Duration.millis(currentStartMillis), event -> renderFrame(frameIndex));
+            currentStartMillis += Math.max(1, frames.get(i).getDurationMillis());
         }
 
         // The terminal marker keeps the last frame visible for its full duration.
-        keyFrames.add(new KeyFrame(Duration.millis(currentStartMillis)));
+        keyFrames[frames.size()] = new KeyFrame(Duration.millis(currentStartMillis));
         return keyFrames;
     }
 
