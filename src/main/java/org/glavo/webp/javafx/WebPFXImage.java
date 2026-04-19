@@ -26,7 +26,6 @@ import org.glavo.webp.WebPImage;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /// JavaFX image adapter for decoded WebP content.
@@ -38,6 +37,7 @@ import java.util.List;
 public final class WebPFXImage extends WritableImage {
 
     private final List<WebPFrame> frames;
+    private final boolean animated;
     private final int loopCount;
     private @Nullable Timeline timeline;
     private int renderedFrameIndex = -1;
@@ -48,6 +48,7 @@ public final class WebPFXImage extends WritableImage {
     public WebPFXImage(WebPFrame frame) {
         super(frame.getWidth(), frame.getHeight());
         this.frames = List.of(frame);
+        this.animated = false;
         this.loopCount = 1;
 
         renderFrame(0);
@@ -59,28 +60,40 @@ public final class WebPFXImage extends WritableImage {
     ///
     /// @param image the decoded WebP image
     public WebPFXImage(WebPImage image) {
+        this(image, true);
+    }
+
+    /// Creates a JavaFX image from fully decoded WebP content.
+    ///
+    /// The first frame is written immediately. Call [#getAnimation()] to control playback.
+    ///
+    /// @param image    the decoded WebP image
+    /// @param autoPlay whether to start playing the animation automatically
+    public WebPFXImage(WebPImage image, boolean autoPlay) {
         super(image.getWidth(), image.getHeight());
         this.frames = image.getFrames();
+        this.animated = image.isAnimated();
         this.loopCount = image.getLoopCount();
 
         renderFrame(0);
+
+        if (autoPlay && isAnimated()) {
+            getAnimation().play();
+        }
     }
 
     /// Returns whether this image is animated.
     ///
     /// @return `true` if this image contains multiple frames.
     public boolean isAnimated() {
-        return frames.size() > 1;
+        return animated;
     }
 
     /// Returns the JavaFX timeline that drives this image's animation.
     ///
-    /// The returned timeline uses frame-start keyframes and one terminal keyframe that preserves
-    /// the last frame duration. Callers may control playback directly through the standard
-    /// `Timeline` API such as `play()`, `pause()`, `stop()`, `jumpTo(...)`, or `setRate(...)`.
-    /// The timeline is created lazily on first access. Static images return `null`.
+    /// If this image is not [animated][#isAnimated()], `null` is returned.
     public @Nullable Timeline getAnimation() {
-        if (isAnimated()) {
+        if (animated) {
             if (timeline == null) {
                 timeline = new Timeline();
                 timeline.setCycleCount(loopCount == 0 ? Animation.INDEFINITE : loopCount);
@@ -94,28 +107,21 @@ public final class WebPFXImage extends WritableImage {
 
     private void renderFrame(int frameIndex) {
         if (frameIndex != renderedFrameIndex) {
+            WebPFrame frame = frames.get(frameIndex);
+            getPixelWriter().setPixels(
+                    0,
+                    0,
+                    frame.getWidth(),
+                    frame.getHeight(),
+                    PixelFormat.getIntArgbInstance(),
+                    frame.getArgbPixels(),
+                    frame.getScanlineStride()
+            );
             renderedFrameIndex = frameIndex;
-            writeFrame(frames.get(frameIndex));
         }
-    }
-
-    private void writeFrame(WebPFrame frame) {
-        getPixelWriter().setPixels(
-                0,
-                0,
-                frame.getWidth(),
-                frame.getHeight(),
-                PixelFormat.getIntArgbInstance(),
-                frame.getArgbPixels(),
-                frame.getScanlineStride()
-        );
     }
 
     private KeyFrame[] createKeyFrames() {
-        if (frames.size() <= 1) {
-            return new KeyFrame[0];
-        }
-
         KeyFrame[] keyFrames = new KeyFrame[frames.size() + 1];
         long currentStartMillis = 0L;
         for (int i = 0; i < frames.size(); i++) {
