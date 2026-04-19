@@ -45,25 +45,6 @@ public final class WebPImageReader implements AutoCloseable {
 
     private static final int TRANSPARENT = 0x00000000;
 
-    private final AutoCloseable ownedInput;
-    private final ParsedWebPImage image;
-    private final ScalePlan scalePlan;
-    private int nextFrameIndex;
-    private boolean closed;
-
-    private int @Nullable [] animationCanvas;
-    private boolean disposeNextFrame = true;
-    private int previousFrameWidth;
-    private int previousFrameHeight;
-    private int previousFrameX;
-    private int previousFrameY;
-
-    private WebPImageReader(AutoCloseable ownedInput, ParsedWebPImage image, ScalePlan scalePlan) {
-        this.ownedInput = ownedInput;
-        this.image = image;
-        this.scalePlan = scalePlan;
-    }
-
     /// Opens a streaming reader for a generic byte stream.
     ///
     /// The stream is consumed during the open step so the reader can retain only the encoded
@@ -133,6 +114,25 @@ public final class WebPImageReader implements AutoCloseable {
     /// @throws WebPException if the file cannot be parsed or decoded
     public static WebPImageReader open(Path path) throws IOException, WebPException {
         return open(path, WebPImageLoadOptions.DEFAULT);
+    }
+
+    private final AutoCloseable ownedInput;
+    private final ParsedWebPImage image;
+    private final ScalePlan scalePlan;
+    private int nextFrameIndex;
+    private boolean closed;
+
+    private int @Nullable [] animationCanvas;
+    private boolean disposeNextFrame = true;
+    private int previousFrameWidth;
+    private int previousFrameHeight;
+    private int previousFrameX;
+    private int previousFrameY;
+
+    private WebPImageReader(AutoCloseable ownedInput, ParsedWebPImage image, ScalePlan scalePlan) {
+        this.ownedInput = ownedInput;
+        this.image = image;
+        this.scalePlan = scalePlan;
     }
 
     /// Returns the intrinsic source width.
