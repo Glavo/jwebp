@@ -76,7 +76,6 @@ try (InputStream input = Files.newInputStream(Path.of("/animated.webp"));
   exposes packed non-premultiplied `ARGB` pixels via `getArgbPixels()` and `getArgbArray()`
 - `WebPImageLoadOptions`: JavaFX-style scaling options
 - `WebPMetadata`: raw ICC, EXIF, and XMP payloads
-- `LoopCount`: animation loop count abstraction
 - `WebPException`: checked exception for parse and decode failures
 
 ## Testing

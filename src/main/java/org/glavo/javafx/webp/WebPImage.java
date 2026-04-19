@@ -34,7 +34,7 @@ public final class WebPImage {
     private final boolean alpha;
     private final boolean animated;
     private final boolean lossy;
-    private final LoopCount loopCount;
+    private final int loopCount;
     private final long loopDurationMillis;
     private final WebPMetadata metadata;
     private final List<WebPFrame> frames;
@@ -48,7 +48,7 @@ public final class WebPImage {
     /// @param alpha whether any frame carries transparency
     /// @param animated whether the source contains animation
     /// @param lossy whether any decoded frame uses lossy VP8 compression
-    /// @param loopCount the animation loop count
+    /// @param loopCount the animation loop count; `0` means infinite looping
     /// @param loopDurationMillis the total duration of one animation cycle
     /// @param metadata the extracted metadata
     /// @param frames the decoded frames in presentation order
@@ -60,7 +60,7 @@ public final class WebPImage {
             boolean alpha,
             boolean animated,
             boolean lossy,
-            LoopCount loopCount,
+            int loopCount,
             long loopDurationMillis,
             WebPMetadata metadata,
             List<WebPFrame> frames
@@ -129,10 +129,10 @@ public final class WebPImage {
 
     /// Returns the loop count declared by the source animation.
     ///
-    /// Static images report a finite loop count of `1`.
+    /// Static images report `1`. A value of `0` means the animation loops forever.
     ///
     /// @return the loop count
-    public LoopCount getLoopCount() {
+    public int getLoopCount() {
         return loopCount;
     }
 

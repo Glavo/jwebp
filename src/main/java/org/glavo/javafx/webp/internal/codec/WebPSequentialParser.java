@@ -17,7 +17,6 @@ package org.glavo.javafx.webp.internal.codec;
 
 import org.jetbrains.annotations.NotNullByDefault;
 
-import org.glavo.javafx.webp.LoopCount;
 import org.glavo.javafx.webp.WebPException;
 import org.glavo.javafx.webp.WebPMetadata;
 import org.glavo.javafx.webp.internal.io.ByteArrayReader;
@@ -87,7 +86,7 @@ public final class WebPSequentialParser {
                 false,
                 false,
                 true,
-                LoopCount.of(1),
+                1,
                 0,
                 WebPMetadata.empty(),
                 null,
@@ -114,7 +113,7 @@ public final class WebPSequentialParser {
                 header.alphaUsed(),
                 false,
                 false,
-                LoopCount.of(1),
+                1,
                 0,
                 WebPMetadata.empty(),
                 null,
@@ -151,7 +150,7 @@ public final class WebPSequentialParser {
         byte @Nullable [] exifMetadata = null;
         byte @Nullable [] xmpMetadata = null;
         byte @Nullable [] backgroundColorHint = null;
-        LoopCount loopCount = LoopCount.of(1);
+        int loopCount = 1;
         long loopDurationMillis = 0;
         List<ParsedFrameDescriptor> frames = new ArrayList<>();
         byte @Nullable [] pendingAlphaChunk = null;
@@ -170,8 +169,7 @@ public final class WebPSequentialParser {
                     }
                     ByteArrayReader reader = new ByteArrayReader(chunk.payload());
                     backgroundColorHint = reader.readBytes(4);
-                    int loopCountValue = reader.readU16LE();
-                    loopCount = loopCountValue == 0 ? LoopCount.forever() : LoopCount.of(loopCountValue);
+                    loopCount = reader.readU16LE();
                 }
                 case ALPH -> pendingAlphaChunk = chunk.payload();
                 case VP8 -> {

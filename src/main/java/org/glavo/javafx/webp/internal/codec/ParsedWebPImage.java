@@ -18,7 +18,6 @@ package org.glavo.javafx.webp.internal.codec;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import org.glavo.javafx.webp.LoopCount;
 import org.glavo.javafx.webp.WebPMetadata;
 
 import java.util.List;
@@ -30,7 +29,7 @@ import java.util.List;
 /// @param hasAlpha whether the container declares transparency support
 /// @param animated whether the container is animated
 /// @param lossy whether any frame uses VP8 lossy compression
-/// @param loopCount the animation loop count
+/// @param loopCount the animation loop count; `0` means infinite looping
 /// @param loopDurationMillis the total duration of one animation loop
 /// @param metadata raw ICC/EXIF/XMP metadata
 /// @param backgroundColorHint the animation background color hint, or `null`
@@ -42,7 +41,7 @@ public record ParsedWebPImage(
         boolean hasAlpha,
         boolean animated,
         boolean lossy,
-        LoopCount loopCount,
+        int loopCount,
         long loopDurationMillis,
         WebPMetadata metadata,
         byte @Nullable [] backgroundColorHint,

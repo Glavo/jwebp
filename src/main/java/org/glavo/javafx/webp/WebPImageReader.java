@@ -176,10 +176,10 @@ public final class WebPImageReader implements AutoCloseable {
 
     /// Returns the animation loop count.
     ///
-    /// Static images report a loop count of `1`.
+    /// Static images report `1`. A value of `0` means the animation loops forever.
     ///
     /// @return the loop count
-    public LoopCount getLoopCount() {
+    public int getLoopCount() {
         return image.loopCount();
     }
 

@@ -175,7 +175,7 @@ public final class WebPViewerApp extends Application {
 
         if (image.isAnimated()) {
             text.append(" | frames=").append(image.getFrames().size())
-                    .append(" | loop=").append(image.getLoopCount().isForever() ? "forever" : image.getLoopCount().getRepetitions())
+                    .append(" | loop=").append(image.getLoopCount() == 0 ? "forever" : image.getLoopCount())
                     .append(" | duration=").append(image.getLoopDurationMillis()).append("ms");
         } else {
             text.append(" | still");
