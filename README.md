@@ -33,15 +33,8 @@ System.out.println("frames = " + image.getFrames().size());
 Create a JavaFX image from decoded WebP content:
 
 ```java
-WebPImageLoadOptions options = WebPImageLoadOptions.builder()
-        .requestedWidth(320)
-        .requestedHeight(240)
-        .preserveRatio(true)
-        .smooth(true)
-        .build();
-
 try (InputStream input = Files.newInputStream(Path.of("/image.webp"))) {
-    WebPFXImage image = new WebPFXImage(WebPDecoder.decodeAll(input, options));
+    WebPFXImage image = new WebPFXImage(WebPDecoder.decodeAll(input, options), new WebPImageLoadOptions(320, 240, true, true));
 }
 ```
 
