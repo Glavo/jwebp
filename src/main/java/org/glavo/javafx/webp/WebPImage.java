@@ -65,6 +65,8 @@ public final class WebPImage {
             WebPMetadata metadata,
             List<WebPFrame> frames
     ) {
+        assert !frames.isEmpty();
+
         this.sourceWidth = sourceWidth;
         this.sourceHeight = sourceHeight;
         this.width = width;
@@ -76,10 +78,6 @@ public final class WebPImage {
         this.loopDurationMillis = loopDurationMillis;
         this.metadata = metadata;
         this.frames = List.copyOf(frames);
-
-        if (this.frames.isEmpty()) {
-            throw new IllegalArgumentException("Frames cannot be empty");
-        }
     }
 
     /// Returns the source canvas width before scaling.
