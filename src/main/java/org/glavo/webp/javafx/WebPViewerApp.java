@@ -48,7 +48,7 @@ import java.util.Objects;
 
 /// Simple JavaFX viewer for local WebP files.
 ///
-/// The application is intentionally lightweight and uses the public decoder API directly.
+/// The application is intentionally lightweight and uses the public decoding API directly.
 /// Static images are displayed immediately and animated WebP files are played back in an
 /// [ImageView] according to the frame durations exposed by [WebPImage].
 @NotNullByDefault

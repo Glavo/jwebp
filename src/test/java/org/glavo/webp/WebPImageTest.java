@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /// Integration tests for the public WebP decoding API.
 @NotNullByDefault
-final class WebPDecoderTest {
+final class WebPImageTest {
 
     @Test
     void decodesStaticLossyImage() throws Exception {
@@ -423,7 +423,7 @@ final class WebPDecoderTest {
     }
 
     private static InputStream resource(String path) {
-        InputStream input = WebPDecoderTest.class.getClassLoader().getResourceAsStream(path);
+        InputStream input = WebPImageTest.class.getClassLoader().getResourceAsStream(path);
         if (input == null) {
             throw new IllegalArgumentException("Missing test resource: " + path);
         }
