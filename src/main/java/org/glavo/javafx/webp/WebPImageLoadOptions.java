@@ -56,6 +56,38 @@ public record WebPImageLoadOptions(
         return new Builder();
     }
 
+    /// Indicates whether to preserve the aspect ratio of the original image
+    /// when scaling to fit the image within the bounding box provided by
+    /// `width` and `height`.
+    ///
+    /// If set to `true`, it affects the dimensions of this `Image`
+    /// in the following way:
+    ///
+    ///   - If only `width` is set, height is scaled to preserve ratio
+    ///   - If only `height` is set, width is scaled to preserve ratio
+    ///   - If both are set, they both may be scaled to get the best fit in a
+    ///     width-by-height rectangle while preserving the original aspect ratio
+    ///
+    /// The reported `width` and `height` may be different from the
+    /// initially set values if they needed to be adjusted to preserve an aspect ratio.
+    ///
+    /// If unset or set to `false`, it affects the dimensions of this
+    /// `ImageView` in the following way:
+    ///
+    ///   - If only `width` is set, the image's width is scaled to
+    ///     match and height is unchanged;
+    ///   - If only `height` is set, the image's height is scaled to
+    ///     match and height is unchanged;
+    ///   - If both are set, the image is scaled to match both.
+    ///
+    /// @return true if the aspect ratio of the original image is to be
+    ///               preserved when scaling to fit the image within the bounding
+    ///               box provided by `width` and `height`.
+    @Override
+    public boolean preserveRatio() {
+        return preserveRatio;
+    }
+
     /// Builder for [WebPImageLoadOptions].
     @NotNullByDefault
     public static final class Builder {
