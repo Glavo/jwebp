@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -118,6 +119,77 @@ final class WebPDecoderTest {
     }
 
     @Test
+    void nearestScaledLosslessStaticFrameMatchesStreamingOutput() throws Exception {
+        WebPImageLoadOptions options = WebPImageLoadOptions.builder()
+                .requestedWidth(37)
+                .requestedHeight(29)
+                .preserveRatio(false)
+                .smooth(false)
+                .build();
+
+        WebPImage eager = WebPDecoder.decodeAll(resource("images/gallery2-1_webp_ll.webp"), options);
+        assertEquals(1, eager.getFrames().size());
+
+        try (WebPImageReader reader = WebPDecoder.open(resource("images/gallery2-1_webp_ll.webp"), options)) {
+            WebPFrame streamed = reader.readNextFrame().orElseThrow();
+            assertFramePixelEquals(streamed, eager.getFrames().get(0), 0);
+            assertTrue(reader.readNextFrame().isEmpty());
+            assertTrue(reader.isComplete());
+        }
+    }
+
+    @Test
+    void streamedAnimatedLosslessScaledFramesMatchEagerOutput() throws Exception {
+        WebPImageLoadOptions options = WebPImageLoadOptions.builder()
+                .requestedWidth(31)
+                .requestedHeight(17)
+                .preserveRatio(false)
+                .smooth(false)
+                .build();
+
+        WebPImage eager = WebPDecoder.decodeAll(resource("images/animated-random_lossless.webp"), options);
+        assertEquals(3, eager.getFrames().size());
+
+        try (WebPImageReader reader = WebPDecoder.open(resource("images/animated-random_lossless.webp"), options)) {
+            assertTrue(reader.isAnimated());
+            assertEquals(31, reader.getWidth());
+            assertEquals(17, reader.getHeight());
+
+            WebPFrame frame1 = reader.readNextFrame().orElseThrow();
+            WebPFrame frame2 = reader.readNextFrame().orElseThrow();
+            WebPFrame frame3 = reader.readNextFrame().orElseThrow();
+
+            assertFramePixelEquals(frame1, eager.getFrames().get(0), 0);
+            assertFramePixelEquals(frame2, eager.getFrames().get(1), 0);
+            assertFramePixelEquals(frame3, eager.getFrames().get(2), 0);
+            assertTrue(reader.readNextFrame().isEmpty());
+        }
+    }
+
+    @Test
+    void smoothScalingChangesVisiblePixelsComparedToNearest() throws Exception {
+        WebPImageLoadOptions nearest = WebPImageLoadOptions.builder()
+                .requestedWidth(41)
+                .requestedHeight(23)
+                .preserveRatio(false)
+                .smooth(false)
+                .build();
+        WebPImageLoadOptions smooth = WebPImageLoadOptions.builder()
+                .requestedWidth(41)
+                .requestedHeight(23)
+                .preserveRatio(false)
+                .smooth(true)
+                .build();
+
+        int[] nearestPixels = WebPDecoder.decodeAll(resource("images/gallery2-1_webp_ll.webp"), nearest).getFrames().get(0).getArgbArray();
+        int[] smoothPixels = WebPDecoder.decodeAll(resource("images/gallery2-1_webp_ll.webp"), smooth).getFrames().get(0).getArgbArray();
+
+        assertEquals(nearestPixels.length, smoothPixels.length);
+        assertFalse(Arrays.equals(nearestPixels, smoothPixels), "smooth filtering should not match nearest-neighbor output on a non-uniform image");
+        assertVisiblePixelsDiffer(nearestPixels, smoothPixels);
+    }
+
+    @Test
     void decodeFirstFrameImageProducesJavaFxImage() throws Exception {
         var options = WebPImageLoadOptions.builder()
                 .requestedWidth(96)
@@ -129,6 +201,35 @@ final class WebPDecoderTest {
         var image = WebPDecoder.decodeFirstFrameImage(resource("images/gallery2-1_webp_ll.webp"), options);
         assertTrue(image.getWidth() > 0);
         assertTrue(image.getHeight() > 0);
+    }
+
+    @Test
+    void scaledFirstFrameImageMatchesScaledDecodedFrame() throws Exception {
+        WebPImageLoadOptions options = WebPImageLoadOptions.builder()
+                .requestedWidth(53)
+                .requestedHeight(27)
+                .preserveRatio(false)
+                .smooth(true)
+                .build();
+
+        WebPFrame frame = WebPDecoder.decodeAll(resource("images/gallery2-1_webp_ll.webp"), options).getFrames().get(0);
+        Image image = WebPDecoder.decodeFirstFrameImage(resource("images/gallery2-1_webp_ll.webp"), options);
+        PixelReader reader = image.getPixelReader();
+        assertNotNull(reader);
+
+        int[] expected = frame.getArgbArray();
+        for (int y = 0; y < frame.getHeight(); y++) {
+            for (int x = 0; x < frame.getWidth(); x++) {
+                int expectedPixel = expected[y * frame.getWidth() + x];
+                int actualPixel = reader.getArgb(x, y);
+                for (int channel = 0; channel < 4; channel++) {
+                    int delta = Math.abs(
+                            visibleChannelValue(expectedPixel, channel) - visibleChannelValue(actualPixel, channel)
+                    );
+                    assertTrue(delta <= 1, "pixel at (" + x + ", " + y + "), channel " + channel + ", delta=" + delta);
+                }
+            }
+        }
     }
 
     @Test
@@ -187,6 +288,13 @@ final class WebPDecoderTest {
         assertFrameClose(frame, referenceResource, 0);
     }
 
+    private static void assertFramePixelEquals(WebPFrame actual, WebPFrame expected, int maxChannelDelta) {
+        assertEquals(expected.getWidth(), actual.getWidth(), "frame width");
+        assertEquals(expected.getHeight(), actual.getHeight(), "frame height");
+        assertEquals(expected.getDurationMillis(), actual.getDurationMillis(), "frame duration");
+        assertPixelsClose(expected.getArgbArray(), actual.getArgbArray(), maxChannelDelta);
+    }
+
     private static void assertFrameSamplesClose(WebPFrame frame, String referenceResource, int maxChannelDelta) throws Exception {
         int[] expected = readPngAsArgb(referenceResource);
         int[] actual = readPixels(frame);
@@ -216,6 +324,10 @@ final class WebPDecoderTest {
     private static void assertFrameClose(WebPFrame frame, String referenceResource, int maxChannelDelta) throws Exception {
         int[] expected = readPngAsArgb(referenceResource);
         int[] actual = readPixels(frame);
+        assertPixelsClose(expected, actual, maxChannelDelta);
+    }
+
+    private static void assertPixelsClose(int[] expected, int[] actual, int maxChannelDelta) {
         assertEquals(expected.length, actual.length, "pixel buffer size");
 
         int maxObservedDelta = 0;
@@ -237,22 +349,37 @@ final class WebPDecoderTest {
         try (InputStream input = resource(resource)) {
             Image image = new Image(input);
             assertFalse(image.isError(), "reference PNG must decode");
-            int width = (int) image.getWidth();
-            int height = (int) image.getHeight();
-            PixelReader pixelReader = image.getPixelReader();
-            assertNotNull(pixelReader, "reference PNG must expose pixels");
-            int[] argb = new int[width * height];
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    argb[y * width + x] = pixelReader.getArgb(x, y);
-                }
-            }
-            return argb;
+            return readImageAsArgb(image);
         }
+    }
+
+    private static int[] readImageAsArgb(Image image) {
+        int width = (int) image.getWidth();
+        int height = (int) image.getHeight();
+        PixelReader pixelReader = image.getPixelReader();
+        assertNotNull(pixelReader, "reference image must expose pixels");
+        int[] argb = new int[width * height];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                argb[y * width + x] = pixelReader.getArgb(x, y);
+            }
+        }
+        return argb;
     }
 
     private static int[] readPixels(WebPFrame frame) {
         return frame.getArgbArray();
+    }
+
+    private static void assertVisiblePixelsDiffer(int[] expected, int[] actual) {
+        for (int i = 0; i < expected.length; i++) {
+            for (int channel = 0; channel < 4; channel++) {
+                if (visibleChannelValue(expected[i], channel) != visibleChannelValue(actual[i], channel)) {
+                    return;
+                }
+            }
+        }
+        fail("expected at least one visible channel difference");
     }
 
     private static int visibleChannelValue(int argb, int channel) {
