@@ -61,7 +61,10 @@ Create a JavaFX image from decoded WebP content:
 
 ```java
 try (InputStream input = Files.newInputStream(Path.of("/image.webp"))) {
-    WebPFXImage image = new WebPFXImage(WebPImage.read(input, options));
+    // Create a JavaFX image from a WebPImage.
+    // If it is an animated WebP, it will automatically play the animation. 
+    // You can control its behavior by passing the autoplay parameter.
+    Image image = new WebPFXImage(WebPImage.read(input, options));
 }
 ```
 
@@ -76,6 +79,9 @@ try (InputStream input = Files.newInputStream(Path.of("/animated.webp"));
             break;
         }
         System.out.println("duration = " + frame.getDurationMillis());
+
+        // Create a JavaFX image from a WebPFrame.
+        Image image = new WebPFXImage(frame);
     }
 }
 ```
