@@ -20,6 +20,28 @@ This project was ported with Codex assistance from [image-rs/image-webp](https:/
 
 - Java 17 or newer
 
+## Download
+
+Gradle:
+
+```kotlin
+dependencies {
+    implementation("org.glavo:webp:0.1.0")
+}
+```
+
+Maven:
+
+```xml
+
+<dependency>
+    <groupId>org.glavo</groupId>
+    <artifactId>webp</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
+
 ## Basic Usage
 
 Decode a whole image at once:
