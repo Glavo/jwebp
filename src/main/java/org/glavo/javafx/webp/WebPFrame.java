@@ -15,10 +15,11 @@
  */
 package org.glavo.javafx.webp;
 
+import javafx.scene.image.PixelFormat;
+import javafx.scene.image.PixelWriter;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import javafx.scene.image.WritableImage;
-import org.glavo.javafx.webp.internal.FxImages;
 
 import java.nio.IntBuffer;
 
@@ -105,6 +106,9 @@ public final class WebPFrame {
     ///
     /// @return a newly allocated JavaFX image
     public WritableImage toWritableImage() {
-        return FxImages.toWritableImage(width, height, argbPixels);
+        WritableImage image = new WritableImage(width, height);
+        PixelWriter writer = image.getPixelWriter();
+        writer.setPixels(0, 0, width, height, PixelFormat.getIntArgbInstance(), argbPixels, 0, width);
+        return image;
     }
 }
