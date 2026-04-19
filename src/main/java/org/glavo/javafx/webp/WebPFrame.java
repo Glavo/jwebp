@@ -43,7 +43,7 @@ public final class WebPFrame {
     /// @param height the frame height in pixels
     /// @param durationMillis the display duration in milliseconds, or `0` for still images
     /// @param argbPixels tightly packed non-premultiplied `ARGB` pixels stored as `0xAARRGGBB`
-    public WebPFrame(int width, int height, int durationMillis, int[] argbPixels) {
+    WebPFrame(int width, int height, int durationMillis, int[] argbPixels) {
         this.width = width;
         this.height = height;
         this.scanlineStride = width;
