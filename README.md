@@ -2,28 +2,23 @@
 
 [![codecov](https://codecov.io/gh/Glavo/jwebp/graph/badge.svg?token=CPZ7P35UK3)](https://codecov.io/gh/Glavo/jwebp)
 
-Pure Java WebP decoding library for JavaFX.
-
-The project can decode static and animated WebP
-images without using `java.desktop` or any external WebP codec at runtime. Decoded frames are
-available as tightly packed non-premultiplied `ARGB` `int[]` buffers and can be written directly
-to JavaFX through `org.glavo.webp.javafx.WebPFXImage`.
+A dependency-free, pure Java WebP decoder library that supports lossless and lossy compressed WebP images, as well as animated WebP.
 
 This project was ported with Codex assistance from [image-rs/image-webp](https://github.com/image-rs/image-webp).
 
 ## Features
 
-- Pure Java decoder for WebP container parsing, VP8L lossless decoding, VP8 lossy decoding, alpha, and animation composition
-- Streaming-style API via `WebPImageReader`
-- Eager convenience API via `WebPDecoder`
-- Decode-time scaling with JavaFX `Image`-compatible `requestedWidth`, `requestedHeight`, `preserveRatio`, and `smooth` semantics
+- Pure Java implementation with no native dependencies.
+- Only depends on the `java.base` module, no dependency on other modules.
+- Supports lossy and lossless compressed WebP images.
+- Supports animated WebP.
+- Supports image scaling during reading.
 - Raw ICC, EXIF, and XMP metadata extraction
-- No dependency on `java.desktop`
+- Provides optional JavaFX helper functionality for easily converting WebP images to JavaFX images.
 
 ## Requirements
 
 - Java 17 or newer
-- JavaFX runtime for `javafx-base`, `javafx-graphics`
 
 ## Basic Usage
 
@@ -46,13 +41,7 @@ WebPImageLoadOptions options = WebPImageLoadOptions.builder()
         .build();
 
 try (InputStream input = Files.newInputStream(Path.of("/image.webp"))) {
-    org.glavo.webp.WebPImage decoded = WebPDecoder.decodeAll(input, options);
-    org.glavo.webp.javafx.WebPFXImage image = new org.glavo.webp.javafx.WebPFXImage(decoded);
-    var animation = image.getAnimation();
-    if (animation != null) {
-        animation.play();
-    }
-}
+    WebPFXImage image = new WebPFXImage(WebPDecoder.decodeAll(input, options));
 ```
 
 Stream frames from an animated WebP:
@@ -69,18 +58,6 @@ try (InputStream input = Files.newInputStream(Path.of("/animated.webp"));
     }
 }
 ```
-
-## Public API
-
-- `WebPDecoder`: eager decode helpers and convenience methods
-- `WebPImageReader`: forward-only reader for frame-by-frame decode
-- `WebPImage`: immutable fully decoded result
-- `WebPFrame`: one decoded presentation frame
-  exposes packed non-premultiplied `ARGB` pixels via `getArgbPixels()` and `getArgbArray()`
-- `org.glavo.webp.javafx.WebPFXImage`: JavaFX `WritableImage` adapter for frames and animated images
-- `WebPImageLoadOptions`: JavaFX-style scaling options
-- `WebPMetadata`: raw ICC, EXIF, and XMP payloads
-- `WebPException`: checked exception for parse and decode failures
 
 ## Testing
 
