@@ -42,6 +42,7 @@ WebPImageLoadOptions options = WebPImageLoadOptions.builder()
 
 try (InputStream input = Files.newInputStream(Path.of("/image.webp"))) {
     WebPFXImage image = new WebPFXImage(WebPDecoder.decodeAll(input, options));
+}
 ```
 
 Stream frames from an animated WebP:
