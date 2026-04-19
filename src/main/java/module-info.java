@@ -14,15 +14,19 @@
  * limitations under the License.
  */
 
+import org.glavo.webp.WebPDecoder;
+import org.glavo.webp.WebPImageReader;
+import org.glavo.webp.WebPViewerApp;
+
 /// WebP decoding library for JavaFX.
 ///
-/// The module exposes a public API in `org.glavo.javafx.webp` for reading static and
+/// The module exposes a public API in `org.glavo.webp` for reading static and
 /// animated WebP images, extracting metadata, and converting decoded frames to JavaFX images.
 /// Decoded frame pixels are exposed as packed non-premultiplied `ARGB` integers.
 /// Two entry points are provided:
 ///
-///   - [org.glavo.javafx.webp.WebPDecoder] for eager convenience methods;
-///   - [org.glavo.javafx.webp.WebPImageReader] for forward-only frame-by-frame decode.
+///   - [WebPDecoder] for eager convenience methods;
+///   - [WebPImageReader] for forward-only frame-by-frame decode.
 ///
 /// The decoder is implemented in pure Java. It does not depend on `java.desktop` or any
 /// external WebP codec, and supports decode-time scaling with the same
@@ -30,9 +34,9 @@
 /// [javafx.scene.image.Image].
 ///
 /// `javafx.controls` is only required for the bundled
-/// [org.glavo.javafx.webp.WebPViewerApp] demo application, so the dependency remains
+/// [WebPViewerApp] demo application, so the dependency remains
 /// optional at compile time.
-module org.glavo.javafx.webp {
+module org.glavo.webp {
     requires javafx.graphics;
 
     requires static org.jetbrains.annotations;
@@ -40,5 +44,5 @@ module org.glavo.javafx.webp {
     // For WebPViewerApp
     requires static javafx.controls;
 
-    exports org.glavo.javafx.webp;
+    exports org.glavo.webp;
 }

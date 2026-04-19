@@ -1,1 +1,1 @@
-rootProject.name = "javafx-webp"
+rootProject.name = "webp"

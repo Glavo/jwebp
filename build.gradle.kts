@@ -16,7 +16,7 @@ if (version == Project.DEFAULT_VERSION) {
     version = "0.1.0" + "-SNAPSHOT"
 }
 
-description = "WebP decoding library for JavaFX"
+description = "Pure Java implementation of WebP decoding library"
 
 repositories {
     mavenCentral()
@@ -76,7 +76,7 @@ tasks.withType<JavaCompile> {
     options.release.set(17)
 }
 
-val mainClassName = "org.glavo.javafx.webp.WebPViewerApp"
+val mainClassName = "org.glavo.webp.WebPViewerApp"
 
 tasks.jar {
     manifest.attributes(
