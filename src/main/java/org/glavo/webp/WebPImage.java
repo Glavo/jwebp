@@ -18,6 +18,7 @@ package org.glavo.webp;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -31,18 +32,6 @@ import java.util.List;
 /// frames and exposes the associated metadata and animation timing information in immutable form.
 @NotNullByDefault
 public final class WebPImage {
-
-    private final int sourceWidth;
-    private final int sourceHeight;
-    private final int width;
-    private final int height;
-    private final boolean alpha;
-    private final boolean animated;
-    private final boolean lossy;
-    private final int loopCount;
-    private final long loopDurationMillis;
-    private final WebPMetadata metadata;
-    private final List<WebPFrame> frames;
 
     /// Reads and fully decodes a WebP stream.
     ///
@@ -77,7 +66,7 @@ public final class WebPImage {
     /// @return the fully decoded image
     /// @throws WebPException if the file cannot be parsed or decoded
     public static WebPImage read(Path path, WebPImageLoadOptions options) throws WebPException {
-        try (InputStream input = Files.newInputStream(path)) {
+        try (InputStream input = new BufferedInputStream(Files.newInputStream(path))) {
             return read(input, options);
         } catch (IOException ex) {
             throw new WebPException("Failed to decode WebP file: " + path, ex);
@@ -92,6 +81,18 @@ public final class WebPImage {
     public static WebPImage read(Path path) throws WebPException {
         return read(path, WebPImageLoadOptions.DEFAULT);
     }
+
+    private final int sourceWidth;
+    private final int sourceHeight;
+    private final int width;
+    private final int height;
+    private final boolean alpha;
+    private final boolean animated;
+    private final boolean lossy;
+    private final int loopCount;
+    private final long loopDurationMillis;
+    private final WebPMetadata metadata;
+    private final List<WebPFrame> frames;
 
     /// Creates a fully decoded WebP image.
     ///
