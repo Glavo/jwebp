@@ -26,6 +26,8 @@ val osName = System.getProperty("os.name").lowercase()
 val osArch = System.getProperty("os.arch").lowercase()
 
 dependencies {
+    compileOnlyApi("org.jetbrains:annotations:26.1.0")
+
     val javafxVersion = "21.0.10"
     val javafxOS = when {
         osName.contains("win") -> "win"
