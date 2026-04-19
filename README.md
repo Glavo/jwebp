@@ -1,4 +1,4 @@
-# JavaFX WebP
+# JWebP - Pure Java WebP Decoder
 
 [![codecov](https://codecov.io/gh/Glavo/jwebp/graph/badge.svg?token=CPZ7P35UK3)](https://codecov.io/gh/Glavo/jwebp)
 
