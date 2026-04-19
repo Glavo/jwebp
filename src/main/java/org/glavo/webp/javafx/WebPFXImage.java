@@ -22,6 +22,7 @@ import javafx.scene.image.PixelWriter;
 import javafx.scene.image.WritableImage;
 import javafx.util.Duration;
 import org.glavo.webp.WebPFrame;
+import org.glavo.webp.WebPImage;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,7 +32,7 @@ import java.util.List;
 ///
 /// The adapter writes packed non-premultiplied `ARGB` pixels from decoded [WebPFrame] instances
 /// into a `WritableImage`. When constructed from a fully decoded
-/// [org.glavo.webp.WebPImage], it can also play animated WebP content with frame-accurate timing.
+/// [WebPImage], it can also play animated WebP content with frame-accurate timing.
 @NotNullByDefault
 public final class WebPFXImage extends WritableImage {
 
@@ -65,7 +66,7 @@ public final class WebPFXImage extends WritableImage {
     ///
     /// @param image the decoded WebP image
     /// @param autoPlay whether animation playback should start immediately
-    public WebPFXImage(org.glavo.webp.WebPImage image, boolean autoPlay) {
+    public WebPFXImage(WebPImage image, boolean autoPlay) {
         super(image.getWidth(), image.getHeight());
         this.frames = image.getFrames();
         this.animated = image.isAnimated() && frames.size() > 1;
