@@ -15,10 +15,10 @@
  */
 package org.glavo.webp.javafx;
 
-import javafx.animation.PauseTransition;
-import javafx.application.Platform;
+import javafx.animation.Animation;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.scene.image.PixelFormat;
-import javafx.scene.image.PixelWriter;
 import javafx.scene.image.WritableImage;
 import javafx.util.Duration;
 import org.glavo.webp.WebPFrame;
@@ -26,6 +26,7 @@ import org.glavo.webp.WebPImage;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /// JavaFX image adapter for decoded WebP content.
@@ -37,15 +38,10 @@ import java.util.List;
 public final class WebPFXImage extends WritableImage {
 
     private final List<WebPFrame> frames;
-    private final boolean animated;
+    private final long[] frameStartMillis;
     private final int loopCount;
-    private final PixelWriter pixelWriter;
-
-    private @Nullable PauseTransition pauseTransition;
-    private int currentFrameIndex;
-    private int completedLoops;
-    private boolean playing;
-    private double playbackRate = 1.0;
+    private @Nullable Timeline timeline;
+    private int renderedFrameIndex;
 
     /// Creates a JavaFX image from one decoded frame.
     ///
@@ -53,210 +49,47 @@ public final class WebPFXImage extends WritableImage {
     public WebPFXImage(WebPFrame frame) {
         super(frame.getWidth(), frame.getHeight());
         this.frames = List.of(frame);
-        this.animated = false;
+        this.frameStartMillis = new long[]{0L};
         this.loopCount = 1;
-        this.pixelWriter = getPixelWriter();
+        this.renderedFrameIndex = 0;
         writeFrame(frame);
     }
 
     /// Creates a JavaFX image from fully decoded WebP content.
     ///
-    /// The first frame is written immediately. For animated images, playback starts only when
-    /// `autoPlay` is `true` or [#play()] is called later.
+    /// The first frame is written immediately. Call [#getAnimation()] to control playback.
     ///
     /// @param image the decoded WebP image
-    /// @param autoPlay whether animation playback should start immediately
-    public WebPFXImage(WebPImage image, boolean autoPlay) {
+    public WebPFXImage(WebPImage image) {
         super(image.getWidth(), image.getHeight());
         this.frames = image.getFrames();
-        this.animated = image.isAnimated() && frames.size() > 1;
+        this.frameStartMillis = computeFrameStartMillis(frames);
         this.loopCount = image.getLoopCount();
-        this.pixelWriter = getPixelWriter();
-        writeCurrentFrame();
-        if (autoPlay) {
-            play();
-        }
+        this.renderedFrameIndex = 0;
+        writeFrame(frames.get(0));
     }
 
-    /// Returns whether this image exposes animation playback controls.
+    /// Returns the JavaFX timeline that drives this image's animation.
     ///
-    /// @return `true` when the source image contains more than one presentation frame
-    public boolean isAnimated() {
-        return animated;
-    }
-
-    /// Returns the number of decoded presentation frames.
-    ///
-    /// @return the frame count
-    public int getFrameCount() {
-        return frames.size();
-    }
-
-    /// Returns the declared WebP loop count.
-    ///
-    /// @return the loop count; `0` means infinite looping
-    public int getLoopCount() {
-        return loopCount;
-    }
-
-    /// Returns the current frame index.
-    ///
-    /// @return the zero-based frame index currently written into this image
-    public int getCurrentFrameIndex() {
-        return currentFrameIndex;
-    }
-
-    /// Returns whether the animation is currently advancing automatically.
-    ///
-    /// @return `true` if playback is active
-    public boolean isPlaying() {
-        return playing;
-    }
-
-    /// Returns the current playback rate multiplier.
-    ///
-    /// @return the playback rate
-    public double getPlaybackRate() {
-        return playbackRate;
-    }
-
-    /// Sets the playback rate multiplier used for subsequent frame scheduling.
-    ///
-    /// @param playbackRate the new playback rate; values must be positive and finite
-    public void setPlaybackRate(double playbackRate) {
-        if (!Double.isFinite(playbackRate) || playbackRate <= 0.0) {
-            throw new IllegalArgumentException("playbackRate must be positive and finite");
-        }
-        this.playbackRate = playbackRate;
-        if (animated) {
-            ensureFxThread();
-            if (playing) {
-                scheduleCurrentFrame();
-            }
-        }
-    }
-
-    /// Starts or resumes animation playback from the current frame.
-    public void play() {
-        if (!animated || playing) {
-            return;
-        }
-        ensureFxThread();
-        playing = true;
-        scheduleCurrentFrame();
-    }
-
-    /// Pauses animation playback on the current frame.
-    public void pause() {
-        if (!animated || !playing) {
-            return;
-        }
-        ensureFxThread();
-        playing = false;
-        stopTimer();
-    }
-
-    /// Stops playback and rewinds to the first frame.
-    public void stop() {
-        if (animated) {
-            ensureFxThread();
-            stopTimer();
-        }
-        playing = false;
-        completedLoops = 0;
-        currentFrameIndex = 0;
-        writeCurrentFrame();
-    }
-
-    /// Rewinds to the first frame and starts playback.
-    public void playFromStart() {
-        if (!animated) {
-            stop();
-            return;
-        }
-        ensureFxThread();
-        stopTimer();
-        playing = false;
-        completedLoops = 0;
-        currentFrameIndex = 0;
-        writeCurrentFrame();
-        play();
-    }
-
-    /// Jumps to a specific frame.
-    ///
-    /// The loop-progress counter is reset so subsequent playback starts a fresh cycle from the
-    /// chosen frame.
-    ///
-    /// @param frameIndex the zero-based frame index to display
-    public void seekToFrame(int frameIndex) {
-        if (frameIndex < 0 || frameIndex >= frames.size()) {
-            throw new IllegalArgumentException("frameIndex out of range: " + frameIndex);
-        }
-        if (animated) {
-            ensureFxThread();
-        }
-        currentFrameIndex = frameIndex;
-        completedLoops = 0;
-        writeCurrentFrame();
-        if (playing) {
-            scheduleCurrentFrame();
-        }
-    }
-
-    private void advanceFrame() {
-        if (!playing || !animated) {
-            return;
+    /// The returned timeline uses frame-start keyframes and one terminal keyframe that preserves
+    /// the last frame duration. Callers may control playback directly through the standard
+    /// `Timeline` API such as `play()`, `pause()`, `stop()`, `jumpTo(...)`, or `setRate(...)`.
+    /// The timeline is created lazily on first access. Static images return `null`.
+    public @Nullable Timeline getAnimation() {
+        if (frames.size() <= 1) {
+            return null;
         }
 
-        if (currentFrameIndex + 1 < frames.size()) {
-            currentFrameIndex++;
-            writeCurrentFrame();
-            scheduleCurrentFrame();
-            return;
+        Timeline currentTimeline = timeline;
+        if (currentTimeline == null) {
+            currentTimeline = createTimeline(loopCount);
+            timeline = currentTimeline;
         }
-
-        if (loopCount != 0 && completedLoops + 1 >= loopCount) {
-            playing = false;
-            stopTimer();
-            return;
-        }
-
-        completedLoops++;
-        currentFrameIndex = 0;
-        writeCurrentFrame();
-        scheduleCurrentFrame();
-    }
-
-    private void scheduleCurrentFrame() {
-        int durationMillis = Math.max(1, frames.get(currentFrameIndex).getDurationMillis());
-        PauseTransition transition = pauseTransition();
-        transition.stop();
-        transition.setDuration(Duration.millis(durationMillis / playbackRate));
-        transition.playFromStart();
-    }
-
-    private PauseTransition pauseTransition() {
-        if (pauseTransition == null) {
-            PauseTransition transition = new PauseTransition();
-            transition.setOnFinished(event -> advanceFrame());
-            pauseTransition = transition;
-        }
-        return pauseTransition;
-    }
-
-    private void stopTimer() {
-        if (pauseTransition != null) {
-            pauseTransition.stop();
-        }
-    }
-
-    private void writeCurrentFrame() {
-        writeFrame(frames.get(currentFrameIndex));
+        return currentTimeline;
     }
 
     private void writeFrame(WebPFrame frame) {
-        pixelWriter.setPixels(
+        getPixelWriter().setPixels(
                 0,
                 0,
                 frame.getWidth(),
@@ -267,9 +100,72 @@ public final class WebPFXImage extends WritableImage {
         );
     }
 
-    private static void ensureFxThread() {
-        if (!Platform.isFxApplicationThread()) {
-            throw new IllegalStateException("Animated WebPImage controls must be used on the JavaFX application thread");
+    private Timeline createTimeline(int loopCount) {
+        Timeline timeline = new Timeline();
+        timeline.setCycleCount(frames.size() > 1
+                ? (loopCount == 0 ? Animation.INDEFINITE : Math.max(1, loopCount))
+                : 1);
+        timeline.getKeyFrames().setAll(createKeyFrames());
+        timeline.currentTimeProperty().addListener((observable, oldValue, newValue) -> renderFrameAt(newValue));
+        return timeline;
+    }
+
+    private List<KeyFrame> createKeyFrames() {
+        if (frames.size() <= 1) {
+            return List.of();
         }
+
+        List<KeyFrame> keyFrames = new ArrayList<>(frames.size() + 1);
+        long totalDurationMillis = 0L;
+        for (int i = 0; i < frames.size(); i++) {
+            WebPFrame frame = frames.get(i);
+            keyFrames.add(new KeyFrame(Duration.millis(frameStartMillis[i])));
+            totalDurationMillis = frameStartMillis[i] + normalizedDurationMillis(frame);
+        }
+
+        // The terminal marker keeps the last frame visible for its full duration.
+        keyFrames.add(new KeyFrame(Duration.millis(totalDurationMillis)));
+        return keyFrames;
+    }
+
+    private static long[] computeFrameStartMillis(List<WebPFrame> frames) {
+        long[] frameStartMillis = new long[frames.size()];
+        long currentStartMillis = 0L;
+        for (int i = 0; i < frames.size(); i++) {
+            frameStartMillis[i] = currentStartMillis;
+            currentStartMillis += normalizedDurationMillis(frames.get(i));
+        }
+        return frameStartMillis;
+    }
+
+    private static int normalizedDurationMillis(WebPFrame frame) {
+        return Math.max(1, frame.getDurationMillis());
+    }
+
+    private void renderFrameAt(Duration time) {
+        if (frames.size() <= 1) {
+            return;
+        }
+
+        int frameIndex = frameIndexAt(time.toMillis());
+        if (frameIndex != renderedFrameIndex) {
+            renderedFrameIndex = frameIndex;
+            writeFrame(frames.get(frameIndex));
+        }
+    }
+
+    private int frameIndexAt(double currentMillis) {
+        double millis = Math.max(0.0, currentMillis);
+        int low = 0;
+        int high = frameStartMillis.length - 1;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+            if (frameStartMillis[mid] <= millis) {
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return Math.max(0, high);
     }
 }

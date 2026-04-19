@@ -15,7 +15,9 @@
  */
 package org.glavo.webp;
 
+import javafx.animation.Animation;
 import javafx.application.Platform;
+import javafx.util.Duration;
 import org.glavo.webp.javafx.WebPFXImage;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.BeforeAll;
@@ -27,9 +29,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /// Tests for the JavaFX WebP image adapter and its animation controls.
 @NotNullByDefault
@@ -54,115 +56,145 @@ final class WebPFXImageTest {
     void javaFxImageFromDecodedImageStartsPausedOnFirstFrame() throws Exception {
         WebPImage decoded = animatedImage(0, frame(RED, 40), frame(GREEN, 40), frame(BLUE, 40));
 
-        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(decoded, false));
+        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(decoded));
+        Animation animation = callOnFxThread(() -> {
+            Animation value = image.getAnimation();
+            assertNotNull(value);
+            return value;
+        });
 
-        assertFalse(callOnFxThread(image::isPlaying));
-        assertEquals(0, callOnFxThread(image::getCurrentFrameIndex));
+        assertEquals(Animation.Status.STOPPED, callOnFxThread(animation::getStatus));
         assertEquals(RED, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
     }
 
     @Test
-    void playPauseAndStopControlAnimation() throws Exception {
+    void animatedImageCreatesTimelineLazilyAndReusesIt() throws Exception {
         WebPFXImage image = callOnFxThread(() -> new WebPFXImage(
-                animatedImage(0, frame(RED, 40), frame(GREEN, 40)),
-                false
+                animatedImage(0, frame(RED, 40), frame(GREEN, 40))
         ));
 
-        callOnFxThread(() -> {
-            image.play();
-            return null;
+        Animation first = callOnFxThread(() -> {
+            Animation value = image.getAnimation();
+            assertNotNull(value);
+            return value;
         });
-        waitForCondition(() -> callOnFxThread(image::getCurrentFrameIndex) == 1, 500);
+        Animation second = callOnFxThread(() -> {
+            Animation value = image.getAnimation();
+            assertNotNull(value);
+            return value;
+        });
+
+        assertTrue(first == second);
+    }
+
+    @Test
+    void timelinePlayPauseAndStopControlAnimation() throws Exception {
+        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(
+                animatedImage(0, frame(RED, 40), frame(GREEN, 40))
+        ));
+        Animation animation = callOnFxThread(() -> {
+            Animation value = image.getAnimation();
+            assertNotNull(value);
+            return value;
+        });
 
         callOnFxThread(() -> {
-            image.pause();
+            animation.play();
             return null;
         });
-        assertFalse(callOnFxThread(image::isPlaying));
+        waitForCondition(() -> callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)) == GREEN, 500);
+
+        callOnFxThread(() -> {
+            animation.pause();
+            return null;
+        });
+        assertEquals(Animation.Status.PAUSED, callOnFxThread(animation::getStatus));
 
         Thread.sleep(120);
-        assertEquals(1, callOnFxThread(image::getCurrentFrameIndex));
         assertEquals(GREEN, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
 
         callOnFxThread(() -> {
-            image.stop();
+            animation.stop();
             return null;
         });
-        assertEquals(0, callOnFxThread(image::getCurrentFrameIndex));
+        assertEquals(Animation.Status.STOPPED, callOnFxThread(animation::getStatus));
         assertEquals(RED, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
     }
 
     @Test
-    void seekToFrameAndPlayFromStartUpdateDisplayedPixels() throws Exception {
+    void timelineJumpToAndPlayFromStartUpdateDisplayedPixels() throws Exception {
         WebPFXImage image = callOnFxThread(() -> new WebPFXImage(
-                animatedImage(0, frame(RED, 40), frame(GREEN, 40), frame(BLUE, 40)),
-                false
+                animatedImage(0, frame(RED, 40), frame(GREEN, 40), frame(BLUE, 40))
         ));
+        Animation animation = callOnFxThread(() -> {
+            Animation value = image.getAnimation();
+            assertNotNull(value);
+            return value;
+        });
 
         callOnFxThread(() -> {
-            image.seekToFrame(2);
+            animation.jumpTo(Duration.millis(80));
             return null;
         });
-        assertEquals(2, callOnFxThread(image::getCurrentFrameIndex));
         assertEquals(BLUE, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
 
         callOnFxThread(() -> {
-            image.playFromStart();
+            animation.playFromStart();
             return null;
         });
-        assertTrue(callOnFxThread(image::isPlaying));
-        assertEquals(0, callOnFxThread(image::getCurrentFrameIndex));
+        assertEquals(Animation.Status.RUNNING, callOnFxThread(animation::getStatus));
         assertEquals(RED, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
 
-        waitForCondition(() -> callOnFxThread(image::getCurrentFrameIndex) == 1, 500);
+        waitForCondition(() -> callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)) == GREEN, 500);
         assertEquals(GREEN, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
     }
 
     @Test
-    void finiteLoopCountStopsOnLastFrame() throws Exception {
+    void timelineRespectsFiniteLoopCount() throws Exception {
         WebPFXImage image = callOnFxThread(() -> new WebPFXImage(
-                animatedImage(1, frame(RED, 40), frame(GREEN, 40)),
-                true
+                animatedImage(1, frame(RED, 40), frame(GREEN, 40))
         ));
+        Animation animation = callOnFxThread(() -> {
+            Animation value = image.getAnimation();
+            assertNotNull(value);
+            return value;
+        });
 
-        waitForCondition(() -> !callOnFxThread(image::isPlaying), 500);
-        assertEquals(1, callOnFxThread(image::getCurrentFrameIndex));
+        callOnFxThread(() -> {
+            animation.play();
+            return null;
+        });
+
+        waitForCondition(() -> callOnFxThread(animation::getStatus) == Animation.Status.STOPPED, 500);
         assertEquals(GREEN, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
     }
 
     @Test
-    void playbackRateReschedulesAnimationAndRejectsInvalidValues() throws Exception {
+    void timelineRateControlsPlaybackSpeed() throws Exception {
         WebPFXImage image = callOnFxThread(() -> new WebPFXImage(
-                animatedImage(0, frame(RED, 240), frame(GREEN, 240)),
-                false
+                animatedImage(0, frame(RED, 240), frame(GREEN, 240))
         ));
+        Animation animation = callOnFxThread(() -> {
+            Animation value = image.getAnimation();
+            assertNotNull(value);
+            return value;
+        });
 
         callOnFxThread(() -> {
-            image.setPlaybackRate(4.0);
-            image.play();
+            animation.setRate(4.0);
+            animation.play();
             return null;
         });
 
-        waitForCondition(() -> callOnFxThread(image::getCurrentFrameIndex) == 1, 180);
-        assertEquals(4.0, callOnFxThread(image::getPlaybackRate), 0.0001);
+        waitForCondition(() -> callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)) == GREEN, 180);
+        assertEquals(4.0, callOnFxThread(animation::getRate), 0.0001);
+    }
 
-        callOnFxThread(() -> {
-            image.stop();
-            return null;
-        });
-        callOnFxThread(() -> {
-            try {
-                image.setPlaybackRate(0.0);
-                fail("Expected IllegalArgumentException");
-            } catch (IllegalArgumentException ignored) {
-            }
-            try {
-                image.setPlaybackRate(Double.NaN);
-                fail("Expected IllegalArgumentException");
-            } catch (IllegalArgumentException ignored) {
-            }
-            return null;
-        });
+    @Test
+    void staticImageDoesNotExposeAnimation() throws Exception {
+        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(frame(RED, 0)));
+        assertNull(callOnFxThread(image::getAnimation));
+        assertEquals(RED, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
     }
 
     private static WebPImage animatedImage(int loopCount, WebPFrame... frames) {

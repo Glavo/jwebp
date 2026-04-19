@@ -47,7 +47,11 @@ WebPImageLoadOptions options = WebPImageLoadOptions.builder()
 
 try (InputStream input = Files.newInputStream(Path.of("/image.webp"))) {
     org.glavo.webp.WebPImage decoded = WebPDecoder.decodeAll(input, options);
-    org.glavo.webp.javafx.WebPFXImage image = new org.glavo.webp.javafx.WebPFXImage(decoded, false);
+    org.glavo.webp.javafx.WebPFXImage image = new org.glavo.webp.javafx.WebPFXImage(decoded);
+    var animation = image.getAnimation();
+    if (animation != null) {
+        animation.play();
+    }
 }
 ```
 

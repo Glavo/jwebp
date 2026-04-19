@@ -37,6 +37,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import javafx.animation.Timeline;
 import org.jetbrains.annotations.UnknownNullability;
 
 import java.io.IOException;
@@ -208,7 +209,11 @@ public final class WebPViewerApp extends Application {
 
         try {
             org.glavo.webp.WebPImage image = WebPDecoder.decodeAll(path);
-            WebPFXImage fxImage = new WebPFXImage(image, true);
+            WebPFXImage fxImage = new WebPFXImage(image);
+            Timeline animation = fxImage.getAnimation();
+            if (animation != null) {
+                animation.play();
+            }
 
             currentPath = path;
             currentImage = image;
@@ -233,7 +238,10 @@ public final class WebPViewerApp extends Application {
 
     private void stopPlayback() {
         if (currentFxImage != null) {
-            currentFxImage.stop();
+            Timeline animation = currentFxImage.getAnimation();
+            if (animation != null) {
+                animation.stop();
+            }
             currentFxImage = null;
         }
         currentPath = null;
