@@ -15,19 +15,20 @@
  */
 package org.glavo.webp.javafx;
 
+import javafx.concurrent.Task;
 import javafx.scene.input.KeyCode;
 import org.glavo.webp.WebPImage;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import javafx.application.Application;
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Point2D;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.ToolBar;
 import javafx.scene.input.MouseButton;
@@ -58,11 +59,14 @@ public final class WebPViewerApp extends Application {
     private final Label statusLabel = new Label("Open or drop a WebP file to start.");
     private final FileChooser fileChooser = createFileChooser();
     private final StackPane imagePane = new StackPane(imageView);
+    private final StackPane loadingOverlay = createLoadingOverlay();
 
     private @UnknownNullability Stage stage;
     private @Nullable Path currentPath;
     private @Nullable WebPFXImage currentImage;
     private @Nullable ScrollPane scrollPane;
+    private @Nullable Task<WebPImage> loadTask;
+    private long loadRequestId;
     private @Nullable Point2D dragAnchor;
     private double dragStartHValue;
     private double dragStartVValue;
@@ -95,9 +99,10 @@ public final class WebPViewerApp extends Application {
         this.scrollPane = scrollPane;
         installDragPanHandlers();
 
-        BorderPane root = new BorderPane(scrollPane);
+        StackPane contentPane = new StackPane(scrollPane, loadingOverlay);
+        BorderPane root = new BorderPane(contentPane);
         root.setTop(toolBar);
-        BorderPane.setMargin(scrollPane, new Insets(8));
+        BorderPane.setMargin(contentPane, new Insets(8));
 
         Scene scene = new Scene(root, 960, 720);
         installFileDropHandlers(scene);
@@ -114,14 +119,13 @@ public final class WebPViewerApp extends Application {
         List<String> arguments = getParameters().getRaw();
         if (!arguments.isEmpty()) {
             load(Path.of(arguments.get(0)));
-        } else {
-            Platform.runLater(this::openFileChooser);
         }
     }
 
     /// Stops any active playback when the application exits.
     @Override
     public void stop() {
+        cancelLoadTask();
         stopPlayback();
     }
 
@@ -205,28 +209,52 @@ public final class WebPViewerApp extends Application {
 
     private void load(Path path) {
         stopPlayback();
+        cancelLoadTask();
 
-        try {
-            WebPImage image = WebPImage.read(path);
-            WebPFXImage fxImage = new WebPFXImage(image);
+        long startNanos = System.nanoTime();
+        long requestId = ++loadRequestId;
+        Task<WebPImage> task = new Task<>() {
+            @Override
+            protected WebPImage call() throws Exception {
+                return WebPImage.read(path);
+            }
+        };
 
-            currentPath = path;
-            currentImage = fxImage;
+        loadTask = task;
+        setLoading(true);
+        statusLabel.setText("Loading " + path.getFileName() + "...");
+        stage.setTitle("WebP Viewer - Loading " + path.getFileName());
 
-            imageView.setImage(fxImage);
-            imageView.setFitWidth(fxImage.getWidth());
-            imageView.setFitHeight(fxImage.getHeight());
+        task.setOnSucceeded(event -> {
+            if (!isCurrentLoad(requestId, task)) {
+                return;
+            }
 
-            statusLabel.setText(buildStatusText(path, image));
-            stage.setTitle("WebP Viewer - " + path.getFileName());
-        } catch (IOException ex) {
-            currentPath = null;
-            currentImage = null;
-            imageView.setImage(null);
-            statusLabel.setText("Failed to open " + path.getFileName() + ": " + ex.getMessage());
-            stage.setTitle("WebP Viewer");
-            showLoadError(path, ex);
-        }
+            loadTask = null;
+            setLoading(false);
+            applyLoadedImage(path, task.getValue(), startNanos);
+        });
+        task.setOnFailed(event -> {
+            if (!isCurrentLoad(requestId, task)) {
+                return;
+            }
+
+            loadTask = null;
+            setLoading(false);
+            handleLoadFailure(path, task.getException());
+        });
+        task.setOnCancelled(event -> {
+            if (!isCurrentLoad(requestId, task)) {
+                return;
+            }
+
+            loadTask = null;
+            setLoading(false);
+        });
+
+        Thread worker = new Thread(task, "webp-viewer-load-" + requestId);
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private void stopPlayback() {
@@ -263,6 +291,54 @@ public final class WebPViewerApp extends Application {
         imagePane.setStyle("");
     }
 
+    private void applyLoadedImage(Path path, WebPImage image, long startNanos) {
+        WebPFXImage fxImage = new WebPFXImage(image);
+        long elapsedMillis = elapsedMillis(startNanos);
+
+        currentPath = path;
+        currentImage = fxImage;
+
+        imageView.setImage(fxImage);
+        imageView.setFitWidth(fxImage.getWidth());
+        imageView.setFitHeight(fxImage.getHeight());
+
+        statusLabel.setText(buildStatusText(path, image, elapsedMillis));
+        stage.setTitle("WebP Viewer - " + path.getFileName());
+    }
+
+    private void handleLoadFailure(Path path, Throwable error) {
+        IOException exception = error instanceof IOException ioException
+                ? ioException
+                : new IOException("Failed to decode WebP image", error);
+
+        currentPath = null;
+        currentImage = null;
+        imageView.setImage(null);
+        imageView.setFitWidth(0);
+        imageView.setFitHeight(0);
+        statusLabel.setText("Failed to open " + path.getFileName() + ": " + errorMessage(exception));
+        stage.setTitle("WebP Viewer");
+        showLoadError(path, exception);
+    }
+
+    private void cancelLoadTask() {
+        Task<WebPImage> task = loadTask;
+        loadTask = null;
+        if (task != null) {
+            task.cancel();
+        }
+        setLoading(false);
+    }
+
+    private boolean isCurrentLoad(long requestId, Task<WebPImage> task) {
+        return loadRequestId == requestId && loadTask == task;
+    }
+
+    private void setLoading(boolean loading) {
+        loadingOverlay.setManaged(loading);
+        loadingOverlay.setVisible(loading);
+    }
+
     private void showLoadError(Path path, IOException ex) {
         if (stage == null) {
             return;
@@ -289,7 +365,19 @@ public final class WebPViewerApp extends Application {
         return Math.max(0.0, Math.min(1.0, value));
     }
 
-    private String buildStatusText(Path path, WebPImage image) {
+    private static String errorMessage(Throwable error) {
+        String message = error.getMessage();
+        if (message == null || message.isBlank()) {
+            return error.getClass().getSimpleName();
+        }
+        return message;
+    }
+
+    private static long elapsedMillis(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000L;
+    }
+
+    private String buildStatusText(Path path, WebPImage image, long loadMillis) {
         StringBuilder text = new StringBuilder();
         text.append(path.getFileName())
                 .append(" | ")
@@ -313,6 +401,7 @@ public final class WebPViewerApp extends Application {
         } else {
             text.append(" | lossless");
         }
+        text.append(" | load=").append(loadMillis).append("ms");
         return text.toString();
     }
 
@@ -324,6 +413,17 @@ public final class WebPViewerApp extends Application {
                 new FileChooser.ExtensionFilter("All Files", "*.*")
         );
         return chooser;
+    }
+
+    private static StackPane createLoadingOverlay() {
+        ProgressIndicator indicator = new ProgressIndicator();
+        indicator.setMaxSize(96, 96);
+
+        StackPane overlay = new StackPane(indicator);
+        overlay.setManaged(false);
+        overlay.setVisible(false);
+        overlay.setStyle("-fx-background-color: rgba(255, 255, 255, 0.72);");
+        return overlay;
     }
 
 }
