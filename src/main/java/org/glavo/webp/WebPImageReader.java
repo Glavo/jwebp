@@ -29,9 +29,9 @@ import org.glavo.webp.internal.io.BufferedInput;
 import org.glavo.webp.internal.lossy.Vp8Decoder;
 import org.glavo.webp.internal.lossless.LosslessDecoder;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -324,7 +324,7 @@ public final class WebPImageReader implements AutoCloseable {
             return argb;
         }
 
-        int[] argb = Vp8Decoder.decodeArgb(new ByteArrayInputStream(descriptor.imageChunk()), false);
+        int[] argb = Vp8Decoder.decodeArgb(ByteBuffer.wrap(descriptor.imageChunk()), false);
         if (descriptor.alphaChunk() != null) {
             ExtendedWebP.AlphaChunk alphaChunk = ExtendedWebP.parseAlphaChunk(
                     descriptor.alphaChunk(),

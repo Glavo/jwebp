@@ -25,8 +25,7 @@ import org.glavo.webp.internal.lossy.LossyCommon.LumaMode;
 import org.glavo.webp.internal.lossy.LossyCommon.Plane;
 import org.glavo.webp.internal.lossy.LossyCommon.Segment;
 
-import java.io.IOException;
-import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -42,7 +41,7 @@ public final class Vp8Decoder {
 
     private static final int[] CHROMA_GROUP_STARTS = {5, 7};
 
-    private final InputStream input;
+    private final ByteBuffer input;
     private final LossyArithmeticDecoder headerDecoder = new LossyArithmeticDecoder();
 
     private int macroblockWidth;
@@ -90,7 +89,7 @@ public final class Vp8Decoder {
     private final byte[] uWorkspace = new byte[LossyPrediction.CHROMA_BLOCK_SIZE];
     private final byte[] vWorkspace = new byte[LossyPrediction.CHROMA_BLOCK_SIZE];
 
-    private Vp8Decoder(InputStream input) {
+    private Vp8Decoder(ByteBuffer input) {
         this.input = input;
         for (int i = 0; i < segments.length; i++) {
             segments[i] = new Segment();
@@ -99,51 +98,35 @@ public final class Vp8Decoder {
 
     /// Reads the VP8 frame header and initializes partition state.
     ///
-    /// The returned frame object is not yet fully reconstructed. It carries dimensions, loop
-    /// filter parameters and allocated YUV planes, which is enough for subsequent macroblock decode
-    /// stages.
+    /// The supplied buffer is read from its current position without mutating the caller's
+    /// `position()` or `limit()`.
     ///
-    /// @param input the raw VP8 payload stream
+    /// @param input the raw VP8 payload buffer
     /// @return a frame object initialized from the VP8 header
     /// @throws WebPException if the VP8 stream is malformed
-    static Vp8Frame decodeFrameHeader(InputStream input) throws WebPException {
-        try {
-            Vp8Decoder decoder = new Vp8Decoder(input);
-            decoder.readFrameHeader();
-            return decoder.frame;
-        } catch (IOException ex) {
-            if (ex instanceof WebPException webPException) {
-                throw webPException;
-            }
-            throw new WebPException("Failed to read the VP8 frame header", ex);
-        }
+    static Vp8Frame decodeFrameHeader(ByteBuffer input) throws WebPException {
+        Vp8Decoder decoder = new Vp8Decoder(input.slice());
+        decoder.readFrameHeader();
+        return decoder.frame;
     }
 
     /// Decodes one raw VP8 frame payload to packed `ARGB` pixels.
     ///
-    /// The input stream must expose exactly the payload bytes of a `VP8` chunk. The
-    /// decoder reconstructs the internal YUV planes first and only performs color conversion once
-    /// the whole frame is available, matching the ordering used by the reference implementation.
+    /// The supplied buffer is read from its current position without mutating the caller's
+    /// `position()` or `limit()`.
     ///
     /// @param input the raw VP8 frame payload
     /// @param fancyUpsampling whether to use the high-quality chroma upsampler
     /// @return tightly packed non-premultiplied `ARGB` pixels
     /// @throws WebPException if the VP8 bitstream is malformed
-    public static int[] decodeArgb(InputStream input, boolean fancyUpsampling) throws WebPException {
-        try {
-            Vp8Frame frame = new Vp8Decoder(input).decodeFrameInternal();
-            int[] argb = new int[frame.width * frame.height];
-            frame.fillArgb(argb, fancyUpsampling);
-            return argb;
-        } catch (IOException ex) {
-            if (ex instanceof WebPException webPException) {
-                throw webPException;
-            }
-            throw new WebPException("Failed to decode the VP8 frame", ex);
-        }
+    public static int[] decodeArgb(ByteBuffer input, boolean fancyUpsampling) throws WebPException {
+        Vp8Frame frame = new Vp8Decoder(input.slice()).decodeFrameInternal();
+        int[] argb = new int[frame.width * frame.height];
+        frame.fillArgb(argb, fancyUpsampling);
+        return argb;
     }
 
-    private void updateTokenProbabilities() throws IOException, WebPException {
+    private void updateTokenProbabilities() throws WebPException {
         LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
         for (int i = 0; i < LossyTables.COEFF_UPDATE_PROBS.length; i++) {
             for (int j = 0; j < LossyTables.COEFF_UPDATE_PROBS[i].length; j++) {
@@ -161,21 +144,21 @@ public final class Vp8Decoder {
         headerDecoder.check(accumulator, null);
     }
 
-    private void initPartitions(int partitionCount) throws IOException, WebPException {
+    private void initPartitions(int partitionCount) throws WebPException {
         if (partitionCount > 1) {
-            byte[] sizes = readExactly(3 * partitionCount - 3);
+            ByteBuffer sizes = readExactly(3 * partitionCount - 3);
             for (int i = 0; i < partitionCount - 1; i++) {
                 int sizeOffset = i * 3;
-                int partitionSize = (sizes[sizeOffset] & 0xFF)
-                        | ((sizes[sizeOffset + 1] & 0xFF) << 8)
-                        | ((sizes[sizeOffset + 2] & 0xFF) << 16);
+                int partitionSize = Byte.toUnsignedInt(sizes.get(sizeOffset))
+                        | (Byte.toUnsignedInt(sizes.get(sizeOffset + 1)) << 8)
+                        | (Byte.toUnsignedInt(sizes.get(sizeOffset + 2)) << 16);
                 partitions[i].init(readExactly(partitionSize));
             }
         }
-        partitions[partitionCount - 1].init(input.readAllBytes());
+        partitions[partitionCount - 1].init(readExactly(input.remaining()));
     }
 
-    private void readQuantizationIndices() throws IOException, WebPException {
+    private void readQuantizationIndices() throws WebPException {
         LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
         int yacAbs = headerDecoder.readLiteral(7).orAccumulate(accumulator);
         int ydcDelta = headerDecoder.readOptionalSignedValue(4).orAccumulate(accumulator);
@@ -208,7 +191,7 @@ public final class Vp8Decoder {
         headerDecoder.check(accumulator, null);
     }
 
-    private void readLoopFilterAdjustments() throws IOException, WebPException {
+    private void readLoopFilterAdjustments() throws WebPException {
         LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
         if (headerDecoder.readFlag().orAccumulate(accumulator)) {
             for (int i = 0; i < 4; i++) {
@@ -221,7 +204,7 @@ public final class Vp8Decoder {
         headerDecoder.check(accumulator, null);
     }
 
-    private void readSegmentUpdates() throws IOException, WebPException {
+    private void readSegmentUpdates() throws WebPException {
         LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
         segmentsUpdateMap = headerDecoder.readFlag().orAccumulate(accumulator);
         boolean updateSegmentFeatureData = headerDecoder.readFlag().orAccumulate(accumulator);
@@ -249,7 +232,7 @@ public final class Vp8Decoder {
         headerDecoder.check(accumulator, null);
     }
 
-    private void readFrameHeader() throws IOException, WebPException {
+    private void readFrameHeader() throws WebPException {
         int tag = readU24LE(input);
         if ((tag & 1) != 0) {
             throw new WebPException("Only VP8 keyframes are supported");
@@ -335,7 +318,7 @@ public final class Vp8Decoder {
         headerDecoder.check(skipAccumulator, null);
     }
 
-    private MacroBlock readMacroblockHeader(int macroblockX) throws IOException, WebPException {
+    private MacroBlock readMacroblockHeader(int macroblockX) throws WebPException {
         MacroBlock macroBlock = new MacroBlock();
         LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
 
@@ -498,7 +481,7 @@ public final class Vp8Decoder {
             int complexity,
             short dcq,
             short acq
-    ) throws IOException, WebPException {
+    ) throws WebPException {
         assert complexity <= 2;
 
         int firstCoeff = plane == Plane.Y_COEFF_1 ? 1 : 0;
@@ -559,7 +542,7 @@ public final class Vp8Decoder {
      * is propagated through the cached top/left macroblock state so coefficient probabilities can
      * adapt across block boundaries.
      */
-    private int[] readResidualData(MacroBlock macroBlock, int macroblockX, int partition) throws IOException, WebPException {
+    private int[] readResidualData(MacroBlock macroBlock, int macroblockX, int partition) throws WebPException {
         int segmentIndex = macroBlock.segmentId;
         int[] blocks = residualDataScratch;
         Arrays.fill(blocks, 0);
@@ -899,7 +882,7 @@ public final class Vp8Decoder {
         return new FilterParameters(filterLevel, interiorLimit, hevThreshold);
     }
 
-    private Vp8Frame decodeFrameInternal() throws IOException, WebPException {
+    private Vp8Frame decodeFrameInternal() throws WebPException {
         readFrameHeader();
 
         for (int macroblockY = 0; macroblockY < macroblockHeight; macroblockY++) {
@@ -966,27 +949,29 @@ public final class Vp8Decoder {
         return LossyTables.AC_QUANT[Math.max(0, Math.min(127, index))];
     }
 
-    private byte[] readExactly(int length) throws IOException, WebPException {
-        byte[] data = input.readNBytes(length);
-        if (data.length != length) {
+    private ByteBuffer readExactly(int length) throws WebPException {
+        if (input.remaining() < length) {
             throw new WebPException("Unexpected end of VP8 partition data");
         }
-        return data;
+
+        ByteBuffer slice = input.slice();
+        slice.limit(length);
+        input.position(input.position() + length);
+        return slice;
     }
 
-    private static int readU8(InputStream input) throws IOException, WebPException {
-        int value = input.read();
-        if (value < 0) {
+    private static int readU8(ByteBuffer input) throws WebPException {
+        if (!input.hasRemaining()) {
             throw new WebPException("Unexpected end of VP8 stream");
         }
-        return value;
+        return Byte.toUnsignedInt(input.get());
     }
 
-    private static int readU16LE(InputStream input) throws IOException, WebPException {
+    private static int readU16LE(ByteBuffer input) throws WebPException {
         return readU8(input) | (readU8(input) << 8);
     }
 
-    private static int readU24LE(InputStream input) throws IOException, WebPException {
+    private static int readU24LE(ByteBuffer input) throws WebPException {
         return readU8(input) | (readU8(input) << 8) | (readU8(input) << 16);
     }
 

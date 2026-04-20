@@ -20,6 +20,8 @@ import org.jetbrains.annotations.Nullable;
 
 import org.glavo.webp.WebPException;
 
+import java.nio.ByteBuffer;
+
 /// VP8 boolean arithmetic decoder.
 ///
 /// The implementation mirrors the split fast-path / cold-path structure of the reference crate
@@ -27,46 +29,28 @@ import org.glavo.webp.WebPException;
 @NotNullByDefault
 final class LossyArithmeticDecoder {
 
-    private static final int FINAL_BYTES_REMAINING_EOF = -0xE;
-
-    private int[][] chunks = new int[0][];
+    private ByteBuffer input = ByteBuffer.allocate(0);
     private State state = new State();
-    private final int[] finalBytes = new int[3];
-    private int finalBytesRemaining = FINAL_BYTES_REMAINING_EOF;
+    private boolean zeroBytePending;
+    private boolean pastEof;
 
     LossyArithmeticDecoder() {
         state.range = 255;
         state.bitCount = -8;
     }
 
-    void init(byte[] buffer) throws WebPException {
-        if (buffer.length == 0) {
+    void init(ByteBuffer buffer) throws WebPException {
+        ByteBuffer input = buffer.slice();
+        if (!input.hasRemaining()) {
             throw new WebPException("Not enough VP8 partition data");
         }
 
-        int fullChunks = buffer.length / 4;
-        int remainder = buffer.length % 4;
-        int chunkCount = fullChunks + (remainder == 0 ? 0 : 1);
-        int[][] newChunks = new int[Math.max(fullChunks, 0)][4];
-
-        int offset = 0;
-        for (int i = 0; i < fullChunks; i++) {
-            newChunks[i][0] = buffer[offset++] & 0xFF;
-            newChunks[i][1] = buffer[offset++] & 0xFF;
-            newChunks[i][2] = buffer[offset++] & 0xFF;
-            newChunks[i][3] = buffer[offset++] & 0xFF;
-        }
-
-        this.chunks = newChunks;
+        this.input = input;
         this.state = new State();
         this.state.range = 255;
         this.state.bitCount = -8;
-        this.finalBytesRemaining = remainder == 0 ? 0 : remainder;
-        if (remainder != 0) {
-            for (int i = 0; i < remainder; i++) {
-                finalBytes[i] = buffer[offset + i] & 0xFF;
-            }
-        }
+        this.zeroBytePending = true;
+        this.pastEof = false;
     }
 
     BitResultAccumulator startAccumulatedResult() {
@@ -129,14 +113,16 @@ final class LossyArithmeticDecoder {
 
     private boolean coldReadBit(int probability) {
         if (state.bitCount < 0) {
-            if (state.chunkIndex < chunks.length) {
-                int[] chunk = chunks[state.chunkIndex++];
-                int value = (chunk[0] << 24) | (chunk[1] << 16) | (chunk[2] << 8) | chunk[3];
+            if (input.remaining() >= Integer.BYTES) {
+                int value = (Byte.toUnsignedInt(input.get()) << 24)
+                        | (Byte.toUnsignedInt(input.get()) << 16)
+                        | (Byte.toUnsignedInt(input.get()) << 8)
+                        | Byte.toUnsignedInt(input.get());
                 state.value <<= 32;
                 state.value |= Integer.toUnsignedLong(value);
                 state.bitCount += 32;
             } else {
-                loadFromFinalBytes();
+                loadFromTailBytes();
                 if (isPastEof()) {
                     return false;
                 }
@@ -162,26 +148,22 @@ final class LossyArithmeticDecoder {
         return result;
     }
 
-    private void loadFromFinalBytes() {
-        if (finalBytesRemaining > 0) {
-            finalBytesRemaining--;
-            int value = finalBytes[0];
-            finalBytes[0] = finalBytes[1];
-            finalBytes[1] = finalBytes[2];
+    private void loadFromTailBytes() {
+        if (input.hasRemaining()) {
             state.value <<= 8;
-            state.value |= value;
+            state.value |= Byte.toUnsignedInt(input.get());
             state.bitCount += 8;
-        } else if (finalBytesRemaining == 0) {
-            finalBytesRemaining--;
+        } else if (zeroBytePending) {
+            zeroBytePending = false;
             state.value <<= 8;
             state.bitCount += 8;
         } else {
-            finalBytesRemaining = FINAL_BYTES_REMAINING_EOF;
+            pastEof = true;
         }
     }
 
     private boolean isPastEof() {
-        return finalBytesRemaining == FINAL_BYTES_REMAINING_EOF;
+        return pastEof;
     }
 
     @NotNullByDefault
@@ -207,7 +189,6 @@ final class LossyArithmeticDecoder {
 
     @NotNullByDefault
     private static final class State {
-        int chunkIndex;
         long value;
         int range;
         int bitCount;
