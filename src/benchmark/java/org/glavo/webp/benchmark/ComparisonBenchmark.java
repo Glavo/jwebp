@@ -26,6 +26,7 @@ import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
@@ -55,68 +56,45 @@ public class ComparisonBenchmark {
 
     @State(Scope.Benchmark)
     public static class BenchmarkImages {
-        byte[] staticLossy;
-        byte[] staticLosslessAlpha;
-        byte[] staticLossyPng;
-        byte[] staticLosslessAlphaPng;
+        @Param({
+                "gallery1-1",
+                "gallery2-1_webp_a",
+        })
+        public String file;
+
+        byte[] staticWebp;
+        byte[] staticPng;
 
         @Setup
         public void load() throws IOException {
-            staticLossy = resourceBytes("images/gallery1-1.webp");
-            staticLosslessAlpha = resourceBytes("images/gallery2-1_webp_a.webp");
-            staticLossyPng = resourceBytes("reference/gallery1-1.png");
-            staticLosslessAlphaPng = resourceBytes("reference/gallery2-1_webp_a.png");
+            staticWebp = resourceBytes("images/" + file + ".webp");
+            staticPng = resourceBytes("reference/" + file + ".png");
         }
     }
 
     @Benchmark
-    public WebPImage jwebpDecodeStaticLossy(BenchmarkImages images) throws Exception {
-        return WebPImage.read(new ByteArrayInputStream(images.staticLossy));
+    public WebPImage jwebpDecode(BenchmarkImages images) throws Exception {
+        return WebPImage.read(new ByteArrayInputStream(images.staticWebp));
     }
 
     @Benchmark
-    public BufferedImage twelveMonkeysDecodeStaticLossy(BenchmarkImages images) throws Exception {
-        return readStillImageWithProvider(images.staticLossy);
+    public BufferedImage twelveMonkeysDecode(BenchmarkImages images) throws Exception {
+        return readStillImageWithProvider(images.staticWebp);
     }
 
     @Benchmark
-    public WebPImage jwebpDecodeStaticLosslessAlpha(BenchmarkImages images) throws Exception {
-        return WebPImage.read(new ByteArrayInputStream(images.staticLosslessAlpha));
+    public Image jwebpToJavaFX(BenchmarkImages images) throws Exception {
+        return new WebPFXImage(WebPImage.read(new ByteArrayInputStream(images.staticWebp)), false);
     }
 
     @Benchmark
-    public BufferedImage twelveMonkeysDecodeStaticLosslessAlpha(BenchmarkImages images) throws Exception {
-        return readStillImageWithProvider(images.staticLosslessAlpha);
+    public Image twelveMonkeysToJavaFX(BenchmarkImages images) throws Exception {
+        return SwingFXUtils.toFXImage(readStillImageWithProvider(images.staticWebp), null);
     }
 
     @Benchmark
-    public Image jwebpToJavaFXStaticLossy(BenchmarkImages images) throws Exception {
-        return new WebPFXImage(WebPImage.read(new ByteArrayInputStream(images.staticLossy)), false);
-    }
-
-    @Benchmark
-    public Image twelveMonkeysToJavaFXStaticLossy(BenchmarkImages images) throws Exception {
-        return SwingFXUtils.toFXImage(readStillImageWithProvider(images.staticLossy), null);
-    }
-
-    @Benchmark
-    public Image jwebpToJavaFXStaticLosslessAlpha(BenchmarkImages images) throws Exception {
-        return new WebPFXImage(WebPImage.read(new ByteArrayInputStream(images.staticLosslessAlpha)), false);
-    }
-
-    @Benchmark
-    public Image jfxReadPngStaticLossy(BenchmarkImages images) {
-        return new Image(new ByteArrayInputStream(images.staticLossyPng));
-    }
-
-    @Benchmark
-    public Image twelveMonkeysToJavaFXStaticLosslessAlpha(BenchmarkImages images) throws Exception {
-        return SwingFXUtils.toFXImage(readStillImageWithProvider(images.staticLosslessAlpha), null);
-    }
-
-    @Benchmark
-    public Image jfxReadPngStaticLosslessAlpha(BenchmarkImages images) {
-        return new Image(new ByteArrayInputStream(images.staticLosslessAlphaPng));
+    public Image jfxPNGDecode(BenchmarkImages images) {
+        return new Image(new ByteArrayInputStream(images.staticPng));
     }
 
     private static BufferedImage readStillImageWithProvider(byte[] bytes) throws Exception {
