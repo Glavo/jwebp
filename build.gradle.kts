@@ -76,6 +76,7 @@ dependencies {
     javafx("base")
     javafx("controls")
     javafx("graphics")
+    javafx("swing") // For Benchmark
 
     // Test
 
