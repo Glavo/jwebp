@@ -25,6 +25,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.SeekableByteChannel;
 import java.util.Objects;
 
 /// Little-endian primitive reader backed by a reusable staging buffer.
@@ -119,6 +120,17 @@ public sealed abstract class BufferedInput implements Closeable {
         return buffer;
     }
 
+    protected final long skipBufferedBytes(long len) {
+        int skipped = (int) Math.min(len, buffer.remaining());
+        buffer.position(buffer.position() + skipped);
+        return skipped;
+    }
+
+    protected final void clearBuffer() {
+        buffer.position(0);
+        buffer.limit(0);
+    }
+
     private static WebPException unexpectedEndOfInput() {
         return new WebPException("Unexpected end of WebP stream");
     }
@@ -172,16 +184,14 @@ public sealed abstract class BufferedInput implements Closeable {
 
         ensureOpen();
 
-        long remaining = len;
+        long remaining = len - skipBufferedBytes(len);
         while (remaining > 0) {
             if (!buffer.hasRemaining()) {
                 int request = buffer.capacity() == 0 ? 1 : (int) Math.min(remaining, buffer.capacity());
                 ensureBufferRemaining(request);
             }
 
-            int chunk = (int) Math.min(remaining, buffer.remaining());
-            buffer.position(buffer.position() + chunk);
-            remaining -= chunk;
+            remaining -= skipBufferedBytes(remaining);
         }
     }
 
@@ -339,6 +349,58 @@ public sealed abstract class BufferedInput implements Closeable {
         }
 
         @Override
+        public void skip(long len) throws IOException {
+            if (len < 0) {
+                throw new IllegalArgumentException("len < 0: " + len);
+            }
+            if (len == 0) {
+                ensureOpen();
+                return;
+            }
+
+            ensureOpen();
+
+            long remaining = len - skipBufferedBytes(len);
+            if (remaining == 0) {
+                return;
+            }
+
+            if (channel instanceof SeekableByteChannel seekableChannel) {
+                long position = seekableChannel.position();
+                long size = seekableChannel.size();
+                long available = size - position;
+                if (available < 0 || remaining > available) {
+                    throw unexpectedEndOfInput();
+                }
+
+                clearBuffer();
+                seekableChannel.position(position + remaining);
+                return;
+            }
+
+            ByteBuffer discardBuffer = buffer;
+            discardBuffer.clear();
+            try {
+                while (remaining > 0) {
+                    discardBuffer.limit((int) Math.min(remaining, discardBuffer.capacity()));
+
+                    int read = channel.read(discardBuffer);
+                    if (read < 0) {
+                        throw unexpectedEndOfInput();
+                    }
+                    if (read == 0) {
+                        throw new IOException("ReadableByteChannel made no progress while skipping bytes");
+                    }
+
+                    remaining -= read;
+                    discardBuffer.clear();
+                }
+            } finally {
+                clearBuffer();
+            }
+        }
+
+        @Override
         public void close() throws IOException {
             if (closed) {
                 return;
@@ -363,6 +425,25 @@ public sealed abstract class BufferedInput implements Closeable {
         @Override
         protected void fillBuffer(int required) throws IOException {
             throw unexpectedEndOfInput();
+        }
+
+        @Override
+        public void skip(long len) throws IOException {
+            if (len < 0) {
+                throw new IllegalArgumentException("len < 0: " + len);
+            }
+            if (len == 0) {
+                ensureOpen();
+                return;
+            }
+
+            ensureOpen();
+
+            if (len > buffer.remaining()) {
+                throw unexpectedEndOfInput();
+            }
+
+            buffer.position(buffer.position() + Math.toIntExact(len));
         }
 
         @Override

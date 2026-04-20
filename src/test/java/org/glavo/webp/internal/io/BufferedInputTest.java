@@ -26,6 +26,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.Channels;
+import java.nio.channels.SeekableByteChannel;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -95,6 +96,35 @@ final class BufferedInputTest {
     void skipThrowsWhenSourceIsTruncated() throws Exception {
         try (BufferedInput input = new BufferedInput.OfByteBuffer(ByteBuffer.wrap(new byte[]{1, 2, 3}))) {
             assertThrows(WebPException.class, () -> input.skip(4));
+        }
+    }
+
+    @Test
+    void inputStreamSkipUsesUnderlyingSkipFastPath() throws Exception {
+        byte[] data = payload(10000);
+        TrackingSkipInputStream source = new TrackingSkipInputStream(data, 257);
+
+        try (BufferedInput input = new BufferedInput.OfInputStream(source)) {
+            input.skip(9000);
+
+            assertTrue(source.skipCalls > 0);
+            assertEquals(0, source.bulkReadCalls);
+            assertEquals(0, source.singleByteReadCalls);
+            assertEquals(Byte.toUnsignedInt(data[9000]), input.readUnsignedByte());
+        }
+    }
+
+    @Test
+    void seekableChannelSkipUsesPositionFastPath() throws Exception {
+        byte[] data = payload(10000);
+        TrackingSeekableByteChannel channel = new TrackingSeekableByteChannel(data);
+
+        try (BufferedInput input = new BufferedInput.OfByteChannel(channel)) {
+            input.skip(9000);
+
+            assertTrue(channel.positionSetCalls > 0);
+            assertEquals(0, channel.readCalls);
+            assertEquals(Byte.toUnsignedInt(data[9000]), input.readUnsignedByte());
         }
     }
 
@@ -171,6 +201,99 @@ final class BufferedInputTest {
         public void close() throws IOException {
             wasClosed = true;
             super.close();
+        }
+    }
+
+    private static final class TrackingSkipInputStream extends InputStream {
+        private final ByteArrayInputStream delegate;
+        private final int maxSkipPerCall;
+        private int skipCalls = 0;
+        private int bulkReadCalls = 0;
+        private int singleByteReadCalls = 0;
+
+        private TrackingSkipInputStream(byte[] data, int maxSkipPerCall) {
+            this.delegate = new ByteArrayInputStream(data);
+            this.maxSkipPerCall = maxSkipPerCall;
+        }
+
+        @Override
+        public int read() {
+            singleByteReadCalls++;
+            return delegate.read();
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) {
+            bulkReadCalls++;
+            return delegate.read(b, off, len);
+        }
+
+        @Override
+        public long skip(long n) {
+            skipCalls++;
+            return delegate.skip(Math.min(n, maxSkipPerCall));
+        }
+    }
+
+    private static final class TrackingSeekableByteChannel implements SeekableByteChannel {
+        private final byte[] data;
+        private long position = 0;
+        private boolean open = true;
+        private int readCalls = 0;
+        private int positionSetCalls = 0;
+
+        private TrackingSeekableByteChannel(byte[] data) {
+            this.data = data;
+        }
+
+        @Override
+        public int read(ByteBuffer dst) {
+            readCalls++;
+            if (position >= data.length) {
+                return -1;
+            }
+
+            int read = Math.min(dst.remaining(), data.length - (int) position);
+            dst.put(data, (int) position, read);
+            position += read;
+            return read;
+        }
+
+        @Override
+        public int write(ByteBuffer src) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public long position() {
+            return position;
+        }
+
+        @Override
+        public SeekableByteChannel position(long newPosition) {
+            positionSetCalls++;
+            position = newPosition;
+            return this;
+        }
+
+        @Override
+        public long size() {
+            return data.length;
+        }
+
+        @Override
+        public SeekableByteChannel truncate(long size) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public boolean isOpen() {
+            return open;
+        }
+
+        @Override
+        public void close() {
+            open = false;
         }
     }
 }
