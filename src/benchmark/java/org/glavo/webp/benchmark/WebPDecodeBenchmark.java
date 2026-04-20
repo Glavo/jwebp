@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit;
 /// The benchmarks reuse the checked-in test images so performance comparisons can be reproduced
 /// against the same corpus used by correctness tests.
 @BenchmarkMode(Mode.Throughput)
-@OutputTimeUnit(TimeUnit.MILLISECONDS)
+@OutputTimeUnit(TimeUnit.SECONDS)
 @Warmup(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
 @Fork(value = 1, jvmArgsAppend = {"-Xms1G", "-Xmx1G"})
