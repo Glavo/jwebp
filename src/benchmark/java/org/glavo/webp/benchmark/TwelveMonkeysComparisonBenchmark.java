@@ -16,7 +16,10 @@
 package org.glavo.webp.benchmark;
 
 import com.twelvemonkeys.imageio.plugins.webp.WebPImageReaderSpi;
+import javafx.embed.swing.SwingFXUtils;
+import javafx.scene.image.Image;
 import org.glavo.webp.WebPImage;
+import org.glavo.webp.javafx.WebPFXImage;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -80,6 +83,26 @@ public class TwelveMonkeysComparisonBenchmark {
     @Benchmark
     public BufferedImage twelveMonkeysDecodeStaticLosslessAlpha(BenchmarkImages images) throws Exception {
         return readStillImageWithProvider(images.staticLosslessAlpha);
+    }
+
+    @Benchmark
+    public Image jwebpToJavaFXStaticLossy(BenchmarkImages images) throws Exception {
+        return new WebPFXImage(WebPImage.read(new ByteArrayInputStream(images.staticLossy)), false);
+    }
+
+    @Benchmark
+    public Image twelveMonkeysToJavaFXStaticLossy(BenchmarkImages images) throws Exception {
+        return SwingFXUtils.toFXImage(readStillImageWithProvider(images.staticLossy), null);
+    }
+
+    @Benchmark
+    public Image jwebpToJavaFXStaticLosslessAlpha(BenchmarkImages images) throws Exception {
+        return new WebPFXImage(WebPImage.read(new ByteArrayInputStream(images.staticLosslessAlpha)), false);
+    }
+
+    @Benchmark
+    public Image twelveMonkeysToJavaFXStaticLosslessAlpha(BenchmarkImages images) throws Exception {
+        return SwingFXUtils.toFXImage(readStillImageWithProvider(images.staticLosslessAlpha), null);
     }
 
     private static BufferedImage readStillImageWithProvider(byte[] bytes) throws Exception {
