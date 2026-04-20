@@ -29,7 +29,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 /// Pure-Java VP8 keyframe decoder.
 ///
@@ -41,12 +40,14 @@ import java.util.List;
 @NotNullByDefault
 public final class Vp8Decoder {
 
+    private static final int[] CHROMA_GROUP_STARTS = {5, 7};
+
     private final InputStream input;
     private final LossyArithmeticDecoder headerDecoder = new LossyArithmeticDecoder();
 
     private int macroblockWidth;
     private int macroblockHeight;
-    private final List<MacroBlock> macroblocks = new ArrayList<>();
+    private final ArrayList<MacroBlock> macroblocks = new ArrayList<>();
     private final Vp8Frame frame = new Vp8Frame();
 
     private boolean segmentsEnabled;
@@ -82,6 +83,12 @@ public final class Vp8Decoder {
     private byte[] leftBorderU = new byte[0];
     private byte[] topBorderV = new byte[0];
     private byte[] leftBorderV = new byte[0];
+    private final int[] residualDataScratch = new int[384];
+    private final int[] y2BlockScratch = new int[16];
+    private final int[] zeroResidualData = new int[384];
+    private final byte[] lumaWorkspace = new byte[LossyPrediction.LUMA_BLOCK_SIZE];
+    private final byte[] uWorkspace = new byte[LossyPrediction.CHROMA_BLOCK_SIZE];
+    private final byte[] vWorkspace = new byte[LossyPrediction.CHROMA_BLOCK_SIZE];
 
     private Vp8Decoder(InputStream input) {
         this.input = input;
@@ -269,6 +276,8 @@ public final class Vp8Decoder {
 
         macroblockWidth = (frame.width + 15) / 16;
         macroblockHeight = (frame.height + 15) / 16;
+        macroblocks.clear();
+        macroblocks.ensureCapacity(macroblockWidth * macroblockHeight);
 
         top = new PreviousMacroBlock[macroblockWidth];
         for (int i = 0; i < top.length; i++) {
@@ -382,7 +391,9 @@ public final class Vp8Decoder {
     private void intraPredictLuma(int macroblockX, int macroblockY, MacroBlock macroBlock, int[] residualData) {
         int stride = LossyPrediction.LUMA_STRIDE;
         int lumaWidth = macroblockWidth * 16;
-        byte[] workspace = LossyPrediction.createBorderLuma(
+        byte[] workspace = lumaWorkspace;
+        LossyPrediction.fillBorderLuma(
+                workspace,
                 macroblockX,
                 macroblockY,
                 macroblockWidth,
@@ -434,8 +445,10 @@ public final class Vp8Decoder {
     private void intraPredictChroma(int macroblockX, int macroblockY, MacroBlock macroBlock, int[] residualData) {
         int stride = LossyPrediction.CHROMA_STRIDE;
         int chromaWidth = macroblockWidth * 8;
-        byte[] uWorkspace = LossyPrediction.createBorderChroma(macroblockX, macroblockY, topBorderU, leftBorderU);
-        byte[] vWorkspace = LossyPrediction.createBorderChroma(macroblockX, macroblockY, topBorderV, leftBorderV);
+        byte[] uWorkspace = this.uWorkspace;
+        byte[] vWorkspace = this.vWorkspace;
+        LossyPrediction.fillBorderChroma(uWorkspace, macroblockX, macroblockY, topBorderU, leftBorderU);
+        LossyPrediction.fillBorderChroma(vWorkspace, macroblockX, macroblockY, topBorderV, leftBorderV);
 
         switch (macroBlock.chromaMode) {
             case DC -> {
@@ -548,12 +561,14 @@ public final class Vp8Decoder {
      */
     private int[] readResidualData(MacroBlock macroBlock, int macroblockX, int partition) throws IOException, WebPException {
         int segmentIndex = macroBlock.segmentId;
-        int[] blocks = new int[384];
+        int[] blocks = residualDataScratch;
+        Arrays.fill(blocks, 0);
         Plane plane = macroBlock.lumaMode == LumaMode.B ? Plane.Y_COEFF_0 : Plane.Y2;
 
         if (plane == Plane.Y2) {
             int complexity = top[macroblockX].complexity[0] + left.complexity[0];
-            int[] y2Block = new int[16];
+            int[] y2Block = y2BlockScratch;
+            Arrays.fill(y2Block, 0);
             boolean present = readCoefficients(
                     y2Block,
                     0,
@@ -603,7 +618,7 @@ public final class Vp8Decoder {
             left.complexity[blockY + 1] = leftComplexity;
         }
 
-        for (int groupStart : new int[]{5, 7}) {
+        for (int groupStart : CHROMA_GROUP_STARTS) {
             for (int blockY = 0; blockY < 2; blockY++) {
                 int leftComplexity = left.complexity[blockY + groupStart];
                 for (int blockX = 0; blockX < 2; blockX++) {
@@ -656,47 +671,42 @@ public final class Vp8Decoder {
                     int row = macroblockY * 16 + y;
                     int x0 = macroblockX * 16;
                     int start = row * lumaWidth + x0 - 4;
-                    byte[] window = Arrays.copyOfRange(frame.yBuffer, start, start + 8);
-                    LossyLoopFilter.simpleSegmentHorizontal(macroblockEdgeLimit, window);
-                    System.arraycopy(window, 0, frame.yBuffer, start, 8);
+                    LossyLoopFilter.simpleSegmentHorizontal(macroblockEdgeLimit, frame.yBuffer, start);
                 }
             } else {
                 for (int y = 0; y < 16; y++) {
                     int row = macroblockY * 16 + y;
                     int x0 = macroblockX * 16;
                     int start = row * lumaWidth + x0 - 4;
-                    byte[] window = Arrays.copyOfRange(frame.yBuffer, start, start + 8);
                     LossyLoopFilter.macroblockFilterHorizontal(
                             parameters.hevThreshold,
                             parameters.interiorLimit,
                             macroblockEdgeLimit,
-                            window
+                            frame.yBuffer,
+                            start
                     );
-                    System.arraycopy(window, 0, frame.yBuffer, start, 8);
                 }
 
                 for (int y = 0; y < 8; y++) {
                     int row = macroblockY * 8 + y;
                     int x0 = macroblockX * 8;
                     int uStart = row * chromaWidth + x0 - 4;
-                    byte[] uWindow = Arrays.copyOfRange(frame.uBuffer, uStart, uStart + 8);
                     LossyLoopFilter.macroblockFilterHorizontal(
                             parameters.hevThreshold,
                             parameters.interiorLimit,
                             macroblockEdgeLimit,
-                            uWindow
+                            frame.uBuffer,
+                            uStart
                     );
-                    System.arraycopy(uWindow, 0, frame.uBuffer, uStart, 8);
 
                     int vStart = row * chromaWidth + x0 - 4;
-                    byte[] vWindow = Arrays.copyOfRange(frame.vBuffer, vStart, vStart + 8);
                     LossyLoopFilter.macroblockFilterHorizontal(
                             parameters.hevThreshold,
                             parameters.interiorLimit,
                             macroblockEdgeLimit,
-                            vWindow
+                            frame.vBuffer,
+                            vStart
                     );
-                    System.arraycopy(vWindow, 0, frame.vBuffer, vStart, 8);
                 }
             }
         }
@@ -708,9 +718,7 @@ public final class Vp8Decoder {
                         int row = macroblockY * 16 + y;
                         int x0 = macroblockX * 16 + x;
                         int start = row * lumaWidth + x0 - 4;
-                        byte[] window = Arrays.copyOfRange(frame.yBuffer, start, start + 8);
-                        LossyLoopFilter.simpleSegmentHorizontal(subblockEdgeLimit, window);
-                        System.arraycopy(window, 0, frame.yBuffer, start, 8);
+                        LossyLoopFilter.simpleSegmentHorizontal(subblockEdgeLimit, frame.yBuffer, start);
                     }
                 }
             } else {
@@ -719,14 +727,13 @@ public final class Vp8Decoder {
                         int row = macroblockY * 16 + y;
                         int x0 = macroblockX * 16 + x;
                         int start = row * lumaWidth + x0 - 4;
-                        byte[] window = Arrays.copyOfRange(frame.yBuffer, start, start + 8);
                         LossyLoopFilter.subblockFilterHorizontal(
                                 parameters.hevThreshold,
                                 parameters.interiorLimit,
                                 subblockEdgeLimit,
-                                window
+                                frame.yBuffer,
+                                start
                         );
-                        System.arraycopy(window, 0, frame.yBuffer, start, 8);
                     }
                 }
 
@@ -734,24 +741,22 @@ public final class Vp8Decoder {
                     int row = macroblockY * 8 + y;
                     int x0 = macroblockX * 8 + 4;
                     int uStart = row * chromaWidth + x0 - 4;
-                    byte[] uWindow = Arrays.copyOfRange(frame.uBuffer, uStart, uStart + 8);
                     LossyLoopFilter.subblockFilterHorizontal(
                             parameters.hevThreshold,
                             parameters.interiorLimit,
                             subblockEdgeLimit,
-                            uWindow
+                            frame.uBuffer,
+                            uStart
                     );
-                    System.arraycopy(uWindow, 0, frame.uBuffer, uStart, 8);
 
                     int vStart = row * chromaWidth + x0 - 4;
-                    byte[] vWindow = Arrays.copyOfRange(frame.vBuffer, vStart, vStart + 8);
                     LossyLoopFilter.subblockFilterHorizontal(
                             parameters.hevThreshold,
                             parameters.interiorLimit,
                             subblockEdgeLimit,
-                            vWindow
+                            frame.vBuffer,
+                            vStart
                     );
-                    System.arraycopy(vWindow, 0, frame.vBuffer, vStart, 8);
                 }
             }
         }
@@ -899,7 +904,7 @@ public final class Vp8Decoder {
 
         for (int macroblockY = 0; macroblockY < macroblockHeight; macroblockY++) {
             int partition = macroblockY % numPartitions;
-            left = new PreviousMacroBlock();
+            left.reset();
 
             for (int macroblockX = 0; macroblockX < macroblockWidth; macroblockX++) {
                 MacroBlock macroBlock = readMacroblockHeader(macroblockX);
@@ -915,7 +920,7 @@ public final class Vp8Decoder {
                         left.complexity[i] = 0;
                         top[macroblockX].complexity[i] = 0;
                     }
-                    blocks = new int[384];
+                    blocks = zeroResidualData;
                 }
 
                 intraPredictLuma(macroblockX, macroblockY, macroBlock, blocks);
@@ -923,9 +928,9 @@ public final class Vp8Decoder {
                 macroblocks.add(macroBlock);
             }
 
-            leftBorderY = filled(17, (byte) 129);
-            leftBorderU = filled(9, (byte) 129);
-            leftBorderV = filled(9, (byte) 129);
+            Arrays.fill(leftBorderY, (byte) 129);
+            Arrays.fill(leftBorderU, (byte) 129);
+            Arrays.fill(leftBorderV, (byte) 129);
         }
 
         for (int macroblockY = 0; macroblockY < macroblockHeight; macroblockY++) {
@@ -1005,7 +1010,12 @@ public final class Vp8Decoder {
         final int[] complexity = new int[9];
 
         private PreviousMacroBlock() {
+            reset();
+        }
+
+        void reset() {
             Arrays.fill(bpred, IntraMode.DC);
+            Arrays.fill(complexity, 0);
         }
     }
 

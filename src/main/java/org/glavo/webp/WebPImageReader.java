@@ -307,6 +307,9 @@ public final class WebPImageReader implements AutoCloseable {
         previousFrameY = descriptor.y();
         disposeNextFrame = descriptor.disposeToBackground();
 
+        if (scalePlan.targetWidth() == image.sourceWidth() && scalePlan.targetHeight() == image.sourceHeight()) {
+            return animationCanvas.clone();
+        }
         return PixelScaler.scaleArgb(animationCanvas, image.sourceWidth(), image.sourceHeight(), scalePlan);
     }
 

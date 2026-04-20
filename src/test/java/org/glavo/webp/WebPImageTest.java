@@ -91,6 +91,25 @@ final class WebPImageTest {
     }
 
     @Test
+    void animatedReaderKeepsPreviouslyReturnedFramesStableWithoutScaling() throws Exception {
+        WebPImage eager = WebPImage.read(resource("images/animated-random_lossless.webp"));
+
+        try (WebPImageReader reader = WebPImageReader.open(resource("images/animated-random_lossless.webp"))) {
+            WebPFrame frame1 = reader.readNextFrame();
+            WebPFrame frame2 = reader.readNextFrame();
+            WebPFrame frame3 = reader.readNextFrame();
+
+            assertNotNull(frame1);
+            assertNotNull(frame2);
+            assertNotNull(frame3);
+
+            assertFramePixelEquals(frame1, eager.getFrames().get(0), 0);
+            assertFramePixelEquals(frame2, eager.getFrames().get(1), 0);
+            assertFramePixelEquals(frame3, eager.getFrames().get(2), 0);
+        }
+    }
+
+    @Test
     void streamsAnimatedLossyFramesWithinTolerance() throws Exception {
         try (WebPImageReader reader = WebPImageReader.open(resource("images/animated-random_lossy.webp"))) {
             assertTrue(reader.isAnimated());

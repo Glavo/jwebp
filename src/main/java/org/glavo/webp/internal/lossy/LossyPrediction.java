@@ -31,9 +31,8 @@ final class LossyPrediction {
     private LossyPrediction() {
     }
 
-    static byte[] createBorderLuma(int mbx, int mby, int mbw, byte[] top, byte[] left) {
+    static void fillBorderLuma(byte[] ws, int mbx, int mby, int mbw, byte[] top, byte[] left) {
         int stride = LUMA_STRIDE;
-        byte[] ws = new byte[LUMA_BLOCK_SIZE];
 
         for (int i = 0; i < 16 + 4; i++) {
             ws[1 + i] = mby == 0 ? (byte) 127 : top[Math.min(mbx * 16 + i, mbx == mbw - 1 ? mbx * 16 + 15 : mbx * 16 + i)];
@@ -50,12 +49,10 @@ final class LossyPrediction {
         }
 
         ws[0] = (byte) (mby == 0 ? 127 : (mbx == 0 ? 129 : left[0] & 0xFF));
-        return ws;
     }
 
-    static byte[] createBorderChroma(int mbx, int mby, byte[] top, byte[] left) {
+    static void fillBorderChroma(byte[] block, int mbx, int mby, byte[] top, byte[] left) {
         int stride = CHROMA_STRIDE;
-        byte[] block = new byte[CHROMA_BLOCK_SIZE];
 
         for (int i = 0; i < 8; i++) {
             block[1 + i] = mby == 0 ? (byte) 127 : top[mbx * 8 + i];
@@ -64,7 +61,6 @@ final class LossyPrediction {
             block[(y + 1) * stride] = mbx == 0 ? (byte) 129 : left[y + 1];
         }
         block[0] = (byte) (mby == 0 ? 127 : (mbx == 0 ? 129 : left[0] & 0xFF));
-        return block;
     }
 
     static void addResidue(byte[] pblock, int[] rblock, int y0, int x0, int stride) {
@@ -175,12 +171,17 @@ final class LossyPrediction {
 
     static void predictBvepred(byte[] a, int x0, int y0, int stride) {
         int p = a[(y0 - 1) * stride + x0 - 1] & 0xFF;
-        int[] top = topPixels(a, x0, y0, stride);
+        int pos = (y0 - 1) * stride + x0;
+        int top0 = a[pos] & 0xFF;
+        int top1 = a[pos + 1] & 0xFF;
+        int top2 = a[pos + 2] & 0xFF;
+        int top3 = a[pos + 3] & 0xFF;
+        int top4 = a[pos + 4] & 0xFF;
         int[] avg = {
-                avg3(p, top[0], top[1]),
-                avg3(top[0], top[1], top[2]),
-                avg3(top[1], top[2], top[3]),
-                avg3(top[2], top[3], top[4])
+                avg3(p, top0, top1),
+                avg3(top0, top1, top2),
+                avg3(top1, top2, top3),
+                avg3(top2, top3, top4)
         };
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 4; x++) {
@@ -191,12 +192,15 @@ final class LossyPrediction {
 
     static void predictBhepred(byte[] a, int x0, int y0, int stride) {
         int p = a[(y0 - 1) * stride + x0 - 1] & 0xFF;
-        int[] left = leftPixels(a, x0, y0, stride);
+        int left0 = a[y0 * stride + x0 - 1] & 0xFF;
+        int left1 = a[(y0 + 1) * stride + x0 - 1] & 0xFF;
+        int left2 = a[(y0 + 2) * stride + x0 - 1] & 0xFF;
+        int left3 = a[(y0 + 3) * stride + x0 - 1] & 0xFF;
         int[] avg = {
-                avg3(p, left[0], left[1]),
-                avg3(left[0], left[1], left[2]),
-                avg3(left[1], left[2], left[3]),
-                avg3(left[2], left[3], left[3])
+                avg3(p, left0, left1),
+                avg3(left0, left1, left2),
+                avg3(left1, left2, left3),
+                avg3(left2, left3, left3)
         };
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 4; x++) {
@@ -206,31 +210,52 @@ final class LossyPrediction {
     }
 
     static void predictBldpred(byte[] a, int x0, int y0, int stride) {
-        int[] top = topPixels(a, x0, y0, stride);
+        int pos = (y0 - 1) * stride + x0;
+        int top0 = a[pos] & 0xFF;
+        int top1 = a[pos + 1] & 0xFF;
+        int top2 = a[pos + 2] & 0xFF;
+        int top3 = a[pos + 3] & 0xFF;
+        int top4 = a[pos + 4] & 0xFF;
+        int top5 = a[pos + 5] & 0xFF;
+        int top6 = a[pos + 6] & 0xFF;
+        int top7 = a[pos + 7] & 0xFF;
         int[] avg = {
-                avg3(top[0], top[1], top[2]),
-                avg3(top[1], top[2], top[3]),
-                avg3(top[2], top[3], top[4]),
-                avg3(top[3], top[4], top[5]),
-                avg3(top[4], top[5], top[6]),
-                avg3(top[5], top[6], top[7]),
-                avg3(top[6], top[7], top[7])
+                avg3(top0, top1, top2),
+                avg3(top1, top2, top3),
+                avg3(top2, top3, top4),
+                avg3(top3, top4, top5),
+                avg3(top4, top5, top6),
+                avg3(top5, top6, top7),
+                avg3(top6, top7, top7)
         };
         for (int y = 0; y < 4; y++) {
-            System.arraycopy(new byte[]{(byte) avg[y], (byte) avg[y + 1], (byte) avg[y + 2], (byte) avg[y + 3]}, 0, a, (y0 + y) * stride + x0, 4);
+            int rowOffset = (y0 + y) * stride + x0;
+            a[rowOffset] = (byte) avg[y];
+            a[rowOffset + 1] = (byte) avg[y + 1];
+            a[rowOffset + 2] = (byte) avg[y + 2];
+            a[rowOffset + 3] = (byte) avg[y + 3];
         }
     }
 
     static void predictBrdpred(byte[] a, int x0, int y0, int stride) {
-        int[] e = edgePixels(a, x0, y0, stride);
+        int pos = (y0 - 1) * stride + x0 - 1;
+        int e0 = a[pos + 4 * stride] & 0xFF;
+        int e1 = a[pos + 3 * stride] & 0xFF;
+        int e2 = a[pos + 2 * stride] & 0xFF;
+        int e3 = a[pos + stride] & 0xFF;
+        int e4 = a[pos] & 0xFF;
+        int e5 = a[pos + 1] & 0xFF;
+        int e6 = a[pos + 2] & 0xFF;
+        int e7 = a[pos + 3] & 0xFF;
+        int e8 = a[pos + 4] & 0xFF;
         int[] avg = {
-                avg3(e[0], e[1], e[2]),
-                avg3(e[1], e[2], e[3]),
-                avg3(e[2], e[3], e[4]),
-                avg3(e[3], e[4], e[5]),
-                avg3(e[4], e[5], e[6]),
-                avg3(e[5], e[6], e[7]),
-                avg3(e[6], e[7], e[8])
+                avg3(e0, e1, e2),
+                avg3(e1, e2, e3),
+                avg3(e2, e3, e4),
+                avg3(e3, e4, e5),
+                avg3(e4, e5, e6),
+                avg3(e5, e6, e7),
+                avg3(e6, e7, e8)
         };
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 4; x++) {
@@ -240,83 +265,110 @@ final class LossyPrediction {
     }
 
     static void predictBvrpred(byte[] a, int x0, int y0, int stride) {
-        int[] e = edgePixels(a, x0, y0, stride);
-        a[(y0 + 3) * stride + x0] = (byte) avg3(e[1], e[2], e[3]);
-        a[(y0 + 2) * stride + x0] = (byte) avg3(e[2], e[3], e[4]);
-        a[(y0 + 3) * stride + x0 + 1] = (byte) avg3(e[3], e[4], e[5]);
-        a[(y0 + 1) * stride + x0] = (byte) avg3(e[3], e[4], e[5]);
-        a[(y0 + 2) * stride + x0 + 1] = (byte) avg2(e[4], e[5]);
-        a[y0 * stride + x0] = (byte) avg2(e[4], e[5]);
-        a[(y0 + 3) * stride + x0 + 2] = (byte) avg3(e[4], e[5], e[6]);
-        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(e[4], e[5], e[6]);
-        a[(y0 + 2) * stride + x0 + 2] = (byte) avg2(e[5], e[6]);
-        a[y0 * stride + x0 + 1] = (byte) avg2(e[5], e[6]);
-        a[(y0 + 3) * stride + x0 + 3] = (byte) avg3(e[5], e[6], e[7]);
-        a[(y0 + 1) * stride + x0 + 2] = (byte) avg3(e[5], e[6], e[7]);
-        a[(y0 + 2) * stride + x0 + 3] = (byte) avg2(e[6], e[7]);
-        a[y0 * stride + x0 + 2] = (byte) avg2(e[6], e[7]);
-        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(e[6], e[7], e[8]);
-        a[y0 * stride + x0 + 3] = (byte) avg2(e[7], e[8]);
+        int pos = (y0 - 1) * stride + x0 - 1;
+        int e1 = a[pos + 3 * stride] & 0xFF;
+        int e2 = a[pos + 2 * stride] & 0xFF;
+        int e3 = a[pos + stride] & 0xFF;
+        int e4 = a[pos] & 0xFF;
+        int e5 = a[pos + 1] & 0xFF;
+        int e6 = a[pos + 2] & 0xFF;
+        int e7 = a[pos + 3] & 0xFF;
+        int e8 = a[pos + 4] & 0xFF;
+        a[(y0 + 3) * stride + x0] = (byte) avg3(e1, e2, e3);
+        a[(y0 + 2) * stride + x0] = (byte) avg3(e2, e3, e4);
+        a[(y0 + 3) * stride + x0 + 1] = (byte) avg3(e3, e4, e5);
+        a[(y0 + 1) * stride + x0] = (byte) avg3(e3, e4, e5);
+        a[(y0 + 2) * stride + x0 + 1] = (byte) avg2(e4, e5);
+        a[y0 * stride + x0] = (byte) avg2(e4, e5);
+        a[(y0 + 3) * stride + x0 + 2] = (byte) avg3(e4, e5, e6);
+        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(e4, e5, e6);
+        a[(y0 + 2) * stride + x0 + 2] = (byte) avg2(e5, e6);
+        a[y0 * stride + x0 + 1] = (byte) avg2(e5, e6);
+        a[(y0 + 3) * stride + x0 + 3] = (byte) avg3(e5, e6, e7);
+        a[(y0 + 1) * stride + x0 + 2] = (byte) avg3(e5, e6, e7);
+        a[(y0 + 2) * stride + x0 + 3] = (byte) avg2(e6, e7);
+        a[y0 * stride + x0 + 2] = (byte) avg2(e6, e7);
+        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(e6, e7, e8);
+        a[y0 * stride + x0 + 3] = (byte) avg2(e7, e8);
     }
 
     static void predictBvlpred(byte[] a, int x0, int y0, int stride) {
-        int[] top = topPixels(a, x0, y0, stride);
-        a[y0 * stride + x0] = (byte) avg2(top[0], top[1]);
-        a[(y0 + 1) * stride + x0] = (byte) avg3(top[0], top[1], top[2]);
-        a[(y0 + 2) * stride + x0] = (byte) avg2(top[1], top[2]);
-        a[y0 * stride + x0 + 1] = (byte) avg2(top[1], top[2]);
-        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(top[1], top[2], top[3]);
-        a[(y0 + 3) * stride + x0] = (byte) avg3(top[1], top[2], top[3]);
-        a[(y0 + 2) * stride + x0 + 1] = (byte) avg2(top[2], top[3]);
-        a[y0 * stride + x0 + 2] = (byte) avg2(top[2], top[3]);
-        a[(y0 + 3) * stride + x0 + 1] = (byte) avg3(top[2], top[3], top[4]);
-        a[(y0 + 1) * stride + x0 + 2] = (byte) avg3(top[2], top[3], top[4]);
-        a[(y0 + 2) * stride + x0 + 2] = (byte) avg2(top[3], top[4]);
-        a[y0 * stride + x0 + 3] = (byte) avg2(top[3], top[4]);
-        a[(y0 + 3) * stride + x0 + 2] = (byte) avg3(top[3], top[4], top[5]);
-        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(top[3], top[4], top[5]);
-        a[(y0 + 2) * stride + x0 + 3] = (byte) avg3(top[4], top[5], top[6]);
-        a[(y0 + 3) * stride + x0 + 3] = (byte) avg3(top[5], top[6], top[7]);
+        int pos = (y0 - 1) * stride + x0;
+        int top0 = a[pos] & 0xFF;
+        int top1 = a[pos + 1] & 0xFF;
+        int top2 = a[pos + 2] & 0xFF;
+        int top3 = a[pos + 3] & 0xFF;
+        int top4 = a[pos + 4] & 0xFF;
+        int top5 = a[pos + 5] & 0xFF;
+        int top6 = a[pos + 6] & 0xFF;
+        int top7 = a[pos + 7] & 0xFF;
+        a[y0 * stride + x0] = (byte) avg2(top0, top1);
+        a[(y0 + 1) * stride + x0] = (byte) avg3(top0, top1, top2);
+        a[(y0 + 2) * stride + x0] = (byte) avg2(top1, top2);
+        a[y0 * stride + x0 + 1] = (byte) avg2(top1, top2);
+        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(top1, top2, top3);
+        a[(y0 + 3) * stride + x0] = (byte) avg3(top1, top2, top3);
+        a[(y0 + 2) * stride + x0 + 1] = (byte) avg2(top2, top3);
+        a[y0 * stride + x0 + 2] = (byte) avg2(top2, top3);
+        a[(y0 + 3) * stride + x0 + 1] = (byte) avg3(top2, top3, top4);
+        a[(y0 + 1) * stride + x0 + 2] = (byte) avg3(top2, top3, top4);
+        a[(y0 + 2) * stride + x0 + 2] = (byte) avg2(top3, top4);
+        a[y0 * stride + x0 + 3] = (byte) avg2(top3, top4);
+        a[(y0 + 3) * stride + x0 + 2] = (byte) avg3(top3, top4, top5);
+        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(top3, top4, top5);
+        a[(y0 + 2) * stride + x0 + 3] = (byte) avg3(top4, top5, top6);
+        a[(y0 + 3) * stride + x0 + 3] = (byte) avg3(top5, top6, top7);
     }
 
     static void predictBhdpred(byte[] a, int x0, int y0, int stride) {
-        int[] e = edgePixels(a, x0, y0, stride);
-        a[(y0 + 3) * stride + x0] = (byte) avg2(e[0], e[1]);
-        a[(y0 + 3) * stride + x0 + 1] = (byte) avg3(e[0], e[1], e[2]);
-        a[(y0 + 2) * stride + x0] = (byte) avg2(e[1], e[2]);
-        a[(y0 + 3) * stride + x0 + 2] = (byte) avg2(e[1], e[2]);
-        a[(y0 + 2) * stride + x0 + 1] = (byte) avg3(e[1], e[2], e[3]);
-        a[(y0 + 3) * stride + x0 + 3] = (byte) avg3(e[1], e[2], e[3]);
-        a[(y0 + 2) * stride + x0 + 2] = (byte) avg2(e[2], e[3]);
-        a[(y0 + 1) * stride + x0] = (byte) avg2(e[2], e[3]);
-        a[(y0 + 2) * stride + x0 + 3] = (byte) avg3(e[2], e[3], e[4]);
-        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(e[2], e[3], e[4]);
-        a[(y0 + 1) * stride + x0 + 2] = (byte) avg2(e[3], e[4]);
-        a[y0 * stride + x0] = (byte) avg2(e[3], e[4]);
-        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(e[3], e[4], e[5]);
-        a[y0 * stride + x0 + 1] = (byte) avg3(e[3], e[4], e[5]);
-        a[y0 * stride + x0 + 2] = (byte) avg3(e[4], e[5], e[6]);
-        a[y0 * stride + x0 + 3] = (byte) avg3(e[5], e[6], e[7]);
+        int pos = (y0 - 1) * stride + x0 - 1;
+        int e0 = a[pos + 4 * stride] & 0xFF;
+        int e1 = a[pos + 3 * stride] & 0xFF;
+        int e2 = a[pos + 2 * stride] & 0xFF;
+        int e3 = a[pos + stride] & 0xFF;
+        int e4 = a[pos] & 0xFF;
+        int e5 = a[pos + 1] & 0xFF;
+        int e6 = a[pos + 2] & 0xFF;
+        int e7 = a[pos + 3] & 0xFF;
+        a[(y0 + 3) * stride + x0] = (byte) avg2(e0, e1);
+        a[(y0 + 3) * stride + x0 + 1] = (byte) avg3(e0, e1, e2);
+        a[(y0 + 2) * stride + x0] = (byte) avg2(e1, e2);
+        a[(y0 + 3) * stride + x0 + 2] = (byte) avg2(e1, e2);
+        a[(y0 + 2) * stride + x0 + 1] = (byte) avg3(e1, e2, e3);
+        a[(y0 + 3) * stride + x0 + 3] = (byte) avg3(e1, e2, e3);
+        a[(y0 + 2) * stride + x0 + 2] = (byte) avg2(e2, e3);
+        a[(y0 + 1) * stride + x0] = (byte) avg2(e2, e3);
+        a[(y0 + 2) * stride + x0 + 3] = (byte) avg3(e2, e3, e4);
+        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(e2, e3, e4);
+        a[(y0 + 1) * stride + x0 + 2] = (byte) avg2(e3, e4);
+        a[y0 * stride + x0] = (byte) avg2(e3, e4);
+        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(e3, e4, e5);
+        a[y0 * stride + x0 + 1] = (byte) avg3(e3, e4, e5);
+        a[y0 * stride + x0 + 2] = (byte) avg3(e4, e5, e6);
+        a[y0 * stride + x0 + 3] = (byte) avg3(e5, e6, e7);
     }
 
     static void predictBhupred(byte[] a, int x0, int y0, int stride) {
-        int[] left = leftPixels(a, x0, y0, stride);
-        a[y0 * stride + x0] = (byte) avg2(left[0], left[1]);
-        a[y0 * stride + x0 + 1] = (byte) avg3(left[0], left[1], left[2]);
-        a[y0 * stride + x0 + 2] = (byte) avg2(left[1], left[2]);
-        a[(y0 + 1) * stride + x0] = (byte) avg2(left[1], left[2]);
-        a[y0 * stride + x0 + 3] = (byte) avg3(left[1], left[2], left[3]);
-        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(left[1], left[2], left[3]);
-        a[(y0 + 1) * stride + x0 + 2] = (byte) avg2(left[2], left[3]);
-        a[(y0 + 2) * stride + x0] = (byte) avg2(left[2], left[3]);
-        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(left[2], left[3], left[3]);
-        a[(y0 + 2) * stride + x0 + 1] = (byte) avg3(left[2], left[3], left[3]);
-        a[(y0 + 2) * stride + x0 + 2] = (byte) left[3];
-        a[(y0 + 2) * stride + x0 + 3] = (byte) left[3];
-        a[(y0 + 3) * stride + x0] = (byte) left[3];
-        a[(y0 + 3) * stride + x0 + 1] = (byte) left[3];
-        a[(y0 + 3) * stride + x0 + 2] = (byte) left[3];
-        a[(y0 + 3) * stride + x0 + 3] = (byte) left[3];
+        int left0 = a[y0 * stride + x0 - 1] & 0xFF;
+        int left1 = a[(y0 + 1) * stride + x0 - 1] & 0xFF;
+        int left2 = a[(y0 + 2) * stride + x0 - 1] & 0xFF;
+        int left3 = a[(y0 + 3) * stride + x0 - 1] & 0xFF;
+        a[y0 * stride + x0] = (byte) avg2(left0, left1);
+        a[y0 * stride + x0 + 1] = (byte) avg3(left0, left1, left2);
+        a[y0 * stride + x0 + 2] = (byte) avg2(left1, left2);
+        a[(y0 + 1) * stride + x0] = (byte) avg2(left1, left2);
+        a[y0 * stride + x0 + 3] = (byte) avg3(left1, left2, left3);
+        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(left1, left2, left3);
+        a[(y0 + 1) * stride + x0 + 2] = (byte) avg2(left2, left3);
+        a[(y0 + 2) * stride + x0] = (byte) avg2(left2, left3);
+        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(left2, left3, left3);
+        a[(y0 + 2) * stride + x0 + 1] = (byte) avg3(left2, left3, left3);
+        a[(y0 + 2) * stride + x0 + 2] = (byte) left3;
+        a[(y0 + 2) * stride + x0 + 3] = (byte) left3;
+        a[(y0 + 3) * stride + x0] = (byte) left3;
+        a[(y0 + 3) * stride + x0 + 1] = (byte) left3;
+        a[(y0 + 3) * stride + x0 + 2] = (byte) left3;
+        a[(y0 + 3) * stride + x0 + 3] = (byte) left3;
     }
 
     static int avg3(int left, int center, int right) {
@@ -327,41 +379,4 @@ final class LossyPrediction {
         return (left + right + 1) >> 1;
     }
 
-    static int[] topPixels(byte[] a, int x0, int y0, int stride) {
-        int pos = (y0 - 1) * stride + x0;
-        return new int[]{
-                a[pos] & 0xFF,
-                a[pos + 1] & 0xFF,
-                a[pos + 2] & 0xFF,
-                a[pos + 3] & 0xFF,
-                a[pos + 4] & 0xFF,
-                a[pos + 5] & 0xFF,
-                a[pos + 6] & 0xFF,
-                a[pos + 7] & 0xFF
-        };
-    }
-
-    private static int[] leftPixels(byte[] a, int x0, int y0, int stride) {
-        return new int[]{
-                a[y0 * stride + x0 - 1] & 0xFF,
-                a[(y0 + 1) * stride + x0 - 1] & 0xFF,
-                a[(y0 + 2) * stride + x0 - 1] & 0xFF,
-                a[(y0 + 3) * stride + x0 - 1] & 0xFF
-        };
-    }
-
-    static int[] edgePixels(byte[] a, int x0, int y0, int stride) {
-        int pos = (y0 - 1) * stride + x0 - 1;
-        return new int[]{
-                a[pos + 4 * stride] & 0xFF,
-                a[pos + 3 * stride] & 0xFF,
-                a[pos + 2 * stride] & 0xFF,
-                a[pos + stride] & 0xFF,
-                a[pos] & 0xFF,
-                a[pos + 1] & 0xFF,
-                a[pos + 2] & 0xFF,
-                a[pos + 3] & 0xFF,
-                a[pos + 4] & 0xFF
-        };
-    }
 }

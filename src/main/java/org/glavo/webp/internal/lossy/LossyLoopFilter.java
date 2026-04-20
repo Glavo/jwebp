@@ -30,9 +30,9 @@ final class LossyLoopFilter {
         }
     }
 
-    static void simpleSegmentHorizontal(int edgeLimit, byte[] pixels) {
-        if (simpleThresholdHorizontal(edgeLimit, pixels)) {
-            commonAdjustHorizontal(true, pixels);
+    static void simpleSegmentHorizontal(int edgeLimit, byte[] pixels, int start) {
+        if (simpleThresholdHorizontal(edgeLimit, pixels, start)) {
+            commonAdjustHorizontal(true, pixels, start);
         }
     }
 
@@ -47,13 +47,13 @@ final class LossyLoopFilter {
         }
     }
 
-    static void subblockFilterHorizontal(int hevThreshold, int interiorLimit, int edgeLimit, byte[] pixels) {
-        if (shouldFilterHorizontal(interiorLimit, edgeLimit, pixels)) {
-            boolean hev = highEdgeVarianceHorizontal(hevThreshold, pixels);
-            int adjustment = (commonAdjustHorizontal(hev, pixels) + 1) >> 1;
+    static void subblockFilterHorizontal(int hevThreshold, int interiorLimit, int edgeLimit, byte[] pixels, int start) {
+        if (shouldFilterHorizontal(interiorLimit, edgeLimit, pixels, start)) {
+            boolean hev = highEdgeVarianceHorizontal(hevThreshold, pixels, start);
+            int adjustment = (commonAdjustHorizontal(hev, pixels, start) + 1) >> 1;
             if (!hev) {
-                pixels[5] = signedToUnsigned(unsignedToSigned(pixels[5]) - adjustment);
-                pixels[2] = signedToUnsigned(unsignedToSigned(pixels[2]) + adjustment);
+                pixels[start + 5] = signedToUnsigned(unsignedToSigned(pixels[start + 5]) - adjustment);
+                pixels[start + 2] = signedToUnsigned(unsignedToSigned(pixels[start + 2]) + adjustment);
             }
         }
     }
@@ -87,31 +87,31 @@ final class LossyLoopFilter {
         }
     }
 
-    static void macroblockFilterHorizontal(int hevThreshold, int interiorLimit, int edgeLimit, byte[] pixels) {
-        if (shouldFilterHorizontal(interiorLimit, edgeLimit, pixels)) {
-            if (!highEdgeVarianceHorizontal(hevThreshold, pixels)) {
-                int p2 = unsignedToSigned(pixels[1]);
-                int p1 = unsignedToSigned(pixels[2]);
-                int p0 = unsignedToSigned(pixels[3]);
-                int q0 = unsignedToSigned(pixels[4]);
-                int q1 = unsignedToSigned(pixels[5]);
-                int q2 = unsignedToSigned(pixels[6]);
+    static void macroblockFilterHorizontal(int hevThreshold, int interiorLimit, int edgeLimit, byte[] pixels, int start) {
+        if (shouldFilterHorizontal(interiorLimit, edgeLimit, pixels, start)) {
+            if (!highEdgeVarianceHorizontal(hevThreshold, pixels, start)) {
+                int p2 = unsignedToSigned(pixels[start + 1]);
+                int p1 = unsignedToSigned(pixels[start + 2]);
+                int p0 = unsignedToSigned(pixels[start + 3]);
+                int q0 = unsignedToSigned(pixels[start + 4]);
+                int q1 = unsignedToSigned(pixels[start + 5]);
+                int q2 = unsignedToSigned(pixels[start + 6]);
 
                 int w = clampSigned(clampSigned(p1 - q1) + 3 * (q0 - p0));
 
                 int adjustment = clampSigned((27 * w + 63) >> 7);
-                pixels[4] = signedToUnsigned(q0 - adjustment);
-                pixels[3] = signedToUnsigned(p0 + adjustment);
+                pixels[start + 4] = signedToUnsigned(q0 - adjustment);
+                pixels[start + 3] = signedToUnsigned(p0 + adjustment);
 
                 adjustment = clampSigned((18 * w + 63) >> 7);
-                pixels[5] = signedToUnsigned(q1 - adjustment);
-                pixels[2] = signedToUnsigned(p1 + adjustment);
+                pixels[start + 5] = signedToUnsigned(q1 - adjustment);
+                pixels[start + 2] = signedToUnsigned(p1 + adjustment);
 
                 adjustment = clampSigned((9 * w + 63) >> 7);
-                pixels[6] = signedToUnsigned(q2 - adjustment);
-                pixels[1] = signedToUnsigned(p2 + adjustment);
+                pixels[start + 6] = signedToUnsigned(q2 - adjustment);
+                pixels[start + 1] = signedToUnsigned(p2 + adjustment);
             } else {
-                commonAdjustHorizontal(true, pixels);
+                commonAdjustHorizontal(true, pixels, start);
             }
         }
     }
@@ -132,19 +132,19 @@ final class LossyLoopFilter {
         return a;
     }
 
-    private static int commonAdjustHorizontal(boolean useOuterTaps, byte[] pixels) {
-        int p1 = unsignedToSigned(pixels[2]);
-        int p0 = unsignedToSigned(pixels[3]);
-        int q0 = unsignedToSigned(pixels[4]);
-        int q1 = unsignedToSigned(pixels[5]);
+    private static int commonAdjustHorizontal(boolean useOuterTaps, byte[] pixels, int start) {
+        int p1 = unsignedToSigned(pixels[start + 2]);
+        int p0 = unsignedToSigned(pixels[start + 3]);
+        int q0 = unsignedToSigned(pixels[start + 4]);
+        int q1 = unsignedToSigned(pixels[start + 5]);
 
         int outer = useOuterTaps ? clampSigned(p1 - q1) : 0;
         int a = clampSigned(outer + 3 * (q0 - p0));
         int b = clampSigned(a + 3) >> 3;
         a = clampSigned(a + 4) >> 3;
 
-        pixels[4] = signedToUnsigned(q0 - a);
-        pixels[3] = signedToUnsigned(p0 + b);
+        pixels[start + 4] = signedToUnsigned(q0 - a);
+        pixels[start + 3] = signedToUnsigned(p0 + b);
         return a;
     }
 
@@ -154,8 +154,10 @@ final class LossyLoopFilter {
                 <= filterLimit;
     }
 
-    private static boolean simpleThresholdHorizontal(int filterLimit, byte[] pixels) {
-        return diff(pixels[3], pixels[4]) * 2 + diff(pixels[2], pixels[5]) / 2 <= filterLimit;
+    private static boolean simpleThresholdHorizontal(int filterLimit, byte[] pixels, int start) {
+        return diff(pixels[start + 3], pixels[start + 4]) * 2
+                + diff(pixels[start + 2], pixels[start + 5]) / 2
+                <= filterLimit;
     }
 
     private static boolean shouldFilterVertical(int interiorLimit, int edgeLimit, byte[] pixels, int point, int stride) {
@@ -168,14 +170,14 @@ final class LossyLoopFilter {
                 && diff(pixels[point + stride], pixels[point]) <= interiorLimit;
     }
 
-    private static boolean shouldFilterHorizontal(int interiorLimit, int edgeLimit, byte[] pixels) {
-        return simpleThresholdHorizontal(edgeLimit, pixels)
-                && diff(pixels[0], pixels[1]) <= interiorLimit
-                && diff(pixels[1], pixels[2]) <= interiorLimit
-                && diff(pixels[2], pixels[3]) <= interiorLimit
-                && diff(pixels[7], pixels[6]) <= interiorLimit
-                && diff(pixels[6], pixels[5]) <= interiorLimit
-                && diff(pixels[5], pixels[4]) <= interiorLimit;
+    private static boolean shouldFilterHorizontal(int interiorLimit, int edgeLimit, byte[] pixels, int start) {
+        return simpleThresholdHorizontal(edgeLimit, pixels, start)
+                && diff(pixels[start], pixels[start + 1]) <= interiorLimit
+                && diff(pixels[start + 1], pixels[start + 2]) <= interiorLimit
+                && diff(pixels[start + 2], pixels[start + 3]) <= interiorLimit
+                && diff(pixels[start + 7], pixels[start + 6]) <= interiorLimit
+                && diff(pixels[start + 6], pixels[start + 5]) <= interiorLimit
+                && diff(pixels[start + 5], pixels[start + 4]) <= interiorLimit;
     }
 
     private static boolean highEdgeVarianceVertical(int threshold, byte[] pixels, int point, int stride) {
@@ -183,8 +185,9 @@ final class LossyLoopFilter {
                 || diff(pixels[point + stride], pixels[point]) > threshold;
     }
 
-    private static boolean highEdgeVarianceHorizontal(int threshold, byte[] pixels) {
-        return diff(pixels[2], pixels[3]) > threshold || diff(pixels[5], pixels[4]) > threshold;
+    private static boolean highEdgeVarianceHorizontal(int threshold, byte[] pixels, int start) {
+        return diff(pixels[start + 2], pixels[start + 3]) > threshold
+                || diff(pixels[start + 5], pixels[start + 4]) > threshold;
     }
 
     private static int clampSigned(int value) {

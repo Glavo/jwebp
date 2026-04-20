@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 /// Unit tests for packed-`ARGB` scaling.
 @NotNullByDefault
@@ -76,7 +76,7 @@ final class PixelScalerTest {
     }
 
     @Test
-    void noOpScalingReturnsCopyOfSource() {
+    void noOpScalingReturnsSourceArray() {
         int[] source = {
                 Argb.pack(255, 1, 2, 3),
                 Argb.pack(255, 4, 5, 6),
@@ -87,6 +87,6 @@ final class PixelScalerTest {
         int[] scaled = PixelScaler.scaleArgb(source, 2, 2, new ScalePlan(2, 2, 2, 2, true));
 
         assertArrayEquals(source, scaled);
-        assertNotSame(source, scaled);
+        assertSame(source, scaled);
     }
 }

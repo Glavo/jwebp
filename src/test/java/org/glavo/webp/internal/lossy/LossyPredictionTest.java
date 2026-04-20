@@ -72,7 +72,7 @@ final class LossyPredictionTest {
                 1, 0, 0, 0, 0
         );
 
-        assertArrayEquals(new int[]{1, 2, 3, 4, 5, 6, 7, 8, 9}, LossyPrediction.edgePixels(image, 1, 1, 5));
+        assertArrayEquals(new int[]{1, 2, 3, 4, 5, 6, 7, 8, 9}, edgePixels(image, 1, 1, 5));
     }
 
     @Test
@@ -88,7 +88,7 @@ final class LossyPredictionTest {
                 0, 0, 0, 0, 0, 0, 0, 0
         );
 
-        assertArrayEquals(new int[]{1, 2, 3, 4, 5, 6, 7, 8}, LossyPrediction.topPixels(image, 0, 1, 8));
+        assertArrayEquals(new int[]{1, 2, 3, 4, 5, 6, 7, 8}, topPixels(image, 0, 1, 8));
     }
 
     @Test
@@ -234,5 +234,34 @@ final class LossyPredictionTest {
             bytes[i] = (byte) values[i];
         }
         return bytes;
+    }
+
+    private static int[] topPixels(byte[] a, int x0, int y0, int stride) {
+        int pos = (y0 - 1) * stride + x0;
+        return new int[]{
+                a[pos] & 0xFF,
+                a[pos + 1] & 0xFF,
+                a[pos + 2] & 0xFF,
+                a[pos + 3] & 0xFF,
+                a[pos + 4] & 0xFF,
+                a[pos + 5] & 0xFF,
+                a[pos + 6] & 0xFF,
+                a[pos + 7] & 0xFF
+        };
+    }
+
+    private static int[] edgePixels(byte[] a, int x0, int y0, int stride) {
+        int pos = (y0 - 1) * stride + x0 - 1;
+        return new int[]{
+                a[pos + 4 * stride] & 0xFF,
+                a[pos + 3 * stride] & 0xFF,
+                a[pos + 2 * stride] & 0xFF,
+                a[pos + stride] & 0xFF,
+                a[pos] & 0xFF,
+                a[pos + 1] & 0xFF,
+                a[pos + 2] & 0xFF,
+                a[pos + 3] & 0xFF,
+                a[pos + 4] & 0xFF
+        };
     }
 }

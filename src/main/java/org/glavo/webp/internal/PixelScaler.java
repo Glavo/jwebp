@@ -15,7 +15,6 @@
  */
 package org.glavo.webp.internal;
 
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNullByDefault;
 
 /// Pure packed-`ARGB` scaling routines used by the decoder backend.
@@ -35,11 +34,10 @@ public final class PixelScaler {
     /// @param sourceWidth the source width
     /// @param sourceHeight the source height
     /// @param scalePlan the scaling configuration
-    /// @return the scaled `ARGB` pixels, or a copy of the source if scaling is not required
-    @Contract("_, _, _, _ -> new")
+    /// @return the scaled `ARGB` pixels, or the original array if scaling is not required
     public static int[] scaleArgb(int[] source, int sourceWidth, int sourceHeight, ScalePlan scalePlan) {
         if (sourceWidth == scalePlan.targetWidth() && sourceHeight == scalePlan.targetHeight()) {
-            return source.clone();
+            return source;
         }
 
         return scalePlan.smooth()
