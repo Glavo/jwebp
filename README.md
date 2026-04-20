@@ -90,6 +90,21 @@ javafx.scene.image.Image _ = new WebPFXImage(WebPImage.read(...));
 javafx.scene.image.Image _ = new WebPFXImage(WebPFrame.read(...).getFirstFrame());
 ```
 
+### Swing Integration
+
+JWebP provides an optional Swing integration component located in the `org.glavo.webp.swing` package, 
+which can easily convert `WebPImage` to Swing `BufferedImage`:
+
+```java
+// Create a Swing image from a WebPImage.
+BufferedImage _ = WebPSwingUtils.fromWebPImage(WebPImage.read(...));
+
+// Create a Swing image from a WebPFrame.
+BufferedImage _ = WebPSwingUtils.fromWebPImage(WebPImage.read(...).getFirstFrame());
+```
+
+Currently, it only supports creating static `BufferedImage`, does not support animation and `ImageIO`.
+
 ## Testing
 
 Run all tests:
