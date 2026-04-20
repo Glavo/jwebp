@@ -75,6 +75,20 @@ final class BufferedInputTest {
     }
 
     @Test
+    void readsUnsignedInt24LE() throws Exception {
+        try (BufferedInput input = new BufferedInput.OfByteBuffer(ByteBuffer.wrap(new byte[]{0x56, 0x34, 0x12}))) {
+            assertEquals(0x123456, input.readUnsignedInt24LE());
+        }
+    }
+
+    @Test
+    void truncatedUnsignedInt24LEThrowsWebPException() throws Exception {
+        try (BufferedInput input = new BufferedInput.OfByteBuffer(ByteBuffer.wrap(new byte[]{1, 2}))) {
+            assertThrows(WebPException.class, input::readUnsignedInt24LE);
+        }
+    }
+
+    @Test
     void truncatedInputThrowsWebPException() throws Exception {
         try (BufferedInput input = new BufferedInput.OfByteBuffer(ByteBuffer.wrap(new byte[]{1, 2, 3}))) {
             assertThrows(WebPException.class, input::readIntLE);

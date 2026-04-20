@@ -229,6 +229,17 @@ public sealed abstract class BufferedInput implements Closeable {
         return Short.toUnsignedInt(readShortLE());
     }
 
+    /// Reads an unsigned 24-bit little-endian integer.
+    ///
+    /// @return the next unsigned 24-bit value widened to `int`
+    /// @throws IOException if the source is truncated, closed, or unreadable
+    public int readUnsignedInt24LE() throws IOException {
+        ensureBufferRemaining(3);
+        return Byte.toUnsignedInt(buffer.get())
+                | (Byte.toUnsignedInt(buffer.get()) << 8)
+                | (Byte.toUnsignedInt(buffer.get()) << 16);
+    }
+
     /// Reads a signed 32-bit little-endian integer.
     ///
     /// @return the next int value
@@ -302,6 +313,27 @@ public sealed abstract class BufferedInput implements Closeable {
             } finally {
                 buffer1.flip();
             }
+        }
+
+        @Override
+        public void skip(long len) throws IOException {
+            if (len < 0) {
+                throw new IllegalArgumentException("len < 0: " + len);
+            }
+            if (len == 0) {
+                ensureOpen();
+                return;
+            }
+
+            ensureOpen();
+
+            long remaining = len - skipBufferedBytes(len);
+            if (remaining == 0) {
+                return;
+            }
+
+            clearBuffer();
+            InputStreams.skipFully(input, remaining);
         }
 
         @Override
