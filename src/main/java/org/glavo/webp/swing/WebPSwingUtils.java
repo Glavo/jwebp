@@ -20,8 +20,9 @@ import org.glavo.webp.WebPImage;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
+import java.awt.AlphaComposite;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferInt;
 import java.util.Objects;
 
 /// Swing helpers for converting decoded WebP content into `BufferedImage` instances.
@@ -43,8 +44,8 @@ public final class WebPSwingUtils {
     /// Writes the first frame of a decoded WebP image into a `BufferedImage`.
     ///
     /// Animated WebP images are converted using their first presentation frame. If `bimg`
-    /// is `null`, has a different size, or is not `TYPE_INT_ARGB`, a replacement image is
-    /// allocated and returned.
+    /// is `null`, is too small, or is not `TYPE_INT_ARGB` / `TYPE_INT_ARGB_PRE`, a replacement
+    /// image is allocated and returned.
     ///
     /// @param img the decoded WebP image
     /// @param bimg the optional destination image to reuse
@@ -64,8 +65,8 @@ public final class WebPSwingUtils {
 
     /// Writes one decoded WebP frame into a `BufferedImage`.
     ///
-    /// If `bimg` is `null`, has a different size, or is not `TYPE_INT_ARGB`, a replacement
-    /// image is allocated and returned.
+    /// If `bimg` is `null`, is too small, or is not `TYPE_INT_ARGB` / `TYPE_INT_ARGB_PRE`,
+    /// a replacement image is allocated and returned.
     ///
     /// @param frame the decoded frame
     /// @param bimg the optional destination image to reuse
@@ -76,16 +77,22 @@ public final class WebPSwingUtils {
         int width = frame.getWidth();
         int height = frame.getHeight();
 
-        BufferedImage output = bimg;
-        if (output == null
-                || output.getWidth() != width
-                || output.getHeight() != height
-                || output.getType() != BufferedImage.TYPE_INT_ARGB) {
-            output = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        if (bimg == null
+                || bimg.getWidth() < width
+                || bimg.getHeight() < height
+                || !(bimg.getType() == BufferedImage.TYPE_INT_ARGB || bimg.getType() == BufferedImage.TYPE_INT_ARGB_PRE)) {
+            bimg = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        } else if (bimg.getWidth() != width || bimg.getHeight() != height) {
+            Graphics2D graphics = bimg.createGraphics();
+            try {
+                graphics.setComposite(AlphaComposite.Clear);
+                graphics.fillRect(0, 0, bimg.getWidth(), bimg.getHeight());
+            } finally {
+                graphics.dispose();
+            }
         }
 
-        DataBufferInt dataBuffer = (DataBufferInt) output.getRaster().getDataBuffer();
-        frame.getArgbPixels().get(dataBuffer.getData(), 0, width * height);
-        return output;
+        bimg.setRGB(0, 0, width, height, frame.getArgbArray(), 0, frame.getScanlineStride());
+        return bimg;
     }
 }
