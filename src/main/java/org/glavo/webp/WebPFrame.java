@@ -18,6 +18,7 @@ package org.glavo.webp;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.nio.IntBuffer;
+import java.util.Objects;
 
 /// A decoded frame represented as tightly packed non-premultiplied `ARGB` pixels.
 ///
@@ -78,6 +79,17 @@ public final class WebPFrame {
     /// @return the presentation duration, or `0` for still images
     public int getDurationMillis() {
         return durationMillis;
+    }
+
+    /// Returns the `ARGB` pixel at the given coordinates.
+    ///
+    /// @param x the horizontal coordinate in pixels
+    /// @param y the vertical coordinate in pixels
+    /// @return the packed `ARGB` pixel value
+    public int getArgb(int x, int y) {
+        Objects.checkIndex(x, width);
+        Objects.checkIndex(y, height);
+        return argbPixels[y * width + x];
     }
 
     /// Returns a read-only view of the underlying `ARGB` pixel buffer.

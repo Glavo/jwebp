@@ -110,31 +110,6 @@ final class WebPSwingUtilsTest {
     }
 
     @Test
-    void reusesPremultipliedArgbDestinationImage() {
-        int argb = 0x55336699;
-        WebPImage image = new WebPImage(
-                1,
-                1,
-                1,
-                1,
-                true,
-                false,
-                false,
-                1,
-                0,
-                WebPMetadata.empty(),
-                List.of(new WebPFrame(1, 1, 0, new int[]{argb}))
-        );
-        BufferedImage destination = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB_PRE);
-
-        BufferedImage converted = WebPSwingUtils.fromWebPImage(image, destination);
-
-        assertSame(destination, converted);
-        assertEquals(BufferedImage.TYPE_INT_ARGB_PRE, converted.getType());
-        assertEquals(argb, converted.getRGB(0, 0));
-    }
-
-    @Test
     void replacesIncompatibleDestinationImage() {
         WebPImage image = new WebPImage(
                 1,

@@ -17,6 +17,7 @@ package org.glavo.webp.swing;
 
 import org.glavo.webp.WebPFrame;
 import org.glavo.webp.WebPImage;
+import org.glavo.webp.internal.Argb;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -47,7 +48,7 @@ public final class WebPSwingUtils {
     /// is `null`, is too small, or is not `TYPE_INT_ARGB` / `TYPE_INT_ARGB_PRE`, a replacement
     /// image is allocated and returned.
     ///
-    /// @param img the decoded WebP image
+    /// @param img  the decoded WebP image
     /// @param bimg the optional destination image to reuse
     /// @return the destination image containing the converted pixels
     public static BufferedImage fromWebPImage(WebPImage img, @Nullable BufferedImage bimg) {
@@ -66,33 +67,70 @@ public final class WebPSwingUtils {
     /// Writes one decoded WebP frame into a `BufferedImage`.
     ///
     /// If `bimg` is `null`, is too small, or is not `TYPE_INT_ARGB` / `TYPE_INT_ARGB_PRE`,
-    /// a replacement image is allocated and returned.
+    /// a replacement image is allocated and returned. A `TYPE_INT_RGB` destination can also
+    /// be reused when the frame is fully opaque.
     ///
     /// @param frame the decoded frame
-    /// @param bimg the optional destination image to reuse
+    /// @param bimg  the optional destination image to reuse
     /// @return the destination image containing the converted pixels
     public static BufferedImage fromWebPFrame(WebPFrame frame, @Nullable BufferedImage bimg) {
         Objects.requireNonNull(frame, "frame");
 
-        int width = frame.getWidth();
-        int height = frame.getHeight();
+        int fw = frame.getWidth();
+        int fh = frame.getHeight();
+        int[] pixels = frame.getArgbArray();
 
-        if (bimg == null
-                || bimg.getWidth() < width
-                || bimg.getHeight() < height
-                || !(bimg.getType() == BufferedImage.TYPE_INT_ARGB || bimg.getType() == BufferedImage.TYPE_INT_ARGB_PRE)) {
-            bimg = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        } else if (bimg.getWidth() != width || bimg.getHeight() != height) {
-            Graphics2D graphics = bimg.createGraphics();
-            try {
-                graphics.setComposite(AlphaComposite.Clear);
-                graphics.fillRect(0, 0, bimg.getWidth(), bimg.getHeight());
-            } finally {
-                graphics.dispose();
+        checkBimg:
+        if (bimg != null) {
+            switch (bimg.getType()) {
+                case BufferedImage.TYPE_INT_ARGB -> {
+                    // Ok
+                }
+                case BufferedImage.TYPE_INT_RGB, BufferedImage.TYPE_INT_ARGB_PRE -> {
+                    if (!checkWebPFrameOpaque(pixels)) {
+                        bimg = null;
+                        break checkBimg;
+                    }
+                }
+                default -> {
+                    // Unsupported pixel type
+                    bimg = null;
+                    break checkBimg;
+                }
+            }
+
+            int bw = bimg.getWidth();
+            int bh = bimg.getHeight();
+            if (bw < fw || bh < fh) {
+                bimg = null;
+                break checkBimg;
+            }
+
+            if (fw < bw || fh < bh) {
+                Graphics2D g2d = bimg.createGraphics();
+                try {
+                    g2d.setComposite(AlphaComposite.Clear);
+                    g2d.fillRect(0, 0, bw, bh);
+                } finally {
+                    g2d.dispose();
+                }
             }
         }
 
-        bimg.setRGB(0, 0, width, height, frame.getArgbArray(), 0, frame.getScanlineStride());
+        if (bimg == null) {
+            bimg = new BufferedImage(fw, fh, BufferedImage.TYPE_INT_ARGB);
+        }
+        bimg.setRGB(0, 0, fw, fh, pixels, 0, fw);
         return bimg;
     }
+
+    private static boolean checkWebPFrameOpaque(int[] pixels) {
+        for (int pixel : pixels) {
+            if (Argb.alpha(pixel) != 0xFF) {
+                return false;
+            }
+        }
+        return true;
+    }
+
 }
