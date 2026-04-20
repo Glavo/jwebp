@@ -19,7 +19,9 @@ import org.glavo.webp.swing.WebPSwingUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.InputStream;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,6 +31,24 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 /// Tests for the Swing WebP image adapter.
 @NotNullByDefault
 final class WebPSwingUtilsTest {
+
+    @Test
+    void convertsDecodedStaticImageToBufferedImage() throws Exception {
+        WebPImage image = WebPImage.read(resource("images/regression-tiny.webp"));
+
+        BufferedImage converted = WebPSwingUtils.fromWebPImage(image);
+
+        assertBufferedImageEquals(converted, "reference/regression-tiny.png");
+    }
+
+    @Test
+    void convertsDecodedAnimatedImageToFirstBufferedFrame() throws Exception {
+        WebPImage image = WebPImage.read(resource("images/animated-random_lossless.webp"));
+
+        BufferedImage converted = WebPSwingUtils.fromWebPImage(image);
+
+        assertBufferedImageEquals(converted, "reference/animated/random_lossless-1.png");
+    }
 
     @Test
     void convertsAnimatedImageUsingFirstFrame() {
@@ -131,5 +151,28 @@ final class WebPSwingUtilsTest {
         assertNotSame(destination, converted);
         assertEquals(BufferedImage.TYPE_INT_ARGB, converted.getType());
         assertEquals(0x7F010203, converted.getRGB(0, 0));
+    }
+
+    private static void assertBufferedImageEquals(BufferedImage actual, String expectedPath) throws Exception {
+        BufferedImage expected;
+        try (InputStream input = resource(expectedPath)) {
+            expected = ImageIO.read(input);
+        }
+
+        assertEquals(expected.getWidth(), actual.getWidth());
+        assertEquals(expected.getHeight(), actual.getHeight());
+        for (int y = 0; y < expected.getHeight(); y++) {
+            for (int x = 0; x < expected.getWidth(); x++) {
+                assertEquals(expected.getRGB(x, y), actual.getRGB(x, y), "Pixel mismatch at (" + x + ", " + y + ")");
+            }
+        }
+    }
+
+    private static InputStream resource(String path) {
+        InputStream input = WebPSwingUtilsTest.class.getClassLoader().getResourceAsStream(path);
+        if (input == null) {
+            throw new IllegalArgumentException("Missing test resource: " + path);
+        }
+        return input;
     }
 }

@@ -17,12 +17,16 @@ package org.glavo.webp;
 
 import javafx.animation.Animation;
 import javafx.application.Platform;
+import javafx.scene.image.PixelReader;
 import javafx.util.Duration;
 import org.glavo.webp.javafx.WebPFXImage;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.InputStream;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -53,6 +57,16 @@ final class WebPFXImageTest {
     }
 
     @Test
+    void javaFxImageFromDecodedStaticImageMatchesPixels() throws Exception {
+        WebPImage decoded = WebPImage.read(resource("images/regression-tiny.webp"));
+
+        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(decoded));
+
+        assertNull(callOnFxThread(image::getAnimation));
+        assertJavaFxImageEquals(image, "reference/regression-tiny.png");
+    }
+
+    @Test
     void javaFxImageFromDecodedImageStartsPausedOnFirstFrame() throws Exception {
         WebPImage decoded = animatedImage(0, frame(RED, 40), frame(GREEN, 40), frame(BLUE, 40));
 
@@ -65,6 +79,21 @@ final class WebPFXImageTest {
 
         assertNotNull(animation);
         assertEquals(RED, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
+    }
+
+    @Test
+    void javaFxImageFromDecodedAnimatedImageMatchesFirstFrame() throws Exception {
+        WebPImage decoded = WebPImage.read(resource("images/animated-random_lossless.webp"));
+
+        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(decoded, false));
+        Animation animation = callOnFxThread(() -> {
+            Animation value = image.getAnimation();
+            assertNotNull(value);
+            return value;
+        });
+
+        assertNotNull(animation);
+        assertJavaFxImageEquals(image, "reference/animated/random_lossless-1.png");
     }
 
     @Test
@@ -220,6 +249,35 @@ final class WebPFXImageTest {
 
     private static WebPFrame frame(int argb, int durationMillis) {
         return new WebPFrame(1, 1, durationMillis, new int[]{argb});
+    }
+
+    private static void assertJavaFxImageEquals(WebPFXImage image, String expectedPath) throws Exception {
+        BufferedImage expected;
+        try (InputStream input = resource(expectedPath)) {
+            expected = ImageIO.read(input);
+        }
+
+        callOnFxThread(() -> {
+            PixelReader pixelReader = image.getPixelReader();
+            assertNotNull(pixelReader);
+            assertEquals(expected.getWidth(), (int) image.getWidth());
+            assertEquals(expected.getHeight(), (int) image.getHeight());
+
+            for (int y = 0; y < expected.getHeight(); y++) {
+                for (int x = 0; x < expected.getWidth(); x++) {
+                    assertEquals(expected.getRGB(x, y), pixelReader.getArgb(x, y), "Pixel mismatch at (" + x + ", " + y + ")");
+                }
+            }
+            return null;
+        });
+    }
+
+    private static InputStream resource(String path) {
+        InputStream input = WebPFXImageTest.class.getClassLoader().getResourceAsStream(path);
+        if (input == null) {
+            throw new IllegalArgumentException("Missing test resource: " + path);
+        }
+        return input;
     }
 
     private static void waitForCondition(ThrowingBooleanSupplier condition, long timeoutMillis) throws Exception {
