@@ -86,7 +86,8 @@ dependencies {
 
     // Benchmark
     fun benchmarkImplementation(notation: Any) = add(benchmarkSourceSet.implementationConfigurationName, notation)
-    fun benchmarkAnnotationProcessor(notation: Any) = add(benchmarkSourceSet.annotationProcessorConfigurationName, notation)
+    fun benchmarkAnnotationProcessor(notation: Any) =
+        add(benchmarkSourceSet.annotationProcessorConfigurationName, notation)
 
     val jmhVersion = "1.37"
     benchmarkImplementation("org.openjdk.jmh:jmh-core:$jmhVersion")
@@ -145,6 +146,34 @@ tasks.register<JavaExec>("run") {
     mainClass.set(mainClassName)
 }
 
+// https://github.com/Glavo/jwebp-test-data
+val jwebpTestDataCommit = "3d5155a24ca7f5747362c847812d29c33ca86ea7"
+val jwebpTestDataZip = layout.buildDirectory.file("downloads/jwebp-test-data-${jwebpTestDataCommit}.zip")
+
+val downloadJWebPTestData by tasks.registering(Download::class) {
+    src("https://github.com/Glavo/jwebp-test-data/archive/${jwebpTestDataCommit}.zip")
+    dest(jwebpTestDataZip)
+    overwrite(false)
+}
+
+tasks.named<ProcessResources>(benchmarkSourceSet.processResourcesTaskName) {
+    dependsOn(downloadJWebPTestData)
+
+    into("jwebp-test-data") {
+        from(zipTree(jwebpTestDataZip)) {
+            eachFile {
+                relativePath = RelativePath(
+                    true,
+                    *relativePath.segments
+                        .filter { it != "jwebp-test-data-$jwebpTestDataCommit" }
+                        .toTypedArray()
+                )
+            }
+            includeEmptyDirs = false
+        }
+    }
+}
+
 tasks.register<JavaExec>("benchmark") {
     group = "benchmark"
     description = "Runs JMH benchmarks from src/benchmark/java."
@@ -165,14 +194,14 @@ tasks.register<JavaExec>("benchmark") {
 val webpTestDataCommit = "53f4c95f055bf3509ceacce7e88894b78287a2f2"
 val webpTestDataZip = layout.buildDirectory.file("downloads/libwebp-test-data-${webpTestDataCommit}.zip")
 
-val downloadWebpTestData by tasks.registering(Download::class) {
+val downloadWebPTestData by tasks.registering(Download::class) {
     src("https://github.com/webmproject/libwebp-test-data/archive/${webpTestDataCommit}.zip")
     dest(webpTestDataZip)
     overwrite(false)
 }
 
 tasks.processTestResources {
-    dependsOn(downloadWebpTestData)
+    dependsOn(downloadWebPTestData)
 
     into("libwebp-test-data") {
         from(zipTree(webpTestDataZip)) {

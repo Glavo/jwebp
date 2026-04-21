@@ -43,58 +43,89 @@ import java.util.concurrent.TimeUnit;
 
 /// JMH benchmarks comparing this project against TwelveMonkeys and direct JavaFX PNG loading.
 ///
-/// The comparison reuses the same checked-in sample images for both implementations and is
+/// The comparison reuses the static images from jwebp-test-data for both implementations and is
 /// intentionally limited to still images.
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
 @Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
 @Fork(value = 1, jvmArgsAppend = {"-Xms1G", "-Xmx1G"})
-public class ComparisonBenchmark {
+public class StaticImageBenchmark {
 
+    private static final String TEST_DATA_ROOT = "jwebp-test-data/";
     private static final WebPImageReaderSpi TWELVE_MONKEYS_SPI = new WebPImageReaderSpi();
 
     @State(Scope.Benchmark)
     public static class BenchmarkImages {
         @Param({
-                "gallery1-1",
-                "gallery2-1_webp_a",
+                "glavo-1920x1080",
+                "hmcl-256x256",
+                "hmcl-64x64",
         })
-        public String file;
+        public String image;
 
-        byte[] staticWebp;
-        byte[] staticPng;
+        byte[] lossyWebp;
+        byte[] losslessWebp;
+        byte[] png;
+        byte[] jpg;
 
         @Setup
         public void load() throws IOException {
-            staticWebp = resourceBytes("images/" + file + ".webp");
-            staticPng = resourceBytes("reference/" + file + ".png");
+            lossyWebp = resourceBytes(TEST_DATA_ROOT + image + "-lossy.webp");
+            losslessWebp = resourceBytes(TEST_DATA_ROOT + image + "-lossless.webp");
+            png = resourceBytes(TEST_DATA_ROOT + image + ".png");
+            jpg = resourceBytes(TEST_DATA_ROOT + image + ".jpg");
         }
     }
 
     @Benchmark
-    public WebPImage jwebpDecode(BenchmarkImages images) throws Exception {
-        return WebPImage.read(new ByteArrayInputStream(images.staticWebp));
+    public WebPImage jwebpLossy(BenchmarkImages images) throws Exception {
+        return WebPImage.read(new ByteArrayInputStream(images.lossyWebp));
     }
 
     @Benchmark
-    public BufferedImage twelveMonkeysDecode(BenchmarkImages images) throws Exception {
-        return readStillImageWithProvider(images.staticWebp);
+    public BufferedImage twelveMonkeysLossy(BenchmarkImages images) throws Exception {
+        return readStillImageWithProvider(images.lossyWebp);
     }
 
     @Benchmark
-    public Image jwebpToJavaFX(BenchmarkImages images) throws Exception {
-        return new WebPFXImage(WebPImage.read(new ByteArrayInputStream(images.staticWebp)), false);
+    public Image jwebpLossyToJavaFX(BenchmarkImages images) throws Exception {
+        return new WebPFXImage(WebPImage.read(new ByteArrayInputStream(images.lossyWebp)), false);
     }
 
     @Benchmark
-    public Image twelveMonkeysToJavaFX(BenchmarkImages images) throws Exception {
-        return SwingFXUtils.toFXImage(readStillImageWithProvider(images.staticWebp), null);
+    public Image twelveMonkeysLossyToJavaFX(BenchmarkImages images) throws Exception {
+        return SwingFXUtils.toFXImage(readStillImageWithProvider(images.lossyWebp), null);
     }
 
     @Benchmark
-    public Image jfxPNGDecode(BenchmarkImages images) {
-        return new Image(new ByteArrayInputStream(images.staticPng));
+    public WebPImage jwebpLossless(BenchmarkImages images) throws Exception {
+        return WebPImage.read(new ByteArrayInputStream(images.losslessWebp));
+    }
+
+    @Benchmark
+    public BufferedImage twelveMonkeysLossless(BenchmarkImages images) throws Exception {
+        return readStillImageWithProvider(images.losslessWebp);
+    }
+
+    @Benchmark
+    public Image jwebpLosslessToJavaFX(BenchmarkImages images) throws Exception {
+        return new WebPFXImage(WebPImage.read(new ByteArrayInputStream(images.losslessWebp)), false);
+    }
+
+    @Benchmark
+    public Image twelveMonkeysLosslessToJavaFX(BenchmarkImages images) throws Exception {
+        return SwingFXUtils.toFXImage(readStillImageWithProvider(images.losslessWebp), null);
+    }
+
+    @Benchmark
+    public Image jfxPNG(BenchmarkImages images) {
+        return new Image(new ByteArrayInputStream(images.png));
+    }
+
+    @Benchmark
+    public Image jfxJPG(BenchmarkImages images) {
+        return new Image(new ByteArrayInputStream(images.jpg));
     }
 
     private static BufferedImage readStillImageWithProvider(byte[] bytes) throws Exception {
@@ -110,7 +141,7 @@ public class ComparisonBenchmark {
     }
 
     private static byte[] resourceBytes(String path) throws IOException {
-        try (InputStream input = ComparisonBenchmark.class.getClassLoader().getResourceAsStream(path)) {
+        try (InputStream input = StaticImageBenchmark.class.getClassLoader().getResourceAsStream(path)) {
             if (input == null) {
                 throw new IOException("Missing benchmark resource: " + path);
             }
