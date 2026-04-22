@@ -20,7 +20,6 @@ import javafx.scene.image.Image;
 import org.glavo.webp.WebPFrame;
 import org.glavo.webp.WebPImage;
 import org.glavo.webp.WebPImageReader;
-import org.glavo.webp.javafx.WebPFXImage;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -80,7 +79,7 @@ public class AnimatedImageBenchmark {
     }
 
     @Benchmark
-    public WebPImage jwebpDecode(BenchmarkImages images) throws Exception {
+    public WebPImage jwebp(BenchmarkImages images) throws Exception {
         return WebPImage.read(new ByteArrayInputStream(images.animatedWebp));
     }
 
@@ -109,17 +108,12 @@ public class AnimatedImageBenchmark {
     }
 
     @Benchmark
-    public BufferedImage[] imageIOGifDecode(BenchmarkImages images) throws Exception {
+    public BufferedImage[] imageIOGIF(BenchmarkImages images) throws Exception {
         return readAllImagesWithProvider(images.animatedGif, GIF_SPI);
     }
 
     @Benchmark
-    public Image jwebpToJavaFX(BenchmarkImages images) throws Exception {
-        return new WebPFXImage(WebPImage.read(new ByteArrayInputStream(images.animatedWebp)), false);
-    }
-
-    @Benchmark
-    public Image jfxGIFDecode(BenchmarkImages images) {
+    public Image jfxGIF(BenchmarkImages images) {
         return new Image(new ByteArrayInputStream(images.animatedGif));
     }
 
