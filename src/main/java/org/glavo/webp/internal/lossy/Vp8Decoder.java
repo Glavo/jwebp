@@ -44,6 +44,7 @@ public final class Vp8Decoder {
     private static final int FILTER_INFO_LUMA_MODE_MASK = 0x07;
     private static final int FILTER_INFO_COEFFICIENTS_SKIPPED = 1 << 5;
     private static final int FILTER_INFO_NON_ZERO_DCT = 1 << 6;
+    private static final IntraMode[] INTRA_MODE_BY_CODE = buildIntraModeByCode();
 
     private final ByteBuffer input;
     private final LossyArithmeticDecoder headerDecoder = new LossyArithmeticDecoder();
@@ -77,8 +78,10 @@ public final class Vp8Decoder {
     private TreeNode[][][][] tokenProbs = LossyTables.copyCoeffProbNodes();
 
     private @Nullable Integer probSkipFalse;
-    private PreviousMacroBlock[] top = new PreviousMacroBlock[0];
-    private PreviousMacroBlock left = new PreviousMacroBlock();
+    private byte[] topBpred = new byte[0];
+    private byte[] topComplexity = new byte[0];
+    private final byte[] leftBpred = new byte[4];
+    private final byte[] leftComplexity = new byte[9];
 
     private byte[] topBorderY = new byte[0];
     private byte[] leftBorderY = new byte[0];
@@ -267,12 +270,16 @@ public final class Vp8Decoder {
         if (macroblockFilterInfo.length < macroblockCount) {
             macroblockFilterInfo = new byte[macroblockCount];
         }
-
-        top = new PreviousMacroBlock[macroblockWidth];
-        for (int i = 0; i < top.length; i++) {
-            top[i] = new PreviousMacroBlock();
+        int topBpredLength = macroblockWidth * 4;
+        if (topBpred.length < topBpredLength) {
+            topBpred = new byte[topBpredLength];
         }
-        left = new PreviousMacroBlock();
+        Arrays.fill(topBpred, 0, topBpredLength, IntraMode.DC.code);
+        int topComplexityLength = macroblockWidth * 9;
+        if (topComplexity.length < topComplexityLength) {
+            topComplexity = new byte[topComplexityLength];
+        }
+        Arrays.fill(topComplexity, 0, topComplexityLength, (byte) 0);
 
         frame.yBuffer = new byte[macroblockWidth * 16 * macroblockHeight * 16];
         frame.uBuffer = new byte[macroblockWidth * 8 * macroblockHeight * 8];
@@ -327,6 +334,7 @@ public final class Vp8Decoder {
     private MacroBlock readMacroblockHeader(int macroblockX) throws WebPException {
         MacroBlock macroBlock = new MacroBlock();
         LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
+        int topBpredOffset = macroblockX * 4;
 
         if (segmentsEnabled && segmentsUpdateMap) {
             macroBlock.segmentId = headerDecoder.readWithTree(segmentTreeNodes).orAccumulate(accumulator);
@@ -346,22 +354,24 @@ public final class Vp8Decoder {
             macroBlock.bpred = bpred;
             for (int y = 0; y < 4; y++) {
                 for (int x = 0; x < 4; x++) {
-                    IntraMode topMode = top[macroblockX].bpred[x];
-                    IntraMode leftMode = left.bpred[y];
+                    IntraMode topMode = INTRA_MODE_BY_CODE[topBpred[topBpredOffset + x] & 0xFF];
+                    IntraMode leftMode = INTRA_MODE_BY_CODE[leftBpred[y] & 0xFF];
                     int intraCode = headerDecoder.readWithTree(LossyTables.KEYFRAME_BPRED_MODE_NODES[topMode.ordinal()][leftMode.ordinal()]).orAccumulate(accumulator);
                     IntraMode blockMode = IntraMode.fromCode(intraCode);
                     if (blockMode == null) {
                         throw new WebPException("Invalid VP8 intra prediction mode: " + intraCode);
                     }
                     bpred[x + y * 4] = blockMode;
-                    top[macroblockX].bpred[x] = blockMode;
-                    left.bpred[y] = blockMode;
+                    topBpred[topBpredOffset + x] = blockMode.code;
+                    leftBpred[y] = blockMode.code;
                 }
             }
-            System.arraycopy(bpred, 12, top[macroblockX].bpred, 0, 4);
+            for (int x = 0; x < 4; x++) {
+                topBpred[topBpredOffset + x] = bpred[12 + x].code;
+            }
         } else {
-            Arrays.fill(left.bpred, sharedMode);
-            Arrays.fill(top[macroblockX].bpred, sharedMode);
+            Arrays.fill(leftBpred, sharedMode.code);
+            Arrays.fill(topBpred, topBpredOffset, topBpredOffset + 4, sharedMode.code);
         }
 
         int chromaModeCode = headerDecoder.readWithTree(LossyTables.KEYFRAME_UV_MODE_NODES).orAccumulate(accumulator);
@@ -559,9 +569,10 @@ public final class Vp8Decoder {
         int[] blocks = residualDataScratch;
         Arrays.fill(blocks, 0);
         Plane plane = macroBlock.lumaMode == LumaMode.B ? Plane.Y_COEFF_0 : Plane.Y2;
+        int topComplexityOffset = macroblockX * 9;
 
         if (plane == Plane.Y2) {
-            int complexity = top[macroblockX].complexity[0] + left.complexity[0];
+            int complexity = topComplexity[topComplexityOffset] + leftComplexity[0];
             int[] y2Block = y2BlockScratch;
             Arrays.fill(y2Block, 0);
             boolean present = readCoefficients(
@@ -574,8 +585,8 @@ public final class Vp8Decoder {
                     segments[segmentIndex].y2ac
             );
 
-            left.complexity[0] = present ? 1 : 0;
-            top[macroblockX].complexity[0] = present ? 1 : 0;
+            leftComplexity[0] = present ? (byte) 1 : 0;
+            topComplexity[topComplexityOffset] = present ? (byte) 1 : 0;
 
             LossyTransform.iwht4x4(y2Block);
             for (int k = 0; k < 16; k++) {
@@ -586,11 +597,11 @@ public final class Vp8Decoder {
         }
 
         for (int blockY = 0; blockY < 4; blockY++) {
-            int leftComplexity = left.complexity[blockY + 1];
+            int leftValue = leftComplexity[blockY + 1];
             for (int blockX = 0; blockX < 4; blockX++) {
                 int blockIndex = blockX + blockY * 4;
                 int blockOffset = blockIndex * 16;
-                int complexity = top[macroblockX].complexity[blockX + 1] + leftComplexity;
+                int complexity = topComplexity[topComplexityOffset + blockX + 1] + leftValue;
 
                 boolean present = readCoefficients(
                         blocks,
@@ -607,19 +618,19 @@ public final class Vp8Decoder {
                     LossyTransform.idct4x4(blocks, blockOffset);
                 }
 
-                leftComplexity = present ? 1 : 0;
-                top[macroblockX].complexity[blockX + 1] = present ? 1 : 0;
+                leftValue = present ? 1 : 0;
+                topComplexity[topComplexityOffset + blockX + 1] = present ? (byte) 1 : 0;
             }
-            left.complexity[blockY + 1] = leftComplexity;
+            leftComplexity[blockY + 1] = (byte) leftValue;
         }
 
         for (int groupStart : CHROMA_GROUP_STARTS) {
             for (int blockY = 0; blockY < 2; blockY++) {
-                int leftComplexity = left.complexity[blockY + groupStart];
+                int leftValue = leftComplexity[blockY + groupStart];
                 for (int blockX = 0; blockX < 2; blockX++) {
                     int blockIndex = blockX + blockY * 2 + (groupStart == 5 ? 16 : 20);
                     int blockOffset = blockIndex * 16;
-                    int complexity = top[macroblockX].complexity[blockX + groupStart] + leftComplexity;
+                    int complexity = topComplexity[topComplexityOffset + blockX + groupStart] + leftValue;
 
                     boolean present = readCoefficients(
                             blocks,
@@ -636,10 +647,10 @@ public final class Vp8Decoder {
                         LossyTransform.idct4x4(blocks, blockOffset);
                     }
 
-                    leftComplexity = present ? 1 : 0;
-                    top[macroblockX].complexity[blockX + groupStart] = present ? 1 : 0;
+                    leftValue = present ? 1 : 0;
+                    topComplexity[topComplexityOffset + blockX + groupStart] = present ? (byte) 1 : 0;
                 }
-                left.complexity[blockY + groupStart] = leftComplexity;
+                leftComplexity[blockY + groupStart] = (byte) leftValue;
             }
         }
 
@@ -903,21 +914,22 @@ public final class Vp8Decoder {
 
         for (int macroblockY = 0; macroblockY < macroblockHeight; macroblockY++) {
             int partition = macroblockY % numPartitions;
-            left.reset();
+            resetLeftState();
 
             for (int macroblockX = 0; macroblockX < macroblockWidth; macroblockX++) {
                 MacroBlock macroBlock = readMacroblockHeader(macroblockX);
+                int topComplexityOffset = macroblockX * 9;
                 int[] blocks;
                 if (!macroBlock.coefficientsSkipped) {
                     blocks = readResidualData(macroBlock, macroblockX, partition);
                 } else {
                     if (macroBlock.lumaMode != LumaMode.B) {
-                        left.complexity[0] = 0;
-                        top[macroblockX].complexity[0] = 0;
+                        leftComplexity[0] = 0;
+                        topComplexity[topComplexityOffset] = 0;
                     }
                     for (int i = 1; i < 9; i++) {
-                        left.complexity[i] = 0;
-                        top[macroblockX].complexity[i] = 0;
+                        leftComplexity[i] = 0;
+                        topComplexity[topComplexityOffset + i] = 0;
                     }
                     blocks = zeroResidualData;
                 }
@@ -954,6 +966,19 @@ public final class Vp8Decoder {
         byte[] bytes = new byte[length];
         Arrays.fill(bytes, value);
         return bytes;
+    }
+
+    private static IntraMode[] buildIntraModeByCode() {
+        IntraMode[] modes = new IntraMode[10];
+        for (IntraMode mode : IntraMode.values()) {
+            modes[mode.code] = mode;
+        }
+        return modes;
+    }
+
+    private void resetLeftState() {
+        Arrays.fill(leftBpred, IntraMode.DC.code);
+        Arrays.fill(leftComplexity, (byte) 0);
     }
 
     private static short dcQuant(int index) {
@@ -998,21 +1023,6 @@ public final class Vp8Decoder {
         int segmentId;
         boolean coefficientsSkipped;
         boolean nonZeroDct;
-    }
-
-    @NotNullByDefault
-    private static final class PreviousMacroBlock {
-        final IntraMode[] bpred = new IntraMode[4];
-        final int[] complexity = new int[9];
-
-        private PreviousMacroBlock() {
-            reset();
-        }
-
-        void reset() {
-            Arrays.fill(bpred, IntraMode.DC);
-            Arrays.fill(complexity, 0);
-        }
     }
 
     @NotNullByDefault
