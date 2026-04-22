@@ -66,7 +66,7 @@ public class AnimatedImageBenchmark {
         @Param({
                 "glavo-1280x720@30",
         })
-        public String animation;
+        public String image;
 
         byte[] animatedWebp;
         byte[] animatedGif;
@@ -74,8 +74,8 @@ public class AnimatedImageBenchmark {
         @Setup
         public void load() throws IOException {
             ensureJavaFxInitialized();
-            animatedWebp = resourceBytes(TEST_DATA_ROOT + animation + ".webp");
-            animatedGif = resourceBytes(TEST_DATA_ROOT + animation + ".gif");
+            animatedWebp = resourceBytes(TEST_DATA_ROOT + image + ".webp");
+            animatedGif = resourceBytes(TEST_DATA_ROOT + image + ".gif");
         }
     }
 
