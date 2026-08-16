@@ -18,15 +18,47 @@ package org.glavo.webp.internal.codec;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
-/// Four-byte RIFF identifier stored as raw bytes.
+/// Packed integer representations of four-byte RIFF identifiers.
 ///
-/// WebP chunk types, the `RIFF` container marker and the `WEBP` signature are all encoded as
-/// four ASCII bytes. Keeping them in a dedicated value type avoids repeated string allocation in
-/// the parser and makes identifier comparisons explicit.
+/// The first identifier byte occupies the least-significant eight bits so values can be read
+/// directly from the little-endian buffers used by the RIFF parser. The predefined identifiers
+/// are compile-time constants and can therefore be used as `switch` labels.
 @NotNullByDefault
-public record FourCC(int value) implements Comparable<FourCC> {
+public final class FourCC {
+
+    /// The `RIFF` container identifier.
+    public static final int RIFF = 'R' | ('I' << 8) | ('F' << 16) | ('F' << 24);
+
+    /// The `WEBP` RIFF form identifier.
+    public static final int WEBP = 'W' | ('E' << 8) | ('B' << 16) | ('P' << 24);
+
+    /// The `VP8 ` lossy image chunk identifier.
+    public static final int VP8 = 'V' | ('P' << 8) | ('8' << 16) | (' ' << 24);
+
+    /// The `VP8L` lossless image chunk identifier.
+    public static final int VP8L = 'V' | ('P' << 8) | ('8' << 16) | ('L' << 24);
+
+    /// The `VP8X` extended header chunk identifier.
+    public static final int VP8X = 'V' | ('P' << 8) | ('8' << 16) | ('X' << 24);
+
+    /// The `ANIM` animation parameters chunk identifier.
+    public static final int ANIM = 'A' | ('N' << 8) | ('I' << 16) | ('M' << 24);
+
+    /// The `ANMF` animation frame chunk identifier.
+    public static final int ANMF = 'A' | ('N' << 8) | ('M' << 16) | ('F' << 24);
+
+    /// The `ALPH` alpha data chunk identifier.
+    public static final int ALPH = 'A' | ('L' << 8) | ('P' << 16) | ('H' << 24);
+
+    /// The `ICCP` color profile chunk identifier.
+    public static final int ICCP = 'I' | ('C' << 8) | ('C' << 16) | ('P' << 24);
+
+    /// The `EXIF` metadata chunk identifier.
+    public static final int EXIF = 'E' | ('X' << 8) | ('I' << 16) | ('F' << 24);
+
+    /// The `XMP ` metadata chunk identifier.
+    public static final int XMP = 'X' | ('M' << 8) | ('P' << 16) | (' ' << 24);
 
     /// Creates a FourCC from four raw bytes.
     ///
@@ -35,40 +67,24 @@ public record FourCC(int value) implements Comparable<FourCC> {
     /// @param b2 the third byte
     /// @param b3 the fourth byte
     /// @return the parsed FourCC value
-    public static FourCC of(byte b0, byte b1, byte b2, byte b3) {
-        return new FourCC(
-                ((b0 & 0xFF) << 24)
-                        | ((b1 & 0xFF) << 16)
-                        | ((b2 & 0xFF) << 8)
-                        | (b3 & 0xFF)
-        );
+    public static int of(byte b0, byte b1, byte b2, byte b3) {
+        return b0 & 0xFF | ((b1 & 0xFF) << 8) | ((b2 & 0xFF) << 16) | ((b3 & 0xFF) << 24);
     }
 
-    /// Creates a FourCC from a byte array.
-    ///
-    /// @param bytes the four-byte identifier
-    /// @return the parsed FourCC value
-    /// @throws IllegalArgumentException if the array is not exactly four bytes long
-    public static FourCC of(byte[] bytes) {
-        if (bytes.length != 4) {
-            throw new IllegalArgumentException("Invalid fourCC: " + Arrays.toString(bytes));
-        }
-        return of(bytes[0], bytes[1], bytes[2], bytes[3]);
-    }
-
-    /// Creates a FourCC from a four-character ASCII string.
+    /// Creates a FourCC from four ISO-8859-1 characters.
     ///
     /// @param fourCC the textual identifier
     /// @return the parsed FourCC value
-    /// @throws IllegalArgumentException if the string is not exactly four characters long
-    public static FourCC of(String fourCC) {
+    /// @throws IllegalArgumentException if the string is not exactly four characters long or any
+    ///                                  character cannot be represented by one byte
+    public static int of(String fourCC) {
         if (fourCC.length() != 4) {
             throw new IllegalArgumentException("Invalid fourCC: " + fourCC);
         }
-        var ch0 = fourCC.charAt(0);
-        var ch1 = fourCC.charAt(1);
-        var ch2 = fourCC.charAt(2);
-        var ch3 = fourCC.charAt(3);
+        char ch0 = fourCC.charAt(0);
+        char ch1 = fourCC.charAt(1);
+        char ch2 = fourCC.charAt(2);
+        char ch3 = fourCC.charAt(3);
 
         if (ch0 > 0xFF || ch1 > 0xFF || ch2 > 0xFF || ch3 > 0xFF) {
             throw new IllegalArgumentException("Invalid fourCC: " + fourCC);
@@ -82,19 +98,20 @@ public record FourCC(int value) implements Comparable<FourCC> {
         );
     }
 
-    @Override
-    public int compareTo(FourCC that) {
-        return Integer.compare(value, that.value);
+    /// Returns the four-character ISO-8859-1 representation of a packed identifier.
+    ///
+    /// @param fourCC the packed FourCC value
+    /// @return a four-character string preserving all identifier bytes
+    public static String toString(int fourCC) {
+        byte[] bytes = new byte[4];
+        bytes[0] = (byte) (fourCC & 0xFF);
+        bytes[1] = (byte) ((fourCC >>> 8) & 0xFF);
+        bytes[2] = (byte) ((fourCC >>> 16) & 0xFF);
+        bytes[3] = (byte) ((fourCC >>> 24) & 0xFF);
+        return new String(bytes, StandardCharsets.ISO_8859_1);
     }
 
-    /// Returns the canonical ASCII representation.
-    @Override
-    public String toString() {
-        return new String(new byte[]{
-                (byte) ((value >>> 24) & 0xFF),
-                (byte) ((value >>> 16) & 0xFF),
-                (byte) ((value >>> 8) & 0xFF),
-                (byte) (value & 0xFF)
-        }, StandardCharsets.US_ASCII);
+    /// Prevents instantiation of this utility class.
+    private FourCC() {
     }
 }

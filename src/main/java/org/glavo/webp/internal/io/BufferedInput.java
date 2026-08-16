@@ -231,11 +231,12 @@ public sealed abstract class BufferedInput implements Closeable {
 
     /// Reads a FourCC identifier.
     ///
-    /// @return the next FourCC value
+    /// @return the packed value with the first byte in the least-significant bits, compatible with
+    ///         the constants in [FourCC]
     /// @throws IOException if the source is truncated, closed, or unreadable
-    public FourCC readFourCC() throws IOException {
-        ensureBufferRemaining(4);
-        return FourCC.of(buffer.get(), buffer.get(), buffer.get(), buffer.get());
+    public int readFourCC() throws IOException {
+        ensureBufferRemaining(Integer.BYTES);
+        return buffer.getInt();
     }
 
     /// Reads a signed 16-bit little-endian integer.

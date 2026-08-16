@@ -50,14 +50,14 @@ public final class WebPSequentialParser {
     /// @return the parsed container data
     /// @throws IOException if the stream is truncated or malformed
     public static ParsedWebPImage parse(BufferedInput input) throws IOException {
-        FourCC riff = input.readFourCC();
-        if (!WebPRiffChunk.RIFF.fourCC().equals(riff)) {
+        int riff = input.readFourCC();
+        if (FourCC.RIFF != riff) {
             throw new WebPException("Missing RIFF container header");
         }
 
         long riffSize = input.readUnsignedIntLE();
-        FourCC webp = input.readFourCC();
-        if (!WebPRiffChunk.WEBP.fourCC().equals(webp)) {
+        int webp = input.readFourCC();
+        if (FourCC.WEBP != webp) {
             throw new WebPException("Missing WEBP signature");
         }
 
@@ -70,10 +70,10 @@ public final class WebPSequentialParser {
         remainingBytes -= 8L + first.paddedSize();
 
         return switch (first.type()) {
-            case VP8 -> parseSimpleVp8(first.payload());
-            case VP8L -> parseSimpleVp8L(first.payload());
-            case VP8X -> parseExtended(input, remainingBytes, first.payload());
-            default -> throw new WebPException("Unsupported first WebP chunk: " + first.fourCc());
+            case FourCC.VP8 -> parseSimpleVp8(first.payload());
+            case FourCC.VP8L -> parseSimpleVp8L(first.payload());
+            case FourCC.VP8X -> parseExtended(input, remainingBytes, first.payload());
+            default -> throw new WebPException("Unsupported first WebP chunk: " + FourCC.toString(first.type()));
         };
     }
 
@@ -159,8 +159,7 @@ public final class WebPSequentialParser {
                 throw new WebPException("Truncated WebP chunk header");
             }
 
-            FourCC fourCc = input.readFourCC();
-            WebPRiffChunk type = WebPRiffChunk.fromFourCC(fourCc);
+            int type = input.readFourCC();
             long chunkSize = input.readUnsignedIntLE();
             if (chunkSize > Integer.MAX_VALUE) {
                 throw new WebPException("Chunk is too large to buffer in memory: " + chunkSize);
@@ -172,7 +171,7 @@ public final class WebPSequentialParser {
             }
             remainingBytes -= 8L + paddedChunkSize;
 
-            if (type == WebPRiffChunk.ANMF) {
+            if (type == FourCC.ANMF) {
                 ParsedFrameDescriptor descriptor = parseAnimationFrame(
                         input,
                         (int) chunkSize,
@@ -194,11 +193,12 @@ public final class WebPSequentialParser {
             }
 
             switch (type) {
-                case VP8X -> throw new WebPException("VP8X chunk must be the first chunk in the WebP container");
-                case ICCP -> iccProfile = chunkPayload;
-                case EXIF -> exifMetadata = chunkPayload;
-                case XMP -> xmpMetadata = chunkPayload;
-                case ANIM -> {
+                case FourCC.VP8X ->
+                        throw new WebPException("VP8X chunk must be the first chunk in the WebP container");
+                case FourCC.ICCP -> iccProfile = chunkPayload;
+                case FourCC.EXIF -> exifMetadata = chunkPayload;
+                case FourCC.XMP -> xmpMetadata = chunkPayload;
+                case FourCC.ANIM -> {
                     if (chunkPayload.length < 6) {
                         throw new WebPException("ANIM chunk is too small");
                     }
@@ -206,12 +206,12 @@ public final class WebPSequentialParser {
                     backgroundColorHint = reader.readByteArray(4);
                     loopCount = reader.readUnsignedShortLE();
                 }
-                case ALPH -> {
+                case FourCC.ALPH -> {
                     if (alpha) {
                         pendingAlphaChunk = chunkPayload;
                     }
                 }
-                case VP8 -> {
+                case FourCC.VP8 -> {
                     Dimensions dimensions = parseVp8Dimensions(chunkPayload);
                     frames.add(new ParsedFrameDescriptor(
                             0,
@@ -228,7 +228,7 @@ public final class WebPSequentialParser {
                     pendingAlphaChunk = null;
                     lossy = true;
                 }
-                case VP8L -> {
+                case FourCC.VP8L -> {
                     LosslessHeader losslessHeader = parseVp8LHeader(chunkPayload);
                     frames.add(new ParsedFrameDescriptor(
                             0,
@@ -324,8 +324,7 @@ public final class WebPSequentialParser {
                 throw new WebPException("Truncated animated frame chunk header");
             }
 
-            FourCC fourCc = frame.readFourCC();
-            WebPRiffChunk type = WebPRiffChunk.fromFourCC(fourCc);
+            int type = frame.readFourCC();
             long chunkSize = frame.readUnsignedIntLE();
             if (chunkSize > Integer.MAX_VALUE) {
                 throw new WebPException("Animated frame chunk is too large to buffer");
@@ -342,22 +341,26 @@ public final class WebPSequentialParser {
                 frame.skip(1);
             }
 
-            if (type == WebPRiffChunk.ALPH) {
-                alphaChunk = chunkPayload;
-            } else if (type == WebPRiffChunk.VP8) {
-                Dimensions dimensions = parseVp8Dimensions(chunkPayload);
-                if (dimensions.width() != frameWidth || dimensions.height() != frameHeight) {
-                    throw new WebPException("Animated VP8 frame dimensions do not match the ANMF header");
+            switch (type) {
+                case FourCC.ALPH -> alphaChunk = chunkPayload;
+                case FourCC.VP8 -> {
+                    Dimensions dimensions = parseVp8Dimensions(chunkPayload);
+                    if (dimensions.width() != frameWidth || dimensions.height() != frameHeight) {
+                        throw new WebPException("Animated VP8 frame dimensions do not match the ANMF header");
+                    }
+                    imageChunk = chunkPayload;
+                    lossless = false;
                 }
-                imageChunk = chunkPayload;
-                lossless = false;
-            } else if (type == WebPRiffChunk.VP8L) {
-                LosslessHeader header = parseVp8LHeader(chunkPayload);
-                if (header.width() != frameWidth || header.height() != frameHeight) {
-                    throw new WebPException("Animated VP8L frame dimensions do not match the ANMF header");
+                case FourCC.VP8L -> {
+                    LosslessHeader header = parseVp8LHeader(chunkPayload);
+                    if (header.width() != frameWidth || header.height() != frameHeight) {
+                        throw new WebPException("Animated VP8L frame dimensions do not match the ANMF header");
+                    }
+                    imageChunk = chunkPayload;
+                    lossless = true;
                 }
-                imageChunk = chunkPayload;
-                lossless = true;
+                default -> {
+                }
             }
         }
 
@@ -456,7 +459,7 @@ public final class WebPSequentialParser {
     }
 
     private static ChunkPayload readChunk(BufferedInput input) throws IOException {
-        FourCC fourCc = input.readFourCC();
+        int fourCc = input.readFourCC();
         long size = input.readUnsignedIntLE();
         if (size > Integer.MAX_VALUE) {
             throw new WebPException("Chunk is too large to buffer in memory: " + size);
@@ -465,7 +468,7 @@ public final class WebPSequentialParser {
         if ((size & 1L) != 0L) {
             input.skip(1);
         }
-        return new ChunkPayload(fourCc, WebPRiffChunk.fromFourCC(fourCc), payload, size);
+        return new ChunkPayload(fourCc, payload, size);
     }
 
     /// Parsed VP8 dimensions.
@@ -485,8 +488,13 @@ public final class WebPSequentialParser {
     public record LosslessHeader(int width, int height, boolean alphaUsed) {
     }
 
+    /// A buffered RIFF chunk and its declared unpadded size.
+    ///
+    /// @param type the packed FourCC chunk identifier
+    /// @param payload the chunk payload without its alignment byte
+    /// @param size the declared payload size in bytes
     @NotNullByDefault
-    private record ChunkPayload(FourCC fourCc, WebPRiffChunk type, byte[] payload, long size) {
+    private record ChunkPayload(int type, byte[] payload, long size) {
         /// Returns the payload size including its optional alignment byte.
         ///
         /// @return the payload size rounded up to an even byte count
