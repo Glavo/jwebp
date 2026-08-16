@@ -15,7 +15,6 @@
  */
 package org.glavo.webp;
 
-import org.glavo.webp.internal.Argb;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -123,10 +122,19 @@ public final class WebPImageReader implements AutoCloseable {
     private final AutoCloseable ownedInput;
     private final ParsedWebPImage image;
     private final ScalePlan scalePlan;
+
+    /// Stateful ALPH decoder whose full-frame VP8L workspace is reused across animation frames.
+    private final ExtendedWebP.AlphaDecoder alphaDecoder = new ExtendedWebP.AlphaDecoder();
+
+    /// VP8 color-plane storage reused across animated frame decodes.
+    private final Vp8Decoder.DecodeWorkspace vp8Workspace = new Vp8Decoder.DecodeWorkspace();
     private int nextFrameIndex;
     private boolean closed;
 
     private int @Nullable [] animationCanvas;
+
+    /// Exact-sized scratch pixels reused between compatible animated frame decodes.
+    private int @Nullable [] reusableAnimationFrameArgb;
     private boolean disposeNextFrame = true;
     private int previousFrameWidth;
     private int previousFrameHeight;
@@ -318,47 +326,36 @@ public final class WebPImageReader implements AutoCloseable {
     }
 
     private int[] decodeFrameArgb(ParsedFrameDescriptor descriptor) throws WebPException {
+        int[] argb = acquireFrameArgb(descriptor.width() * descriptor.height());
         if (descriptor.lossless()) {
-            int[] argb = new int[descriptor.width() * descriptor.height()];
             new LosslessDecoder(descriptor.imageChunk()).decodeFrame(descriptor.width(), descriptor.height(), false, argb);
             return argb;
         }
 
-        int[] argb = Vp8Decoder.decodeArgb(ByteBuffer.wrap(descriptor.imageChunk()), false);
+        Vp8Decoder.decodeArgb(ByteBuffer.wrap(descriptor.imageChunk()), false, argb, vp8Workspace);
         if (descriptor.alphaChunk() != null) {
-            ExtendedWebP.AlphaChunk alphaChunk = ExtendedWebP.parseAlphaChunk(
+            alphaDecoder.apply(
                     descriptor.alphaChunk(),
                     descriptor.width(),
-                    descriptor.height()
+                    descriptor.height(),
+                    argb
             );
-            applyAlphaChunk(argb, descriptor.width(), descriptor.height(), alphaChunk);
         }
         return argb;
     }
 
-    private static void applyAlphaChunk(
-            int[] argb,
-            int width,
-            int height,
-            ExtendedWebP.AlphaChunk alphaChunk
-    ) {
-        byte[] alphaData = alphaChunk.data();
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int pixelIndex = y * width + x;
-                int predictor = ExtendedWebP.getAlphaPredictor(
-                        x,
-                        y,
-                        width,
-                        alphaChunk.filteringMethod(),
-                        argb
-                );
-                argb[pixelIndex] = Argb.withAlpha(
-                        argb[pixelIndex],
-                        ((alphaData[pixelIndex] & 0xFF) + predictor) & 0xFF
-                );
-            }
+    /// Returns an exact-sized frame buffer, reusing it when animated frames share dimensions.
+    ///
+    /// @param length the required pixel count
+    /// @return an exact-sized mutable decode buffer
+    private int[] acquireFrameArgb(int length) {
+        if (!image.animated()) {
+            return new int[length];
         }
+        if (reusableAnimationFrameArgb == null || reusableAnimationFrameArgb.length != length) {
+            reusableAnimationFrameArgb = new int[length];
+        }
+        return reusableAnimationFrameArgb;
     }
 
     private void ensureOpen() throws WebPException {

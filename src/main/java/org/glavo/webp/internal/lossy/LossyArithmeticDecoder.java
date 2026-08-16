@@ -16,29 +16,43 @@
 package org.glavo.webp.internal.lossy;
 
 import org.jetbrains.annotations.NotNullByDefault;
-import org.jetbrains.annotations.Nullable;
 
 import org.glavo.webp.WebPException;
 
 import java.nio.ByteBuffer;
 
-/// VP8 boolean arithmetic decoder.
-///
-/// The implementation mirrors the split fast-path / cold-path structure of the reference crate
-/// so that the eventual Java VP8 decoder can stay structurally close to the source material.
+/// Decodes VP8 boolean-coded header and coefficient partitions.
 @NotNullByDefault
 final class LossyArithmeticDecoder {
 
+    /// Remaining bytes in the current VP8 boolean-coded partition.
     private ByteBuffer input = ByteBuffer.allocate(0);
-    private State state = new State();
+
+    /// Buffered arithmetic-coded bits aligned to the current range.
+    private long value;
+
+    /// Current arithmetic decoder range.
+    private int range = 255;
+
+    /// Number of usable buffered bits after range normalization.
+    private int bitCount = -8;
+
+    /// Whether the single VP8 padding byte may still be synthesized at end of input.
     private boolean zeroBytePending;
+
+    /// Whether decoding has consumed data beyond the permitted padding byte.
     private boolean pastEof;
 
+    /// Creates an uninitialized boolean decoder.
     LossyArithmeticDecoder() {
-        state.range = 255;
-        state.bitCount = -8;
     }
 
+    /// Initializes this decoder from one VP8 partition.
+    ///
+    /// The supplied buffer is sliced, so its position and limit are not modified.
+    ///
+    /// @param buffer the encoded partition bytes
+    /// @throws WebPException if the partition is empty
     void init(ByteBuffer buffer) throws WebPException {
         ByteBuffer input = buffer.slice();
         if (!input.hasRemaining()) {
@@ -46,151 +60,151 @@ final class LossyArithmeticDecoder {
         }
 
         this.input = input;
-        this.state = new State();
-        this.state.range = 255;
-        this.state.bitCount = -8;
+        this.value = 0L;
+        this.range = 255;
+        this.bitCount = -8;
         this.zeroBytePending = true;
         this.pastEof = false;
     }
 
-    BitResultAccumulator startAccumulatedResult() {
-        return new BitResultAccumulator();
-    }
-
-    <T> @Nullable T check(BitResultAccumulator accumulator, @Nullable T valueIfNotPastEof) throws WebPException {
-        if (isPastEof()) {
+    /// Verifies that the preceding group of reads did not pass the end of the partition.
+    ///
+    /// @throws WebPException if decoding consumed data beyond the permitted VP8 padding byte
+    void ensureNotPastEof() throws WebPException {
+        if (pastEof) {
             throw new WebPException("Corrupt VP8 boolean bitstream");
         }
-        return valueIfNotPastEof;
     }
 
-    BitResult<Boolean> readBool(int probability) {
-        return BitResult.ok(coldReadBit(probability));
+    /// Reads one boolean using the supplied probability for a zero bit.
+    ///
+    /// @param probability the VP8 probability in the range `0` through `255`
+    /// @return the decoded boolean
+    boolean readBool(int probability) {
+        return readBit(probability);
     }
 
-    BitResult<Boolean> readFlag() {
-        return BitResult.ok(coldReadBit(128));
+    /// Reads one equiprobable flag.
+    ///
+    /// @return the decoded flag
+    boolean readFlag() {
+        return readBit(128);
     }
 
-    BitResult<Boolean> readSign() {
-        return BitResult.ok(coldReadBit(128));
+    /// Reads one equiprobable sign bit.
+    ///
+    /// @return `true` for a negative value
+    boolean readSign() {
+        return readBit(128);
     }
 
-    BitResult<Integer> readLiteral(int bits) {
+    /// Reads an unsigned literal in most-significant-bit-first order.
+    ///
+    /// @param bits the number of bits to read
+    /// @return the decoded literal
+    int readLiteral(int bits) {
         int value = 0;
         for (int i = 0; i < bits; i++) {
-            value = (value << 1) | (coldReadBit(128) ? 1 : 0);
+            value = (value << 1) | (readBit(128) ? 1 : 0);
         }
-        return BitResult.ok(value);
+        return value;
     }
 
-    BitResult<Integer> readOptionalSignedValue(int bits) {
-        if (!coldReadBit(128)) {
-            return BitResult.ok(0);
+    /// Reads a conditionally present signed magnitude.
+    ///
+    /// @param bits the number of magnitude bits
+    /// @return the decoded value, or `0` when the value is absent
+    int readOptionalSignedValue(int bits) {
+        if (!readBit(128)) {
+            return 0;
         }
-        int magnitude = readLiteral(bits).valueIfNotPastEof;
-        boolean negative = coldReadBit(128);
-        return BitResult.ok(negative ? -magnitude : magnitude);
+        int magnitude = readLiteral(bits);
+        boolean negative = readBit(128);
+        return negative ? -magnitude : magnitude;
     }
 
-    BitResult<Integer> readWithTree(TreeNode[] tree) {
-        return readWithTreeWithFirstNode(tree, tree[0]);
+    /// Reads a symbol from a VP8 tree using one probability per internal node.
+    ///
+    /// @param tree the VP8 branch table, with two entries per internal node
+    /// @param probabilities the zero-bit probabilities for the internal nodes
+    /// @return the decoded symbol
+    int readWithTree(int[] tree, int[] probabilities) {
+        return readWithTree(tree, probabilities, 0);
     }
 
-    BitResult<Integer> readWithTreeWithFirstNode(TreeNode[] tree, TreeNode firstNode) {
-        int index = firstNode.index & 0xFF;
+    /// Reads a symbol from a VP8 tree starting at a selected internal node.
+    ///
+    /// Positive branches identify another entry in the VP8 branch table, while non-positive
+    /// branches encode a leaf as its negated symbol value.
+    ///
+    /// @param tree the VP8 branch table, with two entries per internal node
+    /// @param probabilities the zero-bit probabilities for the internal nodes
+    /// @param firstNode the first internal-node index to evaluate
+    /// @return the decoded symbol
+    int readWithTree(int[] tree, int[] probabilities, int firstNode) {
+        int node = firstNode;
         while (true) {
-            TreeNode node = tree[index];
-            boolean bit = coldReadBit(node.prob & 0xFF);
-            int branch = bit ? (node.right & 0xFF) : (node.left & 0xFF);
-            if (branch < tree.length) {
-                index = branch;
-            } else {
-                return BitResult.ok(TreeNode.valueFromBranch(branch));
+            int branch = tree[node * 2 + (readBit(probabilities[node]) ? 1 : 0)];
+            if (branch <= 0) {
+                return -branch;
             }
+            node = branch / 2;
         }
     }
 
-    private boolean coldReadBit(int probability) {
-        if (state.bitCount < 0) {
+    /// Reads and range-normalizes one arithmetic-coded bit.
+    ///
+    /// @param probability the probability for a zero bit
+    /// @return the decoded bit
+    private boolean readBit(int probability) {
+        if (bitCount < 0) {
             if (input.remaining() >= Integer.BYTES) {
-                int value = (Byte.toUnsignedInt(input.get()) << 24)
+                int nextValue = (Byte.toUnsignedInt(input.get()) << 24)
                         | (Byte.toUnsignedInt(input.get()) << 16)
                         | (Byte.toUnsignedInt(input.get()) << 8)
                         | Byte.toUnsignedInt(input.get());
-                state.value <<= 32;
-                state.value |= Integer.toUnsignedLong(value);
-                state.bitCount += 32;
+                value <<= 32;
+                value |= Integer.toUnsignedLong(nextValue);
+                bitCount += 32;
             } else {
                 loadFromTailBytes();
-                if (isPastEof()) {
+                if (pastEof) {
                     return false;
                 }
             }
         }
 
-        long split = 1L + (((long) state.range - 1L) * probability >> 8);
-        long bigSplit = split << state.bitCount;
+        long split = 1L + (((long) range - 1L) * probability >> 8);
+        long bigSplit = split << bitCount;
 
         boolean result;
-        if (Long.compareUnsigned(state.value, bigSplit) >= 0) {
-            state.range -= (int) split;
-            state.value -= bigSplit;
+        if (Long.compareUnsigned(value, bigSplit) >= 0) {
+            range -= (int) split;
+            value -= bigSplit;
             result = true;
         } else {
-            state.range = (int) split;
+            range = (int) split;
             result = false;
         }
 
-        int shift = Math.max(0, Integer.numberOfLeadingZeros(state.range) - 24);
-        state.range <<= shift;
-        state.bitCount -= shift;
+        int shift = Math.max(0, Integer.numberOfLeadingZeros(range) - 24);
+        range <<= shift;
+        bitCount -= shift;
         return result;
     }
 
+    /// Loads one tail byte or the single synthesized VP8 padding byte.
     private void loadFromTailBytes() {
         if (input.hasRemaining()) {
-            state.value <<= 8;
-            state.value |= Byte.toUnsignedInt(input.get());
-            state.bitCount += 8;
+            value <<= 8;
+            value |= Byte.toUnsignedInt(input.get());
+            bitCount += 8;
         } else if (zeroBytePending) {
             zeroBytePending = false;
-            state.value <<= 8;
-            state.bitCount += 8;
+            value <<= 8;
+            bitCount += 8;
         } else {
             pastEof = true;
         }
-    }
-
-    private boolean isPastEof() {
-        return pastEof;
-    }
-
-    @NotNullByDefault
-    static final class BitResult<T> {
-        final T valueIfNotPastEof;
-
-        private BitResult(T valueIfNotPastEof) {
-            this.valueIfNotPastEof = valueIfNotPastEof;
-        }
-
-        static <T> BitResult<T> ok(T value) {
-            return new BitResult<>(value);
-        }
-
-        T orAccumulate(BitResultAccumulator accumulator) {
-            return valueIfNotPastEof;
-        }
-    }
-
-    @NotNullByDefault
-    static final class BitResultAccumulator {
-    }
-
-    @NotNullByDefault
-    private static final class State {
-        long value;
-        int range;
-        int bitCount;
     }
 }

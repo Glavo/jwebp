@@ -155,29 +155,64 @@ public final class WebPSequentialParser {
         byte @Nullable [] pendingAlphaChunk = null;
 
         while (remainingBytes > 0) {
-            ChunkPayload chunk = readChunk(input);
-            remainingBytes -= 8L + chunk.paddedSize();
+            if (remainingBytes < 8) {
+                throw new WebPException("Truncated WebP chunk header");
+            }
 
-            switch (chunk.type()) {
+            FourCC fourCc = input.readFourCC();
+            WebPRiffChunk type = WebPRiffChunk.fromFourCC(fourCc);
+            long chunkSize = input.readUnsignedIntLE();
+            if (chunkSize > Integer.MAX_VALUE) {
+                throw new WebPException("Chunk is too large to buffer in memory: " + chunkSize);
+            }
+
+            long paddedChunkSize = paddedSize(chunkSize);
+            if (paddedChunkSize > remainingBytes - 8) {
+                throw new WebPException("WebP chunk extends beyond the RIFF container");
+            }
+            remainingBytes -= 8L + paddedChunkSize;
+
+            if (type == WebPRiffChunk.ANMF) {
+                ParsedFrameDescriptor descriptor = parseAnimationFrame(
+                        input,
+                        (int) chunkSize,
+                        canvasWidth,
+                        canvasHeight
+                );
+                if ((chunkSize & 1L) != 0L) {
+                    input.skip(1);
+                }
+                frames.add(descriptor);
+                loopDurationMillis += descriptor.durationMillis();
+                lossy |= !descriptor.lossless() || descriptor.alphaChunk() != null;
+                continue;
+            }
+
+            byte[] chunkPayload = input.readByteArray((int) chunkSize);
+            if ((chunkSize & 1L) != 0L) {
+                input.skip(1);
+            }
+
+            switch (type) {
                 case VP8X -> throw new WebPException("VP8X chunk must be the first chunk in the WebP container");
-                case ICCP -> iccProfile = chunk.payload();
-                case EXIF -> exifMetadata = chunk.payload();
-                case XMP -> xmpMetadata = chunk.payload();
+                case ICCP -> iccProfile = chunkPayload;
+                case EXIF -> exifMetadata = chunkPayload;
+                case XMP -> xmpMetadata = chunkPayload;
                 case ANIM -> {
-                    if (chunk.payload().length < 6) {
+                    if (chunkPayload.length < 6) {
                         throw new WebPException("ANIM chunk is too small");
                     }
-                    BufferedInput.OfByteBuffer reader = new BufferedInput.OfByteBuffer(ByteBuffer.wrap(chunk.payload()));
+                    BufferedInput.OfByteBuffer reader = new BufferedInput.OfByteBuffer(ByteBuffer.wrap(chunkPayload));
                     backgroundColorHint = reader.readByteArray(4);
                     loopCount = reader.readUnsignedShortLE();
                 }
                 case ALPH -> {
                     if (alpha) {
-                        pendingAlphaChunk = chunk.payload();
+                        pendingAlphaChunk = chunkPayload;
                     }
                 }
                 case VP8 -> {
-                    Dimensions dimensions = parseVp8Dimensions(chunk.payload());
+                    Dimensions dimensions = parseVp8Dimensions(chunkPayload);
                     frames.add(new ParsedFrameDescriptor(
                             0,
                             0,
@@ -188,13 +223,13 @@ public final class WebPSequentialParser {
                             true,
                             false,
                             pendingAlphaChunk,
-                            chunk.payload()
+                            chunkPayload
                     ));
                     pendingAlphaChunk = null;
                     lossy = true;
                 }
                 case VP8L -> {
-                    LosslessHeader losslessHeader = parseVp8LHeader(chunk.payload());
+                    LosslessHeader losslessHeader = parseVp8LHeader(chunkPayload);
                     frames.add(new ParsedFrameDescriptor(
                             0,
                             0,
@@ -205,15 +240,9 @@ public final class WebPSequentialParser {
                             true,
                             true,
                             null,
-                            chunk.payload()
+                            chunkPayload
                     ));
                     pendingAlphaChunk = null;
-                }
-                case ANMF -> {
-                    ParsedFrameDescriptor descriptor = parseAnimationFrame(chunk.payload(), canvasWidth, canvasHeight);
-                    frames.add(descriptor);
-                    loopDurationMillis += descriptor.durationMillis();
-                    lossy |= !descriptor.lossless() || descriptor.alphaChunk() != null;
                 }
                 default -> {
                 }
@@ -252,12 +281,24 @@ public final class WebPSequentialParser {
         );
     }
 
-    private static ParsedFrameDescriptor parseAnimationFrame(byte[] payload, int canvasWidth, int canvasHeight) throws IOException {
-        if (payload.length < 16) {
+    /// Parses an ANMF payload directly from the container without retaining an outer payload copy.
+    ///
+    /// @param frame the container input positioned at the first ANMF payload byte
+    /// @param payloadSize the ANMF payload size, excluding outer RIFF padding
+    /// @param canvasWidth the animation canvas width
+    /// @param canvasHeight the animation canvas height
+    /// @return the parsed frame descriptor
+    /// @throws IOException if the payload is truncated or malformed
+    private static ParsedFrameDescriptor parseAnimationFrame(
+            BufferedInput frame,
+            int payloadSize,
+            int canvasWidth,
+            int canvasHeight
+    ) throws IOException {
+        if (payloadSize < 16) {
             throw new WebPException("ANMF chunk is too small");
         }
 
-        var frame = new BufferedInput.OfByteBuffer(ByteBuffer.wrap(payload));
         int frameX = frame.readUnsignedInt24LE() * 2;
         int frameY = frame.readUnsignedInt24LE() * 2;
         int frameWidth = frame.readUnsignedInt24LE() + 1;
@@ -277,15 +318,27 @@ public final class WebPSequentialParser {
         byte @Nullable [] alphaChunk = null;
         byte @Nullable [] imageChunk = null;
         boolean lossless = false;
-        while (frame.remaining() > 0) {
+        long remainingBytes = payloadSize - 16L;
+        while (remainingBytes > 0) {
+            if (remainingBytes < 8) {
+                throw new WebPException("Truncated animated frame chunk header");
+            }
+
             FourCC fourCc = frame.readFourCC();
             WebPRiffChunk type = WebPRiffChunk.fromFourCC(fourCc);
             long chunkSize = frame.readUnsignedIntLE();
             if (chunkSize > Integer.MAX_VALUE) {
                 throw new WebPException("Animated frame chunk is too large to buffer");
             }
+
+            long paddedChunkSize = paddedSize(chunkSize);
+            if (paddedChunkSize > remainingBytes - 8) {
+                throw new WebPException("Animated frame chunk extends beyond the ANMF payload");
+            }
+            remainingBytes -= 8L + paddedChunkSize;
+
             byte[] chunkPayload = frame.readByteArray((int) chunkSize);
-            if ((chunkSize & 1L) != 0L && frame.remaining() > 0) {
+            if ((chunkSize & 1L) != 0L) {
                 frame.skip(1);
             }
 
@@ -324,6 +377,14 @@ public final class WebPSequentialParser {
                 alphaChunk,
                 imageChunk
         );
+    }
+
+    /// Returns a RIFF payload size including its optional alignment byte.
+    ///
+    /// @param size the declared payload size
+    /// @return the payload size rounded up to an even byte count
+    private static long paddedSize(long size) {
+        return (size & 1L) == 0L ? size : size + 1L;
     }
 
     /// Parses dimensions from a VP8 keyframe chunk.
@@ -426,8 +487,11 @@ public final class WebPSequentialParser {
 
     @NotNullByDefault
     private record ChunkPayload(FourCC fourCc, WebPRiffChunk type, byte[] payload, long size) {
+        /// Returns the payload size including its optional alignment byte.
+        ///
+        /// @return the payload size rounded up to an even byte count
         long paddedSize() {
-            return (size & 1L) == 0L ? size : size + 1L;
+            return WebPSequentialParser.paddedSize(size);
         }
     }
 }

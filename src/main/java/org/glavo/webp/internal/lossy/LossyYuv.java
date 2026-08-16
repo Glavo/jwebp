@@ -16,6 +16,7 @@
 package org.glavo.webp.internal.lossy;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Unmodifiable;
 
 import org.glavo.webp.internal.Argb;
 
@@ -25,6 +26,21 @@ final class LossyYuv {
 
     private static final int YUV_FIX = 16;
     private static final int YUV_HALF = 1 << (YUV_FIX - 1);
+
+    /// Scaled luma contributions indexed by an unsigned sample.
+    private static final int @Unmodifiable [] Y_COEFFICIENTS = buildCoefficientTable(19077);
+
+    /// Scaled red contributions indexed by an unsigned V sample.
+    private static final int @Unmodifiable [] V_TO_R_COEFFICIENTS = buildCoefficientTable(26149);
+
+    /// Scaled green contributions indexed by an unsigned U sample.
+    private static final int @Unmodifiable [] U_TO_G_COEFFICIENTS = buildCoefficientTable(6419);
+
+    /// Scaled green contributions indexed by an unsigned V sample.
+    private static final int @Unmodifiable [] V_TO_G_COEFFICIENTS = buildCoefficientTable(13320);
+
+    /// Scaled blue contributions indexed by an unsigned U sample.
+    private static final int @Unmodifiable [] U_TO_B_COEFFICIENTS = buildCoefficientTable(33050);
 
     private LossyYuv() {
     }
@@ -330,18 +346,30 @@ final class LossyYuv {
         for (int chroma = 0; chroma < chromaWidth && yIndex < yOffset + width; chroma++) {
             int u = uVec[uOffset + chroma] & 0xFF;
             int v = vVec[vOffset + chroma] & 0xFF;
-            int rCoeff = mulhi(v, 26149);
-            int guCoeff = mulhi(u, 6419);
-            int gvCoeff = mulhi(v, 13320);
-            int bCoeff = mulhi(u, 33050);
+            int rCoeff = V_TO_R_COEFFICIENTS[v];
+            int guCoeff = U_TO_G_COEFFICIENTS[u];
+            int gvCoeff = V_TO_G_COEFFICIENTS[v];
+            int bCoeff = U_TO_B_COEFFICIENTS[u];
 
-            argb[dst++] = argbPixelFromCoefficients(yVec[yIndex] & 0xFF, rCoeff, guCoeff, gvCoeff, bCoeff);
+            argb[dst++] = argbPixelFromCoefficients(Y_COEFFICIENTS[yVec[yIndex] & 0xFF], rCoeff, guCoeff, gvCoeff, bCoeff);
             yIndex++;
             if (yIndex < yOffset + width) {
-                argb[dst++] = argbPixelFromCoefficients(yVec[yIndex] & 0xFF, rCoeff, guCoeff, gvCoeff, bCoeff);
+                argb[dst++] = argbPixelFromCoefficients(Y_COEFFICIENTS[yVec[yIndex] & 0xFF], rCoeff, guCoeff, gvCoeff, bCoeff);
                 yIndex++;
             }
         }
+    }
+
+    /// Builds all scaled contributions for one YUV conversion coefficient.
+    ///
+    /// @param coefficient the fixed-point conversion coefficient
+    /// @return the 256 scaled sample contributions
+    private static int @Unmodifiable [] buildCoefficientTable(int coefficient) {
+        int[] table = new int[256];
+        for (int sample = 0; sample < table.length; sample++) {
+            table[sample] = mulhi(sample, coefficient);
+        }
+        return table;
     }
 
     static byte[][] convertImageYuv(byte[] imageData, int width, int height, int bytesPerPixel) {
@@ -428,11 +456,11 @@ final class LossyYuv {
         return Argb.opaque(yuvToR(y, v), yuvToG(y, u, v), yuvToB(y, u));
     }
 
-    private static int argbPixelFromCoefficients(int y, int rCoeff, int guCoeff, int gvCoeff, int bCoeff) {
+    private static int argbPixelFromCoefficients(int yCoeff, int rCoeff, int guCoeff, int gvCoeff, int bCoeff) {
         return Argb.opaque(
-                clip(mulhi(y, 19077) + rCoeff - 14234),
-                clip(mulhi(y, 19077) - guCoeff - gvCoeff + 8708),
-                clip(mulhi(y, 19077) + bCoeff - 17685)
+                clip(yCoeff + rCoeff - 14234),
+                clip(yCoeff - guCoeff - gvCoeff + 8708),
+                clip(yCoeff + bCoeff - 17685)
         );
     }
 

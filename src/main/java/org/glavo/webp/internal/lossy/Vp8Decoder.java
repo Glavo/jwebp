@@ -38,6 +38,59 @@ import java.util.Arrays;
 @NotNullByDefault
 public final class Vp8Decoder {
 
+    /// Reusable storage for the decoded VP8 color planes.
+    ///
+    /// A workspace may be shared by consecutive calls from one thread. It retains only byte
+    /// arrays; all bitstream and prediction state remains local to each decoder invocation.
+    @NotNullByDefault
+    public static final class DecodeWorkspace {
+        /// Reusable full-resolution luma plane.
+        private byte[] yBuffer = new byte[0];
+
+        /// Reusable half-resolution blue-difference chroma plane.
+        private byte[] uBuffer = new byte[0];
+
+        /// Reusable half-resolution red-difference chroma plane.
+        private byte[] vBuffer = new byte[0];
+
+        /// Creates an empty workspace whose planes are allocated on first use.
+        public DecodeWorkspace() {
+        }
+
+        /// Returns a luma plane with at least the requested capacity.
+        ///
+        /// @param length the minimum plane length
+        /// @return the retained luma plane
+        private byte[] acquireYBuffer(int length) {
+            if (yBuffer.length < length) {
+                yBuffer = new byte[length];
+            }
+            return yBuffer;
+        }
+
+        /// Returns a blue-difference chroma plane with at least the requested capacity.
+        ///
+        /// @param length the minimum plane length
+        /// @return the retained blue-difference chroma plane
+        private byte[] acquireUBuffer(int length) {
+            if (uBuffer.length < length) {
+                uBuffer = new byte[length];
+            }
+            return uBuffer;
+        }
+
+        /// Returns a red-difference chroma plane with at least the requested capacity.
+        ///
+        /// @param length the minimum plane length
+        /// @return the retained red-difference chroma plane
+        private byte[] acquireVBuffer(int length) {
+            if (vBuffer.length < length) {
+                vBuffer = new byte[length];
+            }
+            return vBuffer;
+        }
+    }
+
     private static final int[] CHROMA_GROUP_STARTS = {5, 7};
     private static final int FILTER_INFO_SEGMENT_MASK = 0x03;
     private static final int FILTER_INFO_LUMA_MODE_SHIFT = 2;
@@ -47,6 +100,8 @@ public final class Vp8Decoder {
     private static final IntraMode[] INTRA_MODE_BY_CODE = buildIntraModeByCode();
 
     private final ByteBuffer input;
+    /// Optional color-plane storage retained by the caller across frame decodes.
+    private final @Nullable DecodeWorkspace workspace;
     private final LossyArithmeticDecoder headerDecoder = new LossyArithmeticDecoder();
 
     private int macroblockWidth;
@@ -74,8 +129,8 @@ public final class Vp8Decoder {
     };
     private int numPartitions = 1;
 
-    private TreeNode[] segmentTreeNodes = LossyTables.copyTreeNodes(LossyTables.SEGMENT_TREE_NODE_DEFAULTS);
-    private TreeNode[][][][] tokenProbs = LossyTables.copyCoeffProbNodes();
+    private final int[] segmentProbs = {255, 255, 255};
+    private final int[][][][] tokenProbs = LossyTables.copyCoeffProbs();
 
     private @Nullable Integer probSkipFalse;
     private byte[] topBpred = new byte[0];
@@ -97,7 +152,12 @@ public final class Vp8Decoder {
     private final byte[] vWorkspace = new byte[LossyPrediction.CHROMA_BLOCK_SIZE];
 
     private Vp8Decoder(ByteBuffer input) {
+        this(input, null);
+    }
+
+    private Vp8Decoder(ByteBuffer input, @Nullable DecodeWorkspace workspace) {
         this.input = input;
+        this.workspace = workspace;
         for (int i = 0; i < segments.length; i++) {
             segments[i] = new Segment();
         }
@@ -133,22 +193,65 @@ public final class Vp8Decoder {
         return argb;
     }
 
+    /// Decodes one raw VP8 frame payload into an existing packed `ARGB` buffer.
+    ///
+    /// The supplied buffer must contain exactly one entry per decoded frame pixel. The input is
+    /// read from its current position without mutating the caller's `position()` or `limit()`.
+    ///
+    /// @param input the raw VP8 frame payload
+    /// @param fancyUpsampling whether to use the high-quality chroma upsampler
+    /// @param argb the destination for tightly packed non-premultiplied `ARGB` pixels
+    /// @throws IllegalArgumentException if the destination size does not match the frame dimensions
+    /// @throws WebPException if the VP8 bitstream is malformed
+    public static void decodeArgb(ByteBuffer input, boolean fancyUpsampling, int[] argb) throws WebPException {
+        decodeArgb(input, fancyUpsampling, argb, null);
+    }
+
+    /// Decodes one raw VP8 frame payload into an existing packed `ARGB` buffer while reusing plane
+    /// storage.
+    ///
+    /// The workspace must not be used concurrently. Its retained arrays may grow to fit the
+    /// largest decoded frame. The supplied destination must contain exactly one entry per decoded
+    /// frame pixel.
+    ///
+    /// @param input the raw VP8 frame payload
+    /// @param fancyUpsampling whether to use the high-quality chroma upsampler
+    /// @param argb the destination for tightly packed non-premultiplied `ARGB` pixels
+    /// @param workspace reusable color-plane storage, or `null` to allocate per call
+    /// @throws IllegalArgumentException if the destination size does not match the frame dimensions
+    /// @throws WebPException if the VP8 bitstream is malformed
+    public static void decodeArgb(
+            ByteBuffer input,
+            boolean fancyUpsampling,
+            int[] argb,
+            @Nullable DecodeWorkspace workspace
+    ) throws WebPException {
+        Vp8Frame frame = new Vp8Decoder(input.slice(), workspace).decodeFrameInternal();
+        int expectedLength = frame.width * frame.height;
+        if (argb.length != expectedLength) {
+            throw new IllegalArgumentException(
+                    "ARGB buffer length does not match VP8 frame dimensions: "
+                            + argb.length + " != " + expectedLength
+            );
+        }
+        frame.fillArgb(argb, fancyUpsampling);
+    }
+
     private void updateTokenProbabilities() throws WebPException {
-        LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
         for (int i = 0; i < LossyTables.COEFF_UPDATE_PROBS.length; i++) {
             for (int j = 0; j < LossyTables.COEFF_UPDATE_PROBS[i].length; j++) {
                 for (int k = 0; k < LossyTables.COEFF_UPDATE_PROBS[i][j].length; k++) {
                     for (int t = 0; t < LossyCommon.NUM_DCT_TOKENS - 1; t++) {
                         int prob = LossyTables.COEFF_UPDATE_PROBS[i][j][k][t];
-                        if (headerDecoder.readBool(prob).orAccumulate(accumulator)) {
-                            int updated = headerDecoder.readLiteral(8).orAccumulate(accumulator);
-                            tokenProbs[i][j][k][t].prob = updated;
+                        if (headerDecoder.readBool(prob)) {
+                            int updated = headerDecoder.readLiteral(8);
+                            tokenProbs[i][j][k][t] = updated;
                         }
                     }
                 }
             }
         }
-        headerDecoder.check(accumulator, null);
+        headerDecoder.ensureNotPastEof();
     }
 
     private void initPartitions(int partitionCount) throws WebPException {
@@ -166,13 +269,12 @@ public final class Vp8Decoder {
     }
 
     private void readQuantizationIndices() throws WebPException {
-        LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
-        int yacAbs = headerDecoder.readLiteral(7).orAccumulate(accumulator);
-        int ydcDelta = headerDecoder.readOptionalSignedValue(4).orAccumulate(accumulator);
-        int y2dcDelta = headerDecoder.readOptionalSignedValue(4).orAccumulate(accumulator);
-        int y2acDelta = headerDecoder.readOptionalSignedValue(4).orAccumulate(accumulator);
-        int uvdcDelta = headerDecoder.readOptionalSignedValue(4).orAccumulate(accumulator);
-        int uvacDelta = headerDecoder.readOptionalSignedValue(4).orAccumulate(accumulator);
+        int yacAbs = headerDecoder.readLiteral(7);
+        int ydcDelta = headerDecoder.readOptionalSignedValue(4);
+        int y2dcDelta = headerDecoder.readOptionalSignedValue(4);
+        int y2acDelta = headerDecoder.readOptionalSignedValue(4);
+        int uvdcDelta = headerDecoder.readOptionalSignedValue(4);
+        int uvacDelta = headerDecoder.readOptionalSignedValue(4);
 
         int segmentCount = segmentsEnabled ? LossyCommon.MAX_SEGMENTS : 1;
         for (int i = 0; i < segmentCount; i++) {
@@ -195,48 +297,46 @@ public final class Vp8Decoder {
             }
         }
 
-        headerDecoder.check(accumulator, null);
+        headerDecoder.ensureNotPastEof();
     }
 
     private void readLoopFilterAdjustments() throws WebPException {
-        LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
-        if (headerDecoder.readFlag().orAccumulate(accumulator)) {
+        if (headerDecoder.readFlag()) {
             for (int i = 0; i < 4; i++) {
-                refDelta[i] = headerDecoder.readOptionalSignedValue(6).orAccumulate(accumulator);
+                refDelta[i] = headerDecoder.readOptionalSignedValue(6);
             }
             for (int i = 0; i < 4; i++) {
-                modeDelta[i] = headerDecoder.readOptionalSignedValue(6).orAccumulate(accumulator);
+                modeDelta[i] = headerDecoder.readOptionalSignedValue(6);
             }
         }
-        headerDecoder.check(accumulator, null);
+        headerDecoder.ensureNotPastEof();
     }
 
     private void readSegmentUpdates() throws WebPException {
-        LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
-        segmentsUpdateMap = headerDecoder.readFlag().orAccumulate(accumulator);
-        boolean updateSegmentFeatureData = headerDecoder.readFlag().orAccumulate(accumulator);
+        segmentsUpdateMap = headerDecoder.readFlag();
+        boolean updateSegmentFeatureData = headerDecoder.readFlag();
 
         if (updateSegmentFeatureData) {
-            boolean segmentFeatureMode = headerDecoder.readFlag().orAccumulate(accumulator);
+            boolean segmentFeatureMode = headerDecoder.readFlag();
             for (Segment segment : segments) {
                 segment.deltaValues = !segmentFeatureMode;
             }
             for (Segment segment : segments) {
-                segment.quantizerLevel = headerDecoder.readOptionalSignedValue(7).orAccumulate(accumulator).byteValue();
+                segment.quantizerLevel = (byte) headerDecoder.readOptionalSignedValue(7);
             }
             for (Segment segment : segments) {
-                segment.loopFilterLevel = headerDecoder.readOptionalSignedValue(6).orAccumulate(accumulator).byteValue();
+                segment.loopFilterLevel = (byte) headerDecoder.readOptionalSignedValue(6);
             }
         }
 
         if (segmentsUpdateMap) {
             for (int i = 0; i < 3; i++) {
-                boolean update = headerDecoder.readFlag().orAccumulate(accumulator);
-                segmentTreeNodes[i].prob = update ? headerDecoder.readLiteral(8).orAccumulate(accumulator) : 255;
+                boolean update = headerDecoder.readFlag();
+                segmentProbs[i] = update ? headerDecoder.readLiteral(8) : 255;
             }
         }
 
-        headerDecoder.check(accumulator, null);
+        headerDecoder.ensureNotPastEof();
     }
 
     private void readFrameHeader() throws WebPException {
@@ -281,9 +381,17 @@ public final class Vp8Decoder {
         }
         Arrays.fill(topComplexity, 0, topComplexityLength, (byte) 0);
 
-        frame.yBuffer = new byte[macroblockWidth * 16 * macroblockHeight * 16];
-        frame.uBuffer = new byte[macroblockWidth * 8 * macroblockHeight * 8];
-        frame.vBuffer = new byte[macroblockWidth * 8 * macroblockHeight * 8];
+        int yBufferLength = macroblockWidth * 16 * macroblockHeight * 16;
+        int chromaBufferLength = macroblockWidth * 8 * macroblockHeight * 8;
+        if (workspace == null) {
+            frame.yBuffer = new byte[yBufferLength];
+            frame.uBuffer = new byte[chromaBufferLength];
+            frame.vBuffer = new byte[chromaBufferLength];
+        } else {
+            frame.yBuffer = workspace.acquireYBuffer(yBufferLength);
+            frame.uBuffer = workspace.acquireUBuffer(chromaBufferLength);
+            frame.vBuffer = workspace.acquireVBuffer(chromaBufferLength);
+        }
 
         topBorderY = filled(frame.width + 20, (byte) 127);
         leftBorderY = filled(17, (byte) 129);
@@ -294,29 +402,28 @@ public final class Vp8Decoder {
 
         headerDecoder.init(readExactly(firstPartitionSize));
 
-        LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
-        int colorSpace = headerDecoder.readLiteral(1).orAccumulate(accumulator);
-        frame.pixelType = headerDecoder.readLiteral(1).orAccumulate(accumulator).byteValue();
+        int colorSpace = headerDecoder.readLiteral(1);
+        frame.pixelType = (byte) headerDecoder.readLiteral(1);
         if (colorSpace != 0) {
             throw new WebPException("Unsupported VP8 color space: " + colorSpace);
         }
 
-        segmentsEnabled = headerDecoder.readFlag().orAccumulate(accumulator);
+        segmentsEnabled = headerDecoder.readFlag();
         if (segmentsEnabled) {
             readSegmentUpdates();
         }
 
-        frame.filterType = headerDecoder.readFlag().orAccumulate(accumulator);
-        frame.filterLevel = headerDecoder.readLiteral(6).orAccumulate(accumulator).byteValue();
-        frame.sharpnessLevel = headerDecoder.readLiteral(3).orAccumulate(accumulator).byteValue();
+        frame.filterType = headerDecoder.readFlag();
+        frame.filterLevel = (byte) headerDecoder.readLiteral(6);
+        frame.sharpnessLevel = (byte) headerDecoder.readLiteral(3);
 
-        loopFilterAdjustmentsEnabled = headerDecoder.readFlag().orAccumulate(accumulator);
+        loopFilterAdjustmentsEnabled = headerDecoder.readFlag();
         if (loopFilterAdjustmentsEnabled) {
             readLoopFilterAdjustments();
         }
 
-        int partitionCount = 1 << headerDecoder.readLiteral(2).orAccumulate(accumulator);
-        headerDecoder.check(accumulator, null);
+        int partitionCount = 1 << headerDecoder.readLiteral(2);
+        headerDecoder.ensureNotPastEof();
 
         numPartitions = partitionCount;
         initPartitions(partitionCount);
@@ -325,38 +432,47 @@ public final class Vp8Decoder {
         headerDecoder.readLiteral(1);
         updateTokenProbabilities();
 
-        LossyArithmeticDecoder.BitResultAccumulator skipAccumulator = headerDecoder.startAccumulatedResult();
-        int macroblockNoSkipCoeff = headerDecoder.readLiteral(1).orAccumulate(skipAccumulator);
-        probSkipFalse = macroblockNoSkipCoeff == 1 ? headerDecoder.readLiteral(8).orAccumulate(skipAccumulator) : null;
-        headerDecoder.check(skipAccumulator, null);
+        int macroblockNoSkipCoeff = headerDecoder.readLiteral(1);
+        probSkipFalse = macroblockNoSkipCoeff == 1 ? headerDecoder.readLiteral(8) : null;
+        headerDecoder.ensureNotPastEof();
     }
 
-    private MacroBlock readMacroblockHeader(int macroblockX) throws WebPException {
-        MacroBlock macroBlock = new MacroBlock();
-        LossyArithmeticDecoder.BitResultAccumulator accumulator = headerDecoder.startAccumulatedResult();
+    /// Reads prediction and segment metadata into a reusable macroblock workspace.
+    ///
+    /// @param macroblockX the horizontal macroblock index
+    /// @param macroBlock the workspace to overwrite
+    /// @throws WebPException if the header partition is corrupt
+    private void readMacroblockHeader(int macroblockX, MacroBlock macroBlock) throws WebPException {
+        macroBlock.reset();
         int topBpredOffset = macroblockX * 4;
 
         if (segmentsEnabled && segmentsUpdateMap) {
-            macroBlock.segmentId = headerDecoder.readWithTree(segmentTreeNodes).orAccumulate(accumulator);
+            macroBlock.segmentId = headerDecoder.readWithTree(LossyTables.SEGMENT_ID_TREE, segmentProbs);
         }
 
-        macroBlock.coefficientsSkipped = probSkipFalse != null && headerDecoder.readBool(probSkipFalse).orAccumulate(accumulator);
+        macroBlock.coefficientsSkipped = probSkipFalse != null && headerDecoder.readBool(probSkipFalse);
 
-        int lumaModeCode = headerDecoder.readWithTree(LossyTables.KEYFRAME_YMODE_NODES).orAccumulate(accumulator);
-        macroBlock.lumaMode = LumaMode.fromCode(lumaModeCode);
-        if (macroBlock.lumaMode == null) {
+        int lumaModeCode = headerDecoder.readWithTree(
+                LossyTables.KEYFRAME_YMODE_TREE,
+                LossyTables.KEYFRAME_YMODE_PROBS
+        );
+        LumaMode lumaMode = LumaMode.fromCode(lumaModeCode);
+        if (lumaMode == null) {
             throw new WebPException("Invalid VP8 luma prediction mode: " + lumaModeCode);
         }
+        macroBlock.lumaMode = lumaMode;
 
-        IntraMode sharedMode = macroBlock.lumaMode.asIntraMode();
+        IntraMode sharedMode = lumaMode.asIntraMode();
         if (sharedMode == null) {
-            IntraMode[] bpred = new IntraMode[16];
-            macroBlock.bpred = bpred;
+            IntraMode[] bpred = macroBlock.bpred;
             for (int y = 0; y < 4; y++) {
                 for (int x = 0; x < 4; x++) {
                     IntraMode topMode = INTRA_MODE_BY_CODE[topBpred[topBpredOffset + x] & 0xFF];
                     IntraMode leftMode = INTRA_MODE_BY_CODE[leftBpred[y] & 0xFF];
-                    int intraCode = headerDecoder.readWithTree(LossyTables.KEYFRAME_BPRED_MODE_NODES[topMode.ordinal()][leftMode.ordinal()]).orAccumulate(accumulator);
+                    int intraCode = headerDecoder.readWithTree(
+                            LossyTables.KEYFRAME_BPRED_MODE_TREE,
+                            LossyTables.KEYFRAME_BPRED_MODE_PROBS[topMode.ordinal()][leftMode.ordinal()]
+                    );
                     IntraMode blockMode = IntraMode.fromCode(intraCode);
                     if (blockMode == null) {
                         throw new WebPException("Invalid VP8 intra prediction mode: " + intraCode);
@@ -374,13 +490,17 @@ public final class Vp8Decoder {
             Arrays.fill(topBpred, topBpredOffset, topBpredOffset + 4, sharedMode.code);
         }
 
-        int chromaModeCode = headerDecoder.readWithTree(LossyTables.KEYFRAME_UV_MODE_NODES).orAccumulate(accumulator);
-        macroBlock.chromaMode = ChromaMode.fromCode(chromaModeCode);
-        if (macroBlock.chromaMode == null) {
+        int chromaModeCode = headerDecoder.readWithTree(
+                LossyTables.KEYFRAME_UV_MODE_TREE,
+                LossyTables.KEYFRAME_UV_MODE_PROBS
+        );
+        ChromaMode chromaMode = ChromaMode.fromCode(chromaModeCode);
+        if (chromaMode == null) {
             throw new WebPException("Invalid VP8 chroma prediction mode: " + chromaModeCode);
         }
+        macroBlock.chromaMode = chromaMode;
 
-        return headerDecoder.check(accumulator, macroBlock);
+        headerDecoder.ensureNotPastEof();
     }
 
     /*
@@ -409,7 +529,6 @@ public final class Vp8Decoder {
             case DC -> LossyPrediction.predictDcpred(workspace, 16, stride, macroblockY != 0, macroblockX != 0);
             case B -> {
                 IntraMode[] bpred = macroBlock.bpred;
-                assert bpred != null;
                 LossyPrediction.predict4x4(workspace, stride, bpred, residualData);
             }
         }
@@ -507,9 +626,8 @@ public final class Vp8Decoder {
         assert complexity <= 2;
 
         int firstCoeff = plane == Plane.Y_COEFF_1 ? 1 : 0;
-        TreeNode[][][] probabilities = tokenProbs[plane.ordinal()];
+        int[][][] probabilities = tokenProbs[plane.ordinal()];
         LossyArithmeticDecoder decoder = partitions[partition];
-        LossyArithmeticDecoder.BitResultAccumulator accumulator = decoder.startAccumulatedResult();
 
         int complexityState = complexity;
         boolean hasCoefficients = false;
@@ -517,8 +635,12 @@ public final class Vp8Decoder {
 
         for (int i = firstCoeff; i < 16; i++) {
             int band = LossyTables.COEFF_BANDS[i];
-            TreeNode[] tree = probabilities[band][complexityState];
-            int token = decoder.readWithTreeWithFirstNode(tree, tree[skip ? 1 : 0]).orAccumulate(accumulator);
+            int[] tokenProbabilities = probabilities[band][complexityState];
+            int token = decoder.readWithTree(
+                    LossyTables.DCT_TOKEN_TREE,
+                    tokenProbabilities,
+                    skip ? 1 : 0
+            );
 
             int absoluteValue;
             if (token == LossyTables.DCT_EOB) {
@@ -537,7 +659,7 @@ public final class Vp8Decoder {
                     if (probability == 0) {
                         break;
                     }
-                    extra = extra + extra + (decoder.readBool(probability).orAccumulate(accumulator) ? 1 : 0);
+                    extra = extra + extra + (decoder.readBool(probability) ? 1 : 0);
                 }
                 absoluteValue = LossyTables.DCT_CAT_BASE[token - LossyTables.DCT_CAT1] + extra;
             } else {
@@ -546,7 +668,7 @@ public final class Vp8Decoder {
 
             skip = false;
             complexityState = absoluteValue == 0 ? 0 : (absoluteValue == 1 ? 1 : 2);
-            if (decoder.readSign().orAccumulate(accumulator)) {
+            if (decoder.readSign()) {
                 absoluteValue = -absoluteValue;
             }
 
@@ -555,7 +677,8 @@ public final class Vp8Decoder {
             hasCoefficients = true;
         }
 
-        return decoder.check(accumulator, hasCoefficients);
+        decoder.ensureNotPastEof();
+        return hasCoefficients;
     }
 
     /*
@@ -665,14 +788,26 @@ public final class Vp8Decoder {
         byte[] vBuffer = frame.vBuffer;
         int lumaBase = macroblockY * 16 * lumaWidth + macroblockX * 16;
         int chromaBase = macroblockY * 8 * chromaWidth + macroblockX * 8;
-        FilterParameters parameters = calculateFilterParameters(macroBlockInfo);
+        int filterLevel = calculateFilterLevel(macroBlockInfo);
 
-        if (parameters.filterLevel == 0) {
+        if (filterLevel == 0) {
             return;
         }
 
-        int macroblockEdgeLimit = (parameters.filterLevel + 2) * 2 + parameters.interiorLimit;
-        int subblockEdgeLimit = parameters.filterLevel * 2 + parameters.interiorLimit;
+        int interiorLimit = filterLevel;
+        if (frame.sharpnessLevel > 0) {
+            interiorLimit >>= frame.sharpnessLevel > 4 ? 2 : 1;
+            if (interiorLimit > 9 - frame.sharpnessLevel) {
+                interiorLimit = 9 - frame.sharpnessLevel;
+            }
+        }
+        if (interiorLimit == 0) {
+            interiorLimit = 1;
+        }
+
+        int hevThreshold = filterLevel >= 40 ? 2 : (filterLevel >= 15 ? 1 : 0);
+        int macroblockEdgeLimit = (filterLevel + 2) * 2 + interiorLimit;
+        int subblockEdgeLimit = filterLevel * 2 + interiorLimit;
         int lumaModeCode = loopFilterLumaModeCode(macroBlockInfo);
         boolean doSubblockFiltering = lumaModeCode == LossyCommon.B_PRED
                 || (!loopFilterCoefficientsSkipped(macroBlockInfo) && loopFilterNonZeroDct(macroBlockInfo));
@@ -685,8 +820,8 @@ public final class Vp8Decoder {
             } else {
                 for (int start = lumaBase - 4, end = start + 16 * lumaWidth; start < end; start += lumaWidth) {
                     LossyLoopFilter.macroblockFilterHorizontal(
-                            parameters.hevThreshold,
-                            parameters.interiorLimit,
+                            hevThreshold,
+                            interiorLimit,
                             macroblockEdgeLimit,
                             yBuffer,
                             start
@@ -695,16 +830,16 @@ public final class Vp8Decoder {
 
                 for (int start = chromaBase - 4, end = start + 8 * chromaWidth; start < end; start += chromaWidth) {
                     LossyLoopFilter.macroblockFilterHorizontal(
-                            parameters.hevThreshold,
-                            parameters.interiorLimit,
+                            hevThreshold,
+                            interiorLimit,
                             macroblockEdgeLimit,
                             uBuffer,
                             start
                     );
 
                     LossyLoopFilter.macroblockFilterHorizontal(
-                            parameters.hevThreshold,
-                            parameters.interiorLimit,
+                            hevThreshold,
+                            interiorLimit,
                             macroblockEdgeLimit,
                             vBuffer,
                             start
@@ -724,8 +859,8 @@ public final class Vp8Decoder {
                 for (int xOffset = 0; xOffset < 12; xOffset += 4) {
                     for (int start = lumaBase + xOffset, end = start + 16 * lumaWidth; start < end; start += lumaWidth) {
                         LossyLoopFilter.subblockFilterHorizontal(
-                                parameters.hevThreshold,
-                                parameters.interiorLimit,
+                                hevThreshold,
+                                interiorLimit,
                                 subblockEdgeLimit,
                                 yBuffer,
                                 start
@@ -735,16 +870,16 @@ public final class Vp8Decoder {
 
                 for (int start = chromaBase, end = start + 8 * chromaWidth; start < end; start += chromaWidth) {
                     LossyLoopFilter.subblockFilterHorizontal(
-                            parameters.hevThreshold,
-                            parameters.interiorLimit,
+                            hevThreshold,
+                            interiorLimit,
                             subblockEdgeLimit,
                             uBuffer,
                             start
                     );
 
                     LossyLoopFilter.subblockFilterHorizontal(
-                            parameters.hevThreshold,
-                            parameters.interiorLimit,
+                            hevThreshold,
+                            interiorLimit,
                             subblockEdgeLimit,
                             vBuffer,
                             start
@@ -766,8 +901,8 @@ public final class Vp8Decoder {
             } else {
                 for (int x = 0; x < 16; x++) {
                     LossyLoopFilter.macroblockFilterVertical(
-                            parameters.hevThreshold,
-                            parameters.interiorLimit,
+                            hevThreshold,
+                            interiorLimit,
                             macroblockEdgeLimit,
                             yBuffer,
                             lumaBase + x,
@@ -777,16 +912,16 @@ public final class Vp8Decoder {
 
                 for (int x = 0; x < 8; x++) {
                     LossyLoopFilter.macroblockFilterVertical(
-                            parameters.hevThreshold,
-                            parameters.interiorLimit,
+                            hevThreshold,
+                            interiorLimit,
                             macroblockEdgeLimit,
                             uBuffer,
                             chromaBase + x,
                             chromaWidth
                     );
                     LossyLoopFilter.macroblockFilterVertical(
-                            parameters.hevThreshold,
-                            parameters.interiorLimit,
+                            hevThreshold,
+                            interiorLimit,
                             macroblockEdgeLimit,
                             vBuffer,
                             chromaBase + x,
@@ -812,8 +947,8 @@ public final class Vp8Decoder {
                 for (int rowOffset = 4 * lumaWidth; rowOffset <= 12 * lumaWidth; rowOffset += 4 * lumaWidth) {
                     for (int x = 0; x < 16; x++) {
                         LossyLoopFilter.subblockFilterVertical(
-                                parameters.hevThreshold,
-                                parameters.interiorLimit,
+                                hevThreshold,
+                                interiorLimit,
                                 subblockEdgeLimit,
                                 yBuffer,
                                 lumaBase + rowOffset + x,
@@ -825,16 +960,16 @@ public final class Vp8Decoder {
                 int chromaRowOffset = 4 * chromaWidth;
                 for (int x = 0; x < 8; x++) {
                     LossyLoopFilter.subblockFilterVertical(
-                            parameters.hevThreshold,
-                            parameters.interiorLimit,
+                            hevThreshold,
+                            interiorLimit,
                             subblockEdgeLimit,
                             uBuffer,
                             chromaBase + chromaRowOffset + x,
                             chromaWidth
                     );
                     LossyLoopFilter.subblockFilterVertical(
-                            parameters.hevThreshold,
-                            parameters.interiorLimit,
+                            hevThreshold,
+                            interiorLimit,
                             subblockEdgeLimit,
                             vBuffer,
                             chromaBase + chromaRowOffset + x,
@@ -845,11 +980,15 @@ public final class Vp8Decoder {
         }
     }
 
-    private FilterParameters calculateFilterParameters(int macroBlockInfo) {
+    /// Returns the clamped loop-filter level for one macroblock.
+    ///
+    /// @param macroBlockInfo the packed segment and prediction metadata
+    /// @return the filter level in the range `0` through `63`
+    private int calculateFilterLevel(int macroBlockInfo) {
         Segment segment = segments[loopFilterSegmentId(macroBlockInfo)];
         int filterLevel = frame.filterLevel;
         if (filterLevel == 0) {
-            return new FilterParameters(0, 0, 0);
+            return 0;
         }
 
         if (segmentsEnabled) {
@@ -865,19 +1004,7 @@ public final class Vp8Decoder {
         }
         filterLevel = Math.max(0, Math.min(63, filterLevel));
 
-        int interiorLimit = filterLevel;
-        if (frame.sharpnessLevel > 0) {
-            interiorLimit >>= frame.sharpnessLevel > 4 ? 2 : 1;
-            if (interiorLimit > 9 - frame.sharpnessLevel) {
-                interiorLimit = 9 - frame.sharpnessLevel;
-            }
-        }
-        if (interiorLimit == 0) {
-            interiorLimit = 1;
-        }
-
-        int hevThreshold = filterLevel >= 40 ? 2 : (filterLevel >= 15 ? 1 : 0);
-        return new FilterParameters(filterLevel, interiorLimit, hevThreshold);
+        return filterLevel;
     }
 
     private static byte packLoopFilterInfo(MacroBlock macroBlock) {
@@ -911,13 +1038,14 @@ public final class Vp8Decoder {
     private Vp8Frame decodeFrameInternal() throws WebPException {
         readFrameHeader();
         int macroblockIndex = 0;
+        MacroBlock macroBlock = new MacroBlock();
 
         for (int macroblockY = 0; macroblockY < macroblockHeight; macroblockY++) {
             int partition = macroblockY % numPartitions;
             resetLeftState();
 
             for (int macroblockX = 0; macroblockX < macroblockWidth; macroblockX++) {
-                MacroBlock macroBlock = readMacroblockHeader(macroblockX);
+                readMacroblockHeader(macroblockX, macroBlock);
                 int topComplexityOffset = macroblockX * 9;
                 int[] blocks;
                 if (!macroBlock.coefficientsSkipped) {
@@ -1015,17 +1143,32 @@ public final class Vp8Decoder {
         return readU8(input) | (readU8(input) << 8) | (readU8(input) << 16);
     }
 
+    /// Reusable prediction and coefficient metadata for one macroblock.
     @NotNullByDefault
     private static final class MacroBlock {
-        @Nullable IntraMode[] bpred;
-        LumaMode lumaMode = LumaMode.DC;
-        ChromaMode chromaMode = ChromaMode.DC;
-        int segmentId;
-        boolean coefficientsSkipped;
-        boolean nonZeroDct;
-    }
+        /// Per-block luma prediction modes used when [#lumaMode] is [LumaMode#B].
+        final IntraMode[] bpred = new IntraMode[16];
 
-    @NotNullByDefault
-    private record FilterParameters(int filterLevel, int interiorLimit, int hevThreshold) {
+        /// Luma prediction mode for the current macroblock.
+        LumaMode lumaMode = LumaMode.DC;
+
+        /// Chroma prediction mode for the current macroblock.
+        ChromaMode chromaMode = ChromaMode.DC;
+
+        /// Segment containing the current macroblock.
+        int segmentId;
+
+        /// Whether coefficient decoding is skipped for the current macroblock.
+        boolean coefficientsSkipped;
+
+        /// Whether the current macroblock contains a non-zero coefficient.
+        boolean nonZeroDct;
+
+        /// Clears metadata that is not overwritten unconditionally by the next header.
+        void reset() {
+            segmentId = 0;
+            coefficientsSkipped = false;
+            nonZeroDct = false;
+        }
     }
 }

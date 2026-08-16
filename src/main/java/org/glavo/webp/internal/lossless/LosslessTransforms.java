@@ -286,22 +286,26 @@ public final class LosslessTransforms {
         int topLeft = imageData[start - width - 1];
         for (int i = start; i < end; i++) {
             int top = imageData[i - width];
-            int predictLeft = 0;
-            int predictTop = 0;
-            predictLeft += Math.abs((Argb.red(left) + Argb.red(top) - Argb.red(topLeft)) - Argb.red(left));
-            predictLeft += Math.abs((Argb.green(left) + Argb.green(top) - Argb.green(topLeft)) - Argb.green(left));
-            predictLeft += Math.abs((Argb.blue(left) + Argb.blue(top) - Argb.blue(topLeft)) - Argb.blue(left));
-            predictLeft += Math.abs((Argb.alpha(left) + Argb.alpha(top) - Argb.alpha(topLeft)) - Argb.alpha(left));
-            predictTop += Math.abs((Argb.red(left) + Argb.red(top) - Argb.red(topLeft)) - Argb.red(top));
-            predictTop += Math.abs((Argb.green(left) + Argb.green(top) - Argb.green(topLeft)) - Argb.green(top));
-            predictTop += Math.abs((Argb.blue(left) + Argb.blue(top) - Argb.blue(topLeft)) - Argb.blue(top));
-            predictTop += Math.abs((Argb.alpha(left) + Argb.alpha(top) - Argb.alpha(topLeft)) - Argb.alpha(top));
+            int predictLeft = colorDistance(top, topLeft);
+            int predictTop = colorDistance(left, topLeft);
 
             int predictor = predictLeft < predictTop ? left : top;
             imageData[i] = Argb.add(imageData[i], predictor);
             topLeft = top;
             left = imageData[i];
         }
+    }
+
+    /// Returns the sum of absolute channel differences between two packed pixels.
+    ///
+    /// @param first the first packed pixel
+    /// @param second the second packed pixel
+    /// @return the summed alpha, red, green and blue distances
+    private static int colorDistance(int first, int second) {
+        return Math.abs(Argb.alpha(first) - Argb.alpha(second))
+                + Math.abs(Argb.red(first) - Argb.red(second))
+                + Math.abs(Argb.green(first) - Argb.green(second))
+                + Math.abs(Argb.blue(first) - Argb.blue(second));
     }
 
     private static void applyPredictorTransform12(int[] imageData, int start, int end, int width) {

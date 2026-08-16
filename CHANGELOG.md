@@ -7,6 +7,10 @@
 - New API: `WebPFrame#getArgb(int, int)`
 - New API: `WebPSwingUtils`
 
+### Performance
+
+- Improve VP8 and VP8L decoding throughput and substantially reduce temporary allocations, especially for animated WebP images
+
 ### Fixed
 
 - Ignore `ALPH` chunks when the `VP8X` alpha feature bit is absent

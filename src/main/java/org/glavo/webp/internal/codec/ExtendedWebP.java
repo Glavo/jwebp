@@ -37,81 +37,86 @@ public final class ExtendedWebP {
         GRADIENT
     }
 
-    /// Parsed ALPH chunk payload.
-    ///
-    /// @param filteringMethod the alpha predictor mode
-    /// @param data decoded alpha bytes, one per pixel
+    /// Decodes ALPH chunks and reuses the full-size VP8L destination between compatible frames.
     @NotNullByDefault
-    public record AlphaChunk(FilteringMethod filteringMethod, byte[] data) {
-    }
+    public static final class AlphaDecoder {
 
-    private ExtendedWebP() {
-    }
+        /// Full-size destination reused for nested VP8L alpha streams of the same dimensions.
+        private int[] losslessBuffer = new int[0];
 
-    /// Parses an ALPH chunk payload and returns the decoded alpha data.
-    ///
-    /// The alpha chunk may either store raw bytes or a nested lossless WebP image. The current
-    /// backend supports the compressed representation expected in real WebP files and delegates the
-    /// nested lossless decoding to the VP8L decoder.
-    ///
-    /// @param payload the ALPH chunk payload
-    /// @param width the target width
-    /// @param height the target height
-    /// @return the parsed alpha chunk
-    /// @throws WebPException if the alpha payload is malformed
-    public static AlphaChunk parseAlphaChunk(byte[] payload, int width, int height) throws WebPException {
-        if (payload.length < 1) {
-            throw new WebPException("ALPH chunk is too small");
+        /// Creates an ALPH decoder with no allocated frame workspace.
+        public AlphaDecoder() {
         }
 
-        int infoByte = payload[0] & 0xFF;
-        int preprocessing = (infoByte >>> 4) & 0b11;
-        int filtering = (infoByte >>> 2) & 0b11;
-        int compression = infoByte & 0b11;
+        /// Decodes an ALPH payload and applies its reconstructed samples to an `ARGB` frame.
+        ///
+        /// Raw alpha samples are consumed directly from the payload. Compressed samples are decoded
+        /// from the nested headerless VP8L range into a reusable internal buffer.
+        ///
+        /// @param payload the ALPH chunk payload
+        /// @param width the frame width
+        /// @param height the frame height
+        /// @param argb the frame pixels whose alpha channel will be replaced
+        /// @throws IllegalArgumentException if the destination size does not match the dimensions
+        /// @throws WebPException if the alpha payload is malformed
+        public void apply(byte[] payload, int width, int height, int[] argb) throws WebPException {
+            if (payload.length < 1) {
+                throw new WebPException("ALPH chunk is too small");
+            }
 
-        if (preprocessing > 1) {
-            throw new WebPException("Invalid ALPH preprocessing value: " + preprocessing);
-        }
+            int expectedLength = width * height;
+            if (argb.length != expectedLength) {
+                throw new IllegalArgumentException(
+                        "ARGB buffer length does not match ALPH dimensions: "
+                                + argb.length + " != " + expectedLength
+                );
+            }
 
-        FilteringMethod filteringMethod = switch (filtering) {
-            case 0 -> FilteringMethod.NONE;
-            case 1 -> FilteringMethod.HORIZONTAL;
-            case 2 -> FilteringMethod.VERTICAL;
-            case 3 -> FilteringMethod.GRADIENT;
-            default -> throw new WebPException("Invalid ALPH filtering value: " + filtering);
-        };
+            int infoByte = payload[0] & 0xFF;
+            int preprocessing = (infoByte >>> 4) & 0b11;
+            int filtering = (infoByte >>> 2) & 0b11;
+            int compression = infoByte & 0b11;
 
-        byte[] decodedAlpha;
-        switch (compression) {
-            case 0 -> {
-                int expectedLength = width * height;
+            if (preprocessing > 1) {
+                throw new WebPException("Invalid ALPH preprocessing value: " + preprocessing);
+            }
+
+            FilteringMethod filteringMethod = switch (filtering) {
+                case 0 -> FilteringMethod.NONE;
+                case 1 -> FilteringMethod.HORIZONTAL;
+                case 2 -> FilteringMethod.VERTICAL;
+                case 3 -> FilteringMethod.GRADIENT;
+                default -> throw new WebPException("Invalid ALPH filtering value: " + filtering);
+            };
+
+            if (compression == 0) {
                 if (payload.length - 1 != expectedLength) {
                     throw new WebPException("ALPH chunk size does not match the frame dimensions");
                 }
-                decodedAlpha = new byte[expectedLength];
-                System.arraycopy(payload, 1, decodedAlpha, 0, expectedLength);
+            } else if (compression == 1) {
+                if (losslessBuffer.length != expectedLength) {
+                    losslessBuffer = new int[expectedLength];
+                }
+                new LosslessDecoder(payload, 1, payload.length - 1)
+                        .decodeFrame(width, height, true, losslessBuffer);
+            } else {
+                throw new WebPException("Unsupported ALPH compression method: " + compression);
             }
-            case 1 -> {
-                int[] argb = new int[width * height];
-                byte[] nestedVp8L = new byte[payload.length - 1];
-                System.arraycopy(payload, 1, nestedVp8L, 0, nestedVp8L.length);
 
-                /*
-                 * Compressed ALPH chunks embed a VP8L image whose green channel stores one alpha
-                 * byte per pixel. The dimensions come from the surrounding VP8/ANMF frame rather
-                 * than from a nested VP8L header, so we decode in implicit-dimension mode.
-                 */
-                new LosslessDecoder(nestedVp8L).decodeFrame(width, height, true, argb);
-
-                decodedAlpha = new byte[width * height];
-                for (int pixel = 0; pixel < decodedAlpha.length; pixel++) {
-                    decodedAlpha[pixel] = (byte) Argb.green(argb[pixel]);
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int pixelIndex = y * width + x;
+                    int sample = compression == 0
+                            ? payload[pixelIndex + 1] & 0xFF
+                            : Argb.green(losslessBuffer[pixelIndex]);
+                    int predictor = getAlphaPredictor(x, y, width, filteringMethod, argb);
+                    argb[pixelIndex] = Argb.withAlpha(argb[pixelIndex], (sample + predictor) & 0xFF);
                 }
             }
-            default -> throw new WebPException("Unsupported ALPH compression method: " + compression);
         }
+    }
 
-        return new AlphaChunk(filteringMethod, decodedAlpha);
+    private ExtendedWebP() {
     }
 
     /// Returns the alpha predictor value for the given pixel.

@@ -32,44 +32,44 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @NotNullByDefault
 final class LossyArithmeticDecoderTest {
 
+    /// Verifies the expected prefix decoded from a three-byte partition.
     @Test
     void arithmeticDecoderHelloShort() throws Exception {
         LossyArithmeticDecoder decoder = new LossyArithmeticDecoder();
         decoder.init(ByteBuffer.wrap("hel".getBytes(StandardCharsets.US_ASCII)));
 
-        LossyArithmeticDecoder.BitResultAccumulator accumulator = decoder.startAccumulatedResult();
-        assertFalse(decoder.readFlag().orAccumulate(accumulator));
-        assertTrue(decoder.readBool(10).orAccumulate(accumulator));
-        assertFalse(decoder.readBool(250).orAccumulate(accumulator));
-        assertEquals(1, decoder.readLiteral(1).orAccumulate(accumulator));
-        assertEquals(5, decoder.readLiteral(3).orAccumulate(accumulator));
-        assertEquals(64, decoder.readLiteral(8).orAccumulate(accumulator));
-        assertEquals(185, decoder.readLiteral(8).orAccumulate(accumulator));
-        assertTrue(decoder.check(accumulator, Boolean.TRUE));
+        assertFalse(decoder.readFlag());
+        assertTrue(decoder.readBool(10));
+        assertFalse(decoder.readBool(250));
+        assertEquals(1, decoder.readLiteral(1));
+        assertEquals(5, decoder.readLiteral(3));
+        assertEquals(64, decoder.readLiteral(8));
+        assertEquals(185, decoder.readLiteral(8));
+        decoder.ensureNotPastEof();
     }
 
+    /// Verifies the expected prefix decoded from a partition with trailing input.
     @Test
     void arithmeticDecoderHelloLong() throws Exception {
         LossyArithmeticDecoder decoder = new LossyArithmeticDecoder();
         decoder.init(ByteBuffer.wrap("hello world".getBytes(StandardCharsets.US_ASCII)));
 
-        LossyArithmeticDecoder.BitResultAccumulator accumulator = decoder.startAccumulatedResult();
-        assertFalse(decoder.readFlag().orAccumulate(accumulator));
-        assertTrue(decoder.readBool(10).orAccumulate(accumulator));
-        assertFalse(decoder.readBool(250).orAccumulate(accumulator));
-        assertEquals(1, decoder.readLiteral(1).orAccumulate(accumulator));
-        assertEquals(5, decoder.readLiteral(3).orAccumulate(accumulator));
-        assertEquals(64, decoder.readLiteral(8).orAccumulate(accumulator));
-        assertEquals(185, decoder.readLiteral(8).orAccumulate(accumulator));
-        assertEquals(31, decoder.readLiteral(8).orAccumulate(accumulator));
-        assertTrue(decoder.check(accumulator, Boolean.TRUE));
+        assertFalse(decoder.readFlag());
+        assertTrue(decoder.readBool(10));
+        assertFalse(decoder.readBool(250));
+        assertEquals(1, decoder.readLiteral(1));
+        assertEquals(5, decoder.readLiteral(3));
+        assertEquals(64, decoder.readLiteral(8));
+        assertEquals(185, decoder.readLiteral(8));
+        assertEquals(31, decoder.readLiteral(8));
+        decoder.ensureNotPastEof();
     }
 
+    /// Verifies that reading an uninitialized decoder is reported as corrupt input.
     @Test
     void arithmeticDecoderUninitializedReaderFailsCheck() {
         LossyArithmeticDecoder decoder = new LossyArithmeticDecoder();
-        LossyArithmeticDecoder.BitResultAccumulator accumulator = decoder.startAccumulatedResult();
-        decoder.readFlag().orAccumulate(accumulator);
-        assertThrows(WebPException.class, () -> decoder.check(accumulator, Boolean.TRUE));
+        decoder.readFlag();
+        assertThrows(WebPException.class, decoder::ensureNotPastEof);
     }
 }

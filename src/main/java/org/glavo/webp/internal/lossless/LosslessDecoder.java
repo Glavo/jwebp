@@ -56,6 +56,16 @@ public final class LosslessDecoder {
         this.bitReader = new LosslessBitReader(data);
     }
 
+    /// Creates a decoder for a VP8L payload range within an existing array.
+    ///
+    /// @param data the array containing the encoded VP8L bytes
+    /// @param offset the first encoded byte
+    /// @param length the encoded byte count
+    /// @throws IndexOutOfBoundsException if the range lies outside the array
+    public LosslessDecoder(byte[] data, int offset, int length) {
+        this.bitReader = new LosslessBitReader(data, offset, length);
+    }
+
     /// Decodes a VP8L frame into `ARGB` pixels.
     ///
     /// @param width the expected width

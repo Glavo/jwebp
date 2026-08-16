@@ -20,8 +20,6 @@ import org.jetbrains.annotations.Nullable;
 
 import org.glavo.webp.WebPException;
 
-import java.util.Arrays;
-
 /// Huffman tree implementation for VP8L.
 @NotNullByDefault
 public final class LosslessHuffmanTree {
@@ -104,7 +102,7 @@ public final class LosslessHuffmanTree {
 
         int[] offsets = new int[16];
         int codeSpaceUsed = 0;
-        offsets[1] = histogram[0];
+        offsets[1] = 0;
         for (int i = 1; i < maxLength; i++) {
             offsets[i + 1] = offsets[i] + histogram[i];
             codeSpaceUsed = (codeSpaceUsed << 1) + histogram[i];
@@ -117,16 +115,16 @@ public final class LosslessHuffmanTree {
         int tableBits = Math.min(maxLength, MAX_TABLE_BITS);
         int tableSize = 1 << tableBits;
         int[] primaryTable = new int[tableSize];
-        int[] sortedSymbols = new int[codeLengths.length];
-        int[] nextIndex = Arrays.copyOf(offsets, offsets.length);
+        int[] sortedSymbols = new int[symbolCount];
         for (int symbol = 0; symbol < codeLengths.length; symbol++) {
             int length = codeLengths[symbol];
-            sortedSymbols[nextIndex[length]] = symbol;
-            nextIndex[length]++;
+            if (length != 0) {
+                sortedSymbols[offsets[length]++] = symbol;
+            }
         }
 
         int codeword = 0;
-        int i = histogram[0];
+        int i = 0;
         int primaryTableMask = tableSize - 1;
         for (int length = 1; length <= tableBits; length++) {
             int currentTableEnd = 1 << length;
@@ -144,9 +142,20 @@ public final class LosslessHuffmanTree {
         int[] secondaryTable = new int[0];
         int secondaryLength = 0;
         if (maxLength > tableBits) {
+            int firstSecondaryCodeword = codeword;
+            secondaryLength = secondaryTableSize(
+                    histogram,
+                    tableBits,
+                    maxLength,
+                    firstSecondaryCodeword,
+                    primaryTableMask
+            );
+            secondaryTable = new int[secondaryLength];
+
+            codeword = firstSecondaryCodeword;
+            secondaryLength = 0;
             int subtableStart = 0;
             int subtablePrefix = -1;
-            secondaryTable = new int[4096];
 
             for (int length = tableBits + 1; length <= maxLength; length++) {
                 int subtableSize = 1 << (length - tableBits);
@@ -170,7 +179,6 @@ public final class LosslessHuffmanTree {
                     secondaryLength += copyLength;
                 }
             }
-            secondaryTable = Arrays.copyOf(secondaryTable, secondaryLength);
         }
 
         return new LosslessHuffmanTree(primaryTableMask, primaryTable, secondaryTable);
@@ -234,6 +242,43 @@ public final class LosslessHuffmanTree {
         codeword &= bit - 1;
         codeword |= bit;
         return codeword;
+    }
+
+    /// Computes the exact secondary-table size for the canonical long codes.
+    ///
+    /// @param histogram the number of symbols for each code length
+    /// @param tableBits the primary lookup width
+    /// @param maxLength the longest code length
+    /// @param codeword the first codeword not represented directly by the primary table
+    /// @param primaryTableMask the primary-table index mask
+    /// @return the required number of secondary-table entries
+    private static int secondaryTableSize(
+            int[] histogram,
+            int tableBits,
+            int maxLength,
+            int codeword,
+            int primaryTableMask
+    ) {
+        int secondaryLength = 0;
+        int subtableStart = 0;
+        int subtablePrefix = -1;
+
+        for (int length = tableBits + 1; length <= maxLength; length++) {
+            int subtableSize = 1 << (length - tableBits);
+            for (int i = 0; i < histogram[length]; i++) {
+                if ((codeword & primaryTableMask) != subtablePrefix) {
+                    subtablePrefix = codeword & primaryTableMask;
+                    subtableStart = secondaryLength;
+                    secondaryLength += subtableSize;
+                }
+                codeword = nextCodeword(codeword, 1 << length);
+            }
+
+            if (length < maxLength && (codeword & primaryTableMask) == subtablePrefix) {
+                secondaryLength += secondaryLength - subtableStart;
+            }
+        }
+        return secondaryLength;
     }
 
     /// Primary-table peek result.

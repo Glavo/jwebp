@@ -177,16 +177,12 @@ final class LossyPrediction {
         int top2 = a[pos + 2] & 0xFF;
         int top3 = a[pos + 3] & 0xFF;
         int top4 = a[pos + 4] & 0xFF;
-        int[] avg = {
-                avg3(p, top0, top1),
-                avg3(top0, top1, top2),
-                avg3(top1, top2, top3),
-                avg3(top2, top3, top4)
-        };
+        int average0 = avg3(p, top0, top1);
+        int average1 = avg3(top0, top1, top2);
+        int average2 = avg3(top1, top2, top3);
+        int average3 = avg3(top2, top3, top4);
         for (int y = 0; y < 4; y++) {
-            for (int x = 0; x < 4; x++) {
-                a[(y0 + y) * stride + x0 + x] = (byte) avg[x];
-            }
+            write4(a, (y0 + y) * stride + x0, average0, average1, average2, average3);
         }
     }
 
@@ -196,17 +192,14 @@ final class LossyPrediction {
         int left1 = a[(y0 + 1) * stride + x0 - 1] & 0xFF;
         int left2 = a[(y0 + 2) * stride + x0 - 1] & 0xFF;
         int left3 = a[(y0 + 3) * stride + x0 - 1] & 0xFF;
-        int[] avg = {
-                avg3(p, left0, left1),
-                avg3(left0, left1, left2),
-                avg3(left1, left2, left3),
-                avg3(left2, left3, left3)
-        };
-        for (int y = 0; y < 4; y++) {
-            for (int x = 0; x < 4; x++) {
-                a[(y0 + y) * stride + x0 + x] = (byte) avg[y];
-            }
-        }
+        int average0 = avg3(p, left0, left1);
+        int average1 = avg3(left0, left1, left2);
+        int average2 = avg3(left1, left2, left3);
+        int average3 = avg3(left2, left3, left3);
+        write4(a, y0 * stride + x0, average0, average0, average0, average0);
+        write4(a, (y0 + 1) * stride + x0, average1, average1, average1, average1);
+        write4(a, (y0 + 2) * stride + x0, average2, average2, average2, average2);
+        write4(a, (y0 + 3) * stride + x0, average3, average3, average3, average3);
     }
 
     static void predictBldpred(byte[] a, int x0, int y0, int stride) {
@@ -219,22 +212,17 @@ final class LossyPrediction {
         int top5 = a[pos + 5] & 0xFF;
         int top6 = a[pos + 6] & 0xFF;
         int top7 = a[pos + 7] & 0xFF;
-        int[] avg = {
-                avg3(top0, top1, top2),
-                avg3(top1, top2, top3),
-                avg3(top2, top3, top4),
-                avg3(top3, top4, top5),
-                avg3(top4, top5, top6),
-                avg3(top5, top6, top7),
-                avg3(top6, top7, top7)
-        };
-        for (int y = 0; y < 4; y++) {
-            int rowOffset = (y0 + y) * stride + x0;
-            a[rowOffset] = (byte) avg[y];
-            a[rowOffset + 1] = (byte) avg[y + 1];
-            a[rowOffset + 2] = (byte) avg[y + 2];
-            a[rowOffset + 3] = (byte) avg[y + 3];
-        }
+        int average0 = avg3(top0, top1, top2);
+        int average1 = avg3(top1, top2, top3);
+        int average2 = avg3(top2, top3, top4);
+        int average3 = avg3(top3, top4, top5);
+        int average4 = avg3(top4, top5, top6);
+        int average5 = avg3(top5, top6, top7);
+        int average6 = avg3(top6, top7, top7);
+        write4(a, y0 * stride + x0, average0, average1, average2, average3);
+        write4(a, (y0 + 1) * stride + x0, average1, average2, average3, average4);
+        write4(a, (y0 + 2) * stride + x0, average2, average3, average4, average5);
+        write4(a, (y0 + 3) * stride + x0, average3, average4, average5, average6);
     }
 
     static void predictBrdpred(byte[] a, int x0, int y0, int stride) {
@@ -248,20 +236,17 @@ final class LossyPrediction {
         int e6 = a[pos + 2] & 0xFF;
         int e7 = a[pos + 3] & 0xFF;
         int e8 = a[pos + 4] & 0xFF;
-        int[] avg = {
-                avg3(e0, e1, e2),
-                avg3(e1, e2, e3),
-                avg3(e2, e3, e4),
-                avg3(e3, e4, e5),
-                avg3(e4, e5, e6),
-                avg3(e5, e6, e7),
-                avg3(e6, e7, e8)
-        };
-        for (int y = 0; y < 4; y++) {
-            for (int x = 0; x < 4; x++) {
-                a[(y0 + y) * stride + x0 + x] = (byte) avg[3 - y + x];
-            }
-        }
+        int average0 = avg3(e0, e1, e2);
+        int average1 = avg3(e1, e2, e3);
+        int average2 = avg3(e2, e3, e4);
+        int average3 = avg3(e3, e4, e5);
+        int average4 = avg3(e4, e5, e6);
+        int average5 = avg3(e5, e6, e7);
+        int average6 = avg3(e6, e7, e8);
+        write4(a, y0 * stride + x0, average3, average4, average5, average6);
+        write4(a, (y0 + 1) * stride + x0, average2, average3, average4, average5);
+        write4(a, (y0 + 2) * stride + x0, average1, average2, average3, average4);
+        write4(a, (y0 + 3) * stride + x0, average0, average1, average2, average3);
     }
 
     static void predictBvrpred(byte[] a, int x0, int y0, int stride) {
@@ -377,6 +362,21 @@ final class LossyPrediction {
 
     static int avg2(int left, int right) {
         return (left + right + 1) >> 1;
+    }
+
+    /// Writes four unsigned prediction samples into one contiguous row.
+    ///
+    /// @param output the prediction workspace
+    /// @param offset the destination offset
+    /// @param value0 the first sample
+    /// @param value1 the second sample
+    /// @param value2 the third sample
+    /// @param value3 the fourth sample
+    private static void write4(byte[] output, int offset, int value0, int value1, int value2, int value3) {
+        output[offset] = (byte) value0;
+        output[offset + 1] = (byte) value1;
+        output[offset + 2] = (byte) value2;
+        output[offset + 3] = (byte) value3;
     }
 
 }

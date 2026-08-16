@@ -540,78 +540,23 @@ final class LossyTables {
     };
     static final int[] ZIGZAG = {0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15};
 
-    static final TreeNode[] SEGMENT_TREE_NODE_DEFAULTS = treeNodesFrom(SEGMENT_ID_TREE, repeat(255, 3));
-    static final TreeNode[] KEYFRAME_YMODE_NODES = treeNodesFrom(KEYFRAME_YMODE_TREE, KEYFRAME_YMODE_PROBS);
-    static final TreeNode[][][] KEYFRAME_BPRED_MODE_NODES = buildBpredNodes();
-    static final TreeNode[] KEYFRAME_UV_MODE_NODES = treeNodesFrom(KEYFRAME_UV_MODE_TREE, KEYFRAME_UV_MODE_PROBS);
-    static final TreeNode[][][][] COEFF_PROB_NODES = buildCoeffProbNodes();
-
     private LossyTables() {
     }
 
-    static TreeNode[] copyTreeNodes(TreeNode[] source) {
-        TreeNode[] copy = new TreeNode[source.length];
-        for (int i = 0; i < source.length; i++) {
-            TreeNode node = source[i];
-            copy[i] = new TreeNode(node.left, node.right, node.prob, node.index);
-        }
-        return copy;
-    }
-
-    static TreeNode[][][][] copyCoeffProbNodes() {
-        TreeNode[][][][] copy = new TreeNode[COEFF_PROB_NODES.length][][][];
+    /// Copies the default coefficient probabilities for per-frame updates.
+    ///
+    /// @return a deep mutable copy of [#COEFF_PROBS]
+    static int[][][][] copyCoeffProbs() {
+        int[][][][] copy = new int[COEFF_PROBS.length][][][];
         for (int i = 0; i < copy.length; i++) {
-            copy[i] = new TreeNode[COEFF_PROB_NODES[i].length][][];
+            copy[i] = new int[COEFF_PROBS[i].length][][];
             for (int j = 0; j < copy[i].length; j++) {
-                copy[i][j] = new TreeNode[COEFF_PROB_NODES[i][j].length][];
+                copy[i][j] = new int[COEFF_PROBS[i][j].length][];
                 for (int k = 0; k < copy[i][j].length; k++) {
-                    copy[i][j][k] = copyTreeNodes(COEFF_PROB_NODES[i][j][k]);
+                    copy[i][j][k] = COEFF_PROBS[i][j][k].clone();
                 }
             }
         }
         return copy;
-    }
-
-    private static TreeNode[] treeNodesFrom(int[] tree, int[] probs) {
-        TreeNode[] nodes = new TreeNode[probs.length];
-        for (int i = 0; i < probs.length; i++) {
-            nodes[i] = new TreeNode(
-                    TreeNode.prepareBranch(tree[2 * i]),
-                    TreeNode.prepareBranch(tree[2 * i + 1]),
-                    probs[i],
-                    (byte) i
-            );
-        }
-        return nodes;
-    }
-
-    private static TreeNode[][][] buildBpredNodes() {
-        TreeNode[][][] output = new TreeNode[10][10][];
-        for (int i = 0; i < 10; i++) {
-            for (int j = 0; j < 10; j++) {
-                output[i][j] = treeNodesFrom(KEYFRAME_BPRED_MODE_TREE, KEYFRAME_BPRED_MODE_PROBS[i][j]);
-            }
-        }
-        return output;
-    }
-
-    private static TreeNode[][][][] buildCoeffProbNodes() {
-        TreeNode[][][][] output = new TreeNode[4][8][3][];
-        for (int i = 0; i < output.length; i++) {
-            for (int j = 0; j < output[i].length; j++) {
-                for (int k = 0; k < output[i][j].length; k++) {
-                    output[i][j][k] = treeNodesFrom(DCT_TOKEN_TREE, COEFF_PROBS[i][j][k]);
-                }
-            }
-        }
-        return output;
-    }
-
-    private static int[] repeat(int value, int count) {
-        int[] values = new int[count];
-        for (int i = 0; i < count; i++) {
-            values[i] = value;
-        }
-        return values;
     }
 }
