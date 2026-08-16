@@ -159,6 +159,7 @@ public final class WebPSequentialParser {
             remainingBytes -= 8L + chunk.paddedSize();
 
             switch (chunk.type()) {
+                case VP8X -> throw new WebPException("VP8X chunk must be the first chunk in the WebP container");
                 case ICCP -> iccProfile = chunk.payload();
                 case EXIF -> exifMetadata = chunk.payload();
                 case XMP -> xmpMetadata = chunk.payload();
@@ -170,7 +171,11 @@ public final class WebPSequentialParser {
                     backgroundColorHint = reader.readByteArray(4);
                     loopCount = reader.readUnsignedShortLE();
                 }
-                case ALPH -> pendingAlphaChunk = chunk.payload();
+                case ALPH -> {
+                    if (alpha) {
+                        pendingAlphaChunk = chunk.payload();
+                    }
+                }
                 case VP8 -> {
                     Dimensions dimensions = parseVp8Dimensions(chunk.payload());
                     frames.add(new ParsedFrameDescriptor(

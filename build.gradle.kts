@@ -202,8 +202,117 @@ val downloadWebPTestData by tasks.registering(Download::class) {
     overwrite(false)
 }
 
+// https://github.com/chromium/chromium/tree/main/third_party/blink/web_tests/images/resources
+val chromiumWebPTestDataCommit = "8f4baaae073181e7e0fea1807f8db6ad720dbcb7"
+val chromiumWebPTestDataDirectory =
+    layout.buildDirectory.dir("downloads/chromium-webp-test-data-$chromiumWebPTestDataCommit")
+val chromiumWebPTestDataFiles = listOf(
+    "crbug.364830.webp",
+    "invalid-animated-webp.webp",
+    "invalid-animated-webp2.webp",
+    "invalid-animated-webp3.webp",
+    "invalid-animated-webp4.webp",
+    "invalid_vp8_vp8x.webp",
+    "red3x3-lossless.webp",
+    "red3x3-lossy.webp",
+    "size-failure.b186640109.webp",
+    "test.webp",
+    "test2.webp",
+    "test3.webp",
+    "truncated.webp",
+    "truncated2.webp",
+    "webp-animated-icc-xmp.webp",
+    "webp-animated-large.webp",
+    "webp-animated-no-blend.webp",
+    "webp-animated-opaque.webp",
+    "webp-animated-semitransparent1.webp",
+    "webp-animated-semitransparent2.webp",
+    "webp-animated-semitransparent3.webp",
+    "webp-animated-semitransparent4.webp",
+    "webp-animated.webp",
+    "webp-color-no-profile-lossy.webp",
+    "webp-color-profile-crash.webp",
+    "webp-color-profile-lossless.webp",
+    "webp-color-profile-lossy-alpha.webp",
+    "webp-color-profile-lossy.webp",
+)
+
+// https://github.com/mozilla-firefox/firefox/tree/main/image/test
+val firefoxWebPTestDataCommit = "4272397b835a480b1be6cee142d0fa39e166dbc6"
+val firefoxWebPTestDataDirectory =
+    layout.buildDirectory.dir("downloads/firefox-webp-test-data-$firefoxWebPTestDataCommit")
+val firefoxWebPTestDataFiles = listOf(
+    "image/test/gtest/blend.webp",
+    "image/test/gtest/downscaled.webp",
+    "image/test/gtest/first-frame-green.webp",
+    "image/test/gtest/green.icc_srgb.webp",
+    "image/test/gtest/green.webp",
+    "image/test/gtest/large.webp",
+    "image/test/gtest/perf_srgb_alpha_lossless.webp",
+    "image/test/gtest/perf_srgb_alpha_lossy.webp",
+    "image/test/gtest/perf_srgb_lossless.webp",
+    "image/test/gtest/perf_srgb_lossy.webp",
+    "image/test/gtest/transparent-no-alpha-header.webp",
+    "image/test/gtest/transparent.webp",
+    "image/test/reftest/webp/blue.png",
+    "image/test/reftest/webp/icc-bit-no-icc-chunk.webp",
+)
+
+fun registerTestDataDownloads(
+    taskNamePrefix: String,
+    repository: String,
+    commit: String,
+    files: List<String>,
+    destinationDirectory: Provider<Directory>,
+): List<TaskProvider<Download>> {
+    var previousTask: TaskProvider<Download>? = null
+    return files.mapIndexed { index, path ->
+        val predecessor = previousTask
+        val downloadTask = tasks.register<Download>("download${taskNamePrefix}WebPTestDataFile${index + 1}") {
+            group = "verification"
+            description = "Downloads $path from the pinned $taskNamePrefix test-data commit"
+            src("https://raw.githubusercontent.com/$repository/$commit/$path")
+            dest(destinationDirectory.map { it.file(path.substringAfterLast('/')) })
+            overwrite(false)
+            retries(3)
+            tempAndMove(true)
+            if (predecessor != null) {
+                mustRunAfter(predecessor)
+            }
+        }
+        previousTask = downloadTask
+        downloadTask
+    }
+}
+
+val chromiumWebPTestDataDownloads = registerTestDataDownloads(
+    "Chromium",
+    "chromium/chromium",
+    chromiumWebPTestDataCommit,
+    chromiumWebPTestDataFiles.map { "third_party/blink/web_tests/images/resources/$it" },
+    chromiumWebPTestDataDirectory,
+)
+val downloadChromiumWebPTestData by tasks.registering {
+    group = "verification"
+    description = "Downloads the curated Chromium WebP test data from a pinned commit"
+    dependsOn(chromiumWebPTestDataDownloads)
+}
+
+val firefoxWebPTestDataDownloads = registerTestDataDownloads(
+    "Firefox",
+    "mozilla-firefox/firefox",
+    firefoxWebPTestDataCommit,
+    firefoxWebPTestDataFiles,
+    firefoxWebPTestDataDirectory,
+)
+val downloadFirefoxWebPTestData by tasks.registering {
+    group = "verification"
+    description = "Downloads the curated Firefox WebP test data from a pinned commit"
+    dependsOn(firefoxWebPTestDataDownloads)
+}
+
 tasks.processTestResources {
-    dependsOn(downloadWebPTestData)
+    dependsOn(downloadWebPTestData, downloadChromiumWebPTestData, downloadFirefoxWebPTestData)
 
     into("libwebp-test-data") {
         from(zipTree(webpTestDataZip)) {
@@ -217,6 +326,14 @@ tasks.processTestResources {
             }
             includeEmptyDirs = false
         }
+    }
+
+    into("chromium-webp-test-data") {
+        from(chromiumWebPTestDataDirectory)
+    }
+
+    into("firefox-webp-test-data") {
+        from(firefoxWebPTestDataDirectory)
     }
 }
 

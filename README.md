@@ -129,3 +129,14 @@ The test suite includes:
 - tests ported from `image-rs`
 - tests ported from `libwebp`
 - tests backed by the downloaded `libwebp-test-data` corpus
+- regression and conformance fixtures downloaded from pinned Chromium and Firefox commits
+
+`processTestResources` depends on two explicit Gradle download tasks:
+
+- `downloadChromiumWebPTestData` selects fixtures from Chromium commit
+  [`8f4baaae073181e7e0fea1807f8db6ad720dbcb7`](https://github.com/chromium/chromium/tree/8f4baaae073181e7e0fea1807f8db6ad720dbcb7/third_party/blink/web_tests/images/resources)
+- `downloadFirefoxWebPTestData` selects fixtures from Firefox commit
+  [`4272397b835a480b1be6cee142d0fa39e166dbc6`](https://github.com/mozilla-firefox/firefox/tree/4272397b835a480b1be6cee142d0fa39e166dbc6/image/test)
+
+The selected files are cached under `build/downloads` and only enter the test resource set; they
+are not packaged in the library artifacts.
