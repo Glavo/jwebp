@@ -15,6 +15,7 @@
  */
 package org.glavo.webp.internal.lossless;
 
+import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -63,7 +64,7 @@ public final class LosslessHuffmanTree {
     /// @param one the symbol selected by bit `1`
     /// @return the resulting tree
     public static LosslessHuffmanTree pair(int zero, int one) {
-        return new LosslessHuffmanTree(0x1, new int[]{(1 << 12) | zero, (1 << 12) | one}, new int[0]);
+        return new LosslessHuffmanTree(0x1, new int[]{(1 << 12) | zero, (1 << 12) | one}, ArrayUtils.EMPTY_INT_ARRAY);
     }
 
     /// Builds a canonical Huffman tree from code lengths.
@@ -139,7 +140,7 @@ public final class LosslessHuffmanTree {
             }
         }
 
-        int[] secondaryTable = new int[0];
+        int[] secondaryTable = ArrayUtils.EMPTY_INT_ARRAY;
         int secondaryLength = 0;
         if (maxLength > tableBits) {
             int firstSecondaryCodeword = codeword;

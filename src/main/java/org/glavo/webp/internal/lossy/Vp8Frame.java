@@ -15,6 +15,7 @@
  */
 package org.glavo.webp.internal.lossy;
 
+import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 
 /// Decoded VP8 frame planes.
@@ -26,9 +27,9 @@ final class Vp8Frame {
 
     int width;
     int height;
-    byte[] yBuffer = new byte[0];
-    byte[] uBuffer = new byte[0];
-    byte[] vBuffer = new byte[0];
+    byte[] yBuffer = ArrayUtils.EMPTY_BYTE_ARRAY;
+    byte[] uBuffer = ArrayUtils.EMPTY_BYTE_ARRAY;
+    byte[] vBuffer = ArrayUtils.EMPTY_BYTE_ARRAY;
     byte version;
     boolean keyframe;
     boolean forDisplay;

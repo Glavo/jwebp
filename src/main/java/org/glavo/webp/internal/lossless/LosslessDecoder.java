@@ -15,6 +15,7 @@
  */
 package org.glavo.webp.internal.lossless;
 
+import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -197,7 +198,7 @@ public final class LosslessDecoder {
         int huffmanBits = 0;
         int huffmanXSize = 1;
         int huffmanYSize = 1;
-        int[] entropyImage = new int[0];
+        int[] entropyImage = ArrayUtils.EMPTY_INT_ARRAY;
 
         if (readMeta && bitReader.readBits(1) == 1) {
             huffmanBits = bitReader.readBits(3) + 2;

@@ -15,6 +15,7 @@
  */
 package org.glavo.webp.internal.codec;
 
+import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -42,7 +43,7 @@ public final class ExtendedWebP {
     public static final class AlphaDecoder {
 
         /// Full-size destination reused for nested VP8L alpha streams of the same dimensions.
-        private int[] losslessBuffer = new int[0];
+        private int[] losslessBuffer = ArrayUtils.EMPTY_INT_ARRAY;
 
         /// Creates an ALPH decoder with no allocated frame workspace.
         public AlphaDecoder() {

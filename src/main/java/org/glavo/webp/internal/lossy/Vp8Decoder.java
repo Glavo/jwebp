@@ -15,6 +15,7 @@
  */
 package org.glavo.webp.internal.lossy;
 
+import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -45,13 +46,13 @@ public final class Vp8Decoder {
     @NotNullByDefault
     public static final class DecodeWorkspace {
         /// Reusable full-resolution luma plane.
-        private byte[] yBuffer = new byte[0];
+        private byte[] yBuffer = ArrayUtils.EMPTY_BYTE_ARRAY;
 
         /// Reusable half-resolution blue-difference chroma plane.
-        private byte[] uBuffer = new byte[0];
+        private byte[] uBuffer = ArrayUtils.EMPTY_BYTE_ARRAY;
 
         /// Reusable half-resolution red-difference chroma plane.
-        private byte[] vBuffer = new byte[0];
+        private byte[] vBuffer = ArrayUtils.EMPTY_BYTE_ARRAY;
 
         /// Creates an empty workspace whose planes are allocated on first use.
         public DecodeWorkspace() {
@@ -106,7 +107,7 @@ public final class Vp8Decoder {
 
     private int macroblockWidth;
     private int macroblockHeight;
-    private byte[] macroblockFilterInfo = new byte[0];
+    private byte[] macroblockFilterInfo = ArrayUtils.EMPTY_BYTE_ARRAY;
     private final Vp8Frame frame = new Vp8Frame();
 
     private boolean segmentsEnabled;
@@ -133,17 +134,17 @@ public final class Vp8Decoder {
     private final int[][][][] tokenProbs = LossyTables.copyCoeffProbs();
 
     private @Nullable Integer probSkipFalse;
-    private byte[] topBpred = new byte[0];
-    private byte[] topComplexity = new byte[0];
+    private byte[] topBpred = ArrayUtils.EMPTY_BYTE_ARRAY;
+    private byte[] topComplexity = ArrayUtils.EMPTY_BYTE_ARRAY;
     private final byte[] leftBpred = new byte[4];
     private final byte[] leftComplexity = new byte[9];
 
-    private byte[] topBorderY = new byte[0];
-    private byte[] leftBorderY = new byte[0];
-    private byte[] topBorderU = new byte[0];
-    private byte[] leftBorderU = new byte[0];
-    private byte[] topBorderV = new byte[0];
-    private byte[] leftBorderV = new byte[0];
+    private byte[] topBorderY = ArrayUtils.EMPTY_BYTE_ARRAY;
+    private byte[] leftBorderY = ArrayUtils.EMPTY_BYTE_ARRAY;
+    private byte[] topBorderU = ArrayUtils.EMPTY_BYTE_ARRAY;
+    private byte[] leftBorderU = ArrayUtils.EMPTY_BYTE_ARRAY;
+    private byte[] topBorderV = ArrayUtils.EMPTY_BYTE_ARRAY;
+    private byte[] leftBorderV = ArrayUtils.EMPTY_BYTE_ARRAY;
     private final int[] residualDataScratch = new int[384];
     private final int[] y2BlockScratch = new int[16];
     private final int[] zeroResidualData = new int[384];

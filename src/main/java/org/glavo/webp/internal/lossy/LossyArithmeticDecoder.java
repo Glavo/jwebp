@@ -15,7 +15,9 @@
  */
 package org.glavo.webp.internal.lossy;
 
+import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import org.glavo.webp.WebPException;
 
@@ -25,8 +27,12 @@ import java.nio.ByteBuffer;
 @NotNullByDefault
 final class LossyArithmeticDecoder {
 
+    /// Shared zero-capacity input used before this decoder is initialized.
+    private static final @UnmodifiableView ByteBuffer EMPTY_INPUT =
+            ByteBuffer.wrap(ArrayUtils.EMPTY_BYTE_ARRAY).asReadOnlyBuffer();
+
     /// Remaining bytes in the current VP8 boolean-coded partition.
-    private ByteBuffer input = ByteBuffer.allocate(0);
+    private ByteBuffer input = EMPTY_INPUT;
 
     /// Buffered arithmetic-coded bits aligned to the current range.
     private long value;
