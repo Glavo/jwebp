@@ -25,6 +25,7 @@ import org.glavo.webp.WebPFrame;
 import org.glavo.webp.WebPImage;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
 
@@ -33,13 +34,24 @@ import java.util.List;
 /// The adapter writes packed non-premultiplied `ARGB` pixels from decoded [WebPFrame] instances
 /// into a `WritableImage`. When constructed from a fully decoded
 /// [WebPImage], it can also play animated WebP content with frame-accurate timing.
+/// Static source frames are copied during construction and are not retained; animated frames
+/// remain retained for timeline playback.
 @NotNullByDefault
 public final class WebPFXImage extends WritableImage {
 
-    private final List<WebPFrame> frames;
+    /// Frames retained for animation playback; static images keep this list empty.
+    private final @Unmodifiable List<WebPFrame> animationFrames;
+
+    /// Whether this image has an animated frame sequence.
     private final boolean animated;
+
+    /// Number of animation cycles, or `0` for indefinite playback.
     private final int loopCount;
+
+    /// Lazily created JavaFX animation controller.
     private @Nullable Timeline timeline;
+
+    /// Index of the animation frame most recently written to this image.
     private int renderedFrameIndex = -1;
 
     /// Creates a JavaFX image from one decoded frame.
@@ -47,11 +59,11 @@ public final class WebPFXImage extends WritableImage {
     /// @param frame the decoded frame to display
     public WebPFXImage(WebPFrame frame) {
         super(frame.getWidth(), frame.getHeight());
-        this.frames = List.of(frame);
+        this.animationFrames = List.of();
         this.animated = false;
         this.loopCount = 1;
 
-        renderFrame(0);
+        renderFrame(frame);
     }
 
     /// Creates a JavaFX image from fully decoded WebP content.
@@ -71,11 +83,14 @@ public final class WebPFXImage extends WritableImage {
     /// @param autoPlay whether to start playing the animation automatically
     public WebPFXImage(WebPImage image, boolean autoPlay) {
         super(image.getWidth(), image.getHeight());
-        this.frames = image.getFrames();
         this.animated = image.isAnimated();
+        this.animationFrames = animated ? image.getFrames() : List.of();
         this.loopCount = image.getLoopCount();
 
-        renderFrame(0);
+        renderFrame(image.getFirstFrame());
+        if (animated) {
+            renderedFrameIndex = 0;
+        }
 
         if (autoPlay && isAnimated()) {
             getAnimation().play();
@@ -105,33 +120,45 @@ public final class WebPFXImage extends WritableImage {
         }
     }
 
+    /// Writes an animation frame unless it is already displayed.
+    ///
+    /// @param frameIndex the animation frame index
     private void renderFrame(int frameIndex) {
         if (frameIndex != renderedFrameIndex) {
-            WebPFrame frame = frames.get(frameIndex);
-            getPixelWriter().setPixels(
-                    0,
-                    0,
-                    frame.getWidth(),
-                    frame.getHeight(),
-                    PixelFormat.getIntArgbInstance(),
-                    frame.getArgbPixels(),
-                    frame.getScanlineStride()
-            );
+            renderFrame(animationFrames.get(frameIndex));
             renderedFrameIndex = frameIndex;
         }
     }
 
+    /// Copies one decoded frame into this image's JavaFX pixel storage.
+    ///
+    /// @param frame the decoded frame to copy
+    private void renderFrame(WebPFrame frame) {
+        getPixelWriter().setPixels(
+                0,
+                0,
+                frame.getWidth(),
+                frame.getHeight(),
+                PixelFormat.getIntArgbInstance(),
+                frame.getArgbPixels(),
+                frame.getScanlineStride()
+        );
+    }
+
+    /// Creates timeline entries for all retained animation frames.
+    ///
+    /// @return the ordered animation keyframes including the terminal duration marker
     private KeyFrame[] createKeyFrames() {
-        KeyFrame[] keyFrames = new KeyFrame[frames.size() + 1];
+        KeyFrame[] keyFrames = new KeyFrame[animationFrames.size() + 1];
         long currentStartMillis = 0L;
-        for (int i = 0; i < frames.size(); i++) {
+        for (int i = 0; i < animationFrames.size(); i++) {
             final int frameIndex = i;
             keyFrames[i] = new KeyFrame(Duration.millis(currentStartMillis), event -> renderFrame(frameIndex));
-            currentStartMillis += Math.max(1, frames.get(i).getDurationMillis());
+            currentStartMillis += Math.max(1, animationFrames.get(i).getDurationMillis());
         }
 
         // The terminal marker keeps the last frame visible for its full duration.
-        keyFrames[frames.size()] = new KeyFrame(Duration.millis(currentStartMillis));
+        keyFrames[animationFrames.size()] = new KeyFrame(Duration.millis(currentStartMillis));
         return keyFrames;
     }
 
