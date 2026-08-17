@@ -5,8 +5,11 @@ package org.glavo.webp.internal.lossless;
 import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import org.glavo.webp.WebPException;
+
+import java.util.Arrays;
 
 /// Huffman tree implementation for VP8L.
 @NotNullByDefault
@@ -18,8 +21,8 @@ public final class LosslessHuffmanTree {
     private final boolean singleNode;
     private final int symbol;
     private final int tableMask;
-    private final int @Nullable [] primaryTable;
-    private final int @Nullable [] secondaryTable;
+    private final char @Nullable @Unmodifiable [] primaryTable;
+    private final char @Nullable @Unmodifiable [] secondaryTable;
 
     private LosslessHuffmanTree(int symbol) {
         this.singleNode = true;
@@ -29,7 +32,7 @@ public final class LosslessHuffmanTree {
         this.secondaryTable = null;
     }
 
-    private LosslessHuffmanTree(int tableMask, int[] primaryTable, int[] secondaryTable) {
+    private LosslessHuffmanTree(int tableMask, char[] primaryTable, char[] secondaryTable) {
         this.singleNode = false;
         this.symbol = 0;
         this.tableMask = tableMask;
@@ -51,7 +54,11 @@ public final class LosslessHuffmanTree {
     /// @param one the symbol selected by bit `1`
     /// @return the resulting tree
     public static LosslessHuffmanTree pair(int zero, int one) {
-        return new LosslessHuffmanTree(0x1, new int[]{(1 << 12) | zero, (1 << 12) | one}, ArrayUtils.EMPTY_INT_ARRAY);
+        return new LosslessHuffmanTree(
+                0x1,
+                new char[]{(char) ((1 << 12) | zero), (char) ((1 << 12) | one)},
+                ArrayUtils.EMPTY_CHAR_ARRAY
+        );
     }
 
     /// Builds a canonical Huffman tree from code lengths.
@@ -60,7 +67,18 @@ public final class LosslessHuffmanTree {
     /// @return the resulting tree
     /// @throws WebPException if the code lengths do not form a valid canonical tree
     public static LosslessHuffmanTree implicit(int[] codeLengths) throws WebPException {
-        int[] histogram = new int[MAX_ALLOWED_CODE_LENGTH + 1];
+        return implicit(codeLengths, new BuildWorkspace());
+    }
+
+    /// Builds a canonical Huffman tree while reusing temporary construction arrays.
+    ///
+    /// @param codeLengths the code lengths indexed by symbol
+    /// @param workspace the mutable construction workspace
+    /// @return the resulting tree
+    /// @throws WebPException if the code lengths do not form a valid canonical tree
+    static LosslessHuffmanTree implicit(int[] codeLengths, BuildWorkspace workspace) throws WebPException {
+        int[] histogram = workspace.histogram;
+        Arrays.fill(histogram, 0);
         int symbolCount = 0;
         for (int length : codeLengths) {
             if (length < 0 || length > MAX_ALLOWED_CODE_LENGTH) {
@@ -88,7 +106,8 @@ public final class LosslessHuffmanTree {
             maxLength--;
         }
 
-        int[] offsets = new int[16];
+        int[] offsets = workspace.offsets;
+        Arrays.fill(offsets, 0);
         int codeSpaceUsed = 0;
         offsets[1] = 0;
         for (int i = 1; i < maxLength; i++) {
@@ -102,8 +121,8 @@ public final class LosslessHuffmanTree {
 
         int tableBits = Math.min(maxLength, MAX_TABLE_BITS);
         int tableSize = 1 << tableBits;
-        int[] primaryTable = new int[tableSize];
-        int[] sortedSymbols = new int[symbolCount];
+        char[] primaryTable = new char[tableSize];
+        int[] sortedSymbols = workspace.acquireSortedSymbols(symbolCount);
         for (int symbol = 0; symbol < codeLengths.length; symbol++) {
             int length = codeLengths[symbol];
             if (length != 0) {
@@ -118,7 +137,7 @@ public final class LosslessHuffmanTree {
             int currentTableEnd = 1 << length;
             for (int j = 0; j < histogram[length]; j++) {
                 int symbol = sortedSymbols[i++];
-                primaryTable[codeword] = (length << 12) | symbol;
+                primaryTable[codeword] = (char) ((length << 12) | symbol);
                 codeword = nextCodeword(codeword, currentTableEnd);
             }
 
@@ -127,7 +146,7 @@ public final class LosslessHuffmanTree {
             }
         }
 
-        int[] secondaryTable = ArrayUtils.EMPTY_INT_ARRAY;
+        char[] secondaryTable = ArrayUtils.EMPTY_CHAR_ARRAY;
         int secondaryLength = 0;
         if (maxLength > tableBits) {
             int firstSecondaryCodeword = codeword;
@@ -138,7 +157,7 @@ public final class LosslessHuffmanTree {
                     firstSecondaryCodeword,
                     primaryTableMask
             );
-            secondaryTable = new int[secondaryLength];
+            secondaryTable = new char[secondaryLength];
 
             codeword = firstSecondaryCodeword;
             secondaryLength = 0;
@@ -151,25 +170,49 @@ public final class LosslessHuffmanTree {
                     if ((codeword & primaryTableMask) != subtablePrefix) {
                         subtablePrefix = codeword & primaryTableMask;
                         subtableStart = secondaryLength;
-                        primaryTable[subtablePrefix] = (length << 12) | subtableStart;
+                        primaryTable[subtablePrefix] = (char) ((length << 12) | subtableStart);
                         secondaryLength += subtableSize;
                     }
 
                     int symbol = sortedSymbols[i++];
-                    secondaryTable[subtableStart + (codeword >> tableBits)] = (symbol << 4) | length;
+                    secondaryTable[subtableStart + (codeword >> tableBits)] = (char) ((symbol << 4) | length);
                     codeword = nextCodeword(codeword, 1 << length);
                 }
 
                 if (length < maxLength && (codeword & primaryTableMask) == subtablePrefix) {
                     int copyLength = secondaryLength - subtableStart;
                     System.arraycopy(secondaryTable, subtableStart, secondaryTable, secondaryLength, copyLength);
-                    primaryTable[subtablePrefix] = ((length + 1) << 12) | subtableStart;
+                    primaryTable[subtablePrefix] = (char) (((length + 1) << 12) | subtableStart);
                     secondaryLength += copyLength;
                 }
             }
         }
 
         return new LosslessHuffmanTree(primaryTableMask, primaryTable, secondaryTable);
+    }
+
+    /// Reusable temporary arrays for canonical-tree construction.
+    @NotNullByDefault
+    static final class BuildWorkspace {
+        /// Symbol count for each permitted code length.
+        private final int[] histogram = new int[MAX_ALLOWED_CODE_LENGTH + 1];
+
+        /// Starting output offset for each permitted code length.
+        private final int[] offsets = new int[MAX_ALLOWED_CODE_LENGTH + 1];
+
+        /// Symbols ordered by code length for the current tree.
+        private int[] sortedSymbols = ArrayUtils.EMPTY_INT_ARRAY;
+
+        /// Returns scratch storage large enough for the requested symbol count.
+        ///
+        /// @param symbolCount the number of non-zero-length symbols
+        /// @return reusable symbol-order storage
+        private int[] acquireSortedSymbols(int symbolCount) {
+            if (sortedSymbols.length < symbolCount) {
+                sortedSymbols = new int[symbolCount];
+            }
+            return sortedSymbols;
+        }
     }
 
     /// Returns whether this tree contains only a single symbol.
@@ -207,18 +250,19 @@ public final class LosslessHuffmanTree {
     /// Peeks at the next symbol if it can be resolved entirely from the primary table.
     ///
     /// @param bitReader the lossless bit reader
-    /// @return the peeked symbol, or `null` if a secondary table lookup would be required
-    public @Nullable PeekedSymbol peekSymbol(LosslessBitReader bitReader) {
+    /// @return the bit count in bits 12 and above plus the symbol in the low 12 bits, or `-1` if a
+    ///         secondary table lookup would be required
+    public int peekSymbol(LosslessBitReader bitReader) {
         if (singleNode) {
-            return new PeekedSymbol(0, symbol);
+            return symbol;
         }
         int value = (int) bitReader.peekFull();
         int entry = primaryTable[value & tableMask];
         int length = entry >>> 12;
         if (length <= MAX_TABLE_BITS) {
-            return new PeekedSymbol(length, entry & 0xFFF);
+            return entry;
         }
-        return null;
+        return -1;
     }
 
     private static int nextCodeword(int codeword, int tableSize) {
@@ -269,11 +313,4 @@ public final class LosslessHuffmanTree {
         return secondaryLength;
     }
 
-    /// Primary-table peek result.
-    ///
-    /// @param bits the number of bits that would be consumed
-    /// @param symbol the decoded symbol value
-    @NotNullByDefault
-    public record PeekedSymbol(int bits, int symbol) {
-    }
 }

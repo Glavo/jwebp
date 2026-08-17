@@ -25,7 +25,8 @@ import java.util.Objects;
 /// The class is not thread-safe.
 @NotNullByDefault
 public sealed abstract class BufferedInput implements Closeable {
-    private static final int DEFAULT_BUFFER_SIZE = 8192;
+    /// Staging capacity for scalar container fields and chunk headers.
+    private static final int DEFAULT_BUFFER_SIZE = 1024;
 
     protected final ByteBuffer buffer;
     protected boolean closed = false;
@@ -145,17 +146,13 @@ public sealed abstract class BufferedInput implements Closeable {
     /// @return a newly allocated byte array
     /// @throws IOException if the source is truncated, closed, or unreadable
     public byte[] readByteArray(int len) throws IOException {
-        if (len < 0 || len >= Integer.MAX_VALUE - 8) {
-            throw new IOException("Array length too large: " + len);
-        }
-
-        if (len == 0) {
-            return new byte[0];
+        byte[] result = allocateByteArray(len);
+        if (result.length == 0) {
+            return result;
         }
 
         ensureOpen();
 
-        byte[] result = new byte[len];
         int offset = 0;
         while (offset < len) {
             if (!buffer.hasRemaining()) {
@@ -168,6 +165,18 @@ public sealed abstract class BufferedInput implements Closeable {
             offset += chunk;
         }
         return result;
+    }
+
+    /// Allocates storage for a fixed-size byte-array read after validating its length.
+    ///
+    /// @param len the requested array length
+    /// @return a new byte array of exactly `len` bytes
+    /// @throws IOException if the requested array cannot be represented safely
+    private static byte[] allocateByteArray(int len) throws IOException {
+        if (len < 0 || len >= Integer.MAX_VALUE - 8) {
+            throw new IOException("Array length too large: " + len);
+        }
+        return new byte[len];
     }
 
     /// Skips exactly `len` bytes.
@@ -295,6 +304,39 @@ public sealed abstract class BufferedInput implements Closeable {
             this.input = Objects.requireNonNull(input, "input");
         }
 
+        /// Reads payload bytes directly into their retained array after draining staged bytes.
+        ///
+        /// @param len the number of bytes to read
+        /// @return a newly allocated byte array
+        /// @throws IOException if the source is truncated, closed, or unreadable
+        @Override
+        public byte[] readByteArray(int len) throws IOException {
+            byte[] result = allocateByteArray(len);
+            if (result.length == 0) {
+                return result;
+            }
+
+            ensureOpen();
+            int offset = Math.min(buffer.remaining(), len);
+            buffer.get(result, 0, offset);
+            while (offset < len) {
+                int read = input.read(result, offset, len - offset);
+                if (read < 0) {
+                    throw unexpectedEndOfInput();
+                }
+                if (read == 0) {
+                    int value = input.read();
+                    if (value < 0) {
+                        throw unexpectedEndOfInput();
+                    }
+                    result[offset++] = (byte) value;
+                } else {
+                    offset += read;
+                }
+            }
+            return result;
+        }
+
         @Override
         protected void fillBuffer(int required) throws IOException {
             ByteBuffer buffer1 = prepareForFill(required);
@@ -373,6 +415,34 @@ public sealed abstract class BufferedInput implements Closeable {
         public OfByteChannel(ReadableByteChannel channel) {
             super(DEFAULT_BUFFER_SIZE, true);
             this.channel = Objects.requireNonNull(channel, "channel");
+        }
+
+        /// Reads payload bytes directly into their retained array after draining staged bytes.
+        ///
+        /// @param len the number of bytes to read
+        /// @return a newly allocated byte array
+        /// @throws IOException if the source is truncated, closed, or unreadable
+        @Override
+        public byte[] readByteArray(int len) throws IOException {
+            byte[] result = allocateByteArray(len);
+            if (result.length == 0) {
+                return result;
+            }
+
+            ensureOpen();
+            int offset = Math.min(buffer.remaining(), len);
+            buffer.get(result, 0, offset);
+            ByteBuffer destination = ByteBuffer.wrap(result, offset, len - offset);
+            while (destination.hasRemaining()) {
+                int read = channel.read(destination);
+                if (read < 0) {
+                    throw unexpectedEndOfInput();
+                }
+                if (read == 0) {
+                    throw new IOException("ReadableByteChannel made no progress while reading payload bytes");
+                }
+            }
+            return result;
         }
 
         @Override

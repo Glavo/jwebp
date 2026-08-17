@@ -44,6 +44,21 @@ final class Vp8Frame {
         }
     }
 
+    /// Converts the decoded planes into RGB while preserving destination alpha bytes.
+    ///
+    /// @param buffer the packed `ARGB` destination containing reconstructed alpha
+    void fillRgbPreservingAlpha(int[] buffer) {
+        LossyYuv.fillRgbBufferSimple(
+                buffer,
+                yBuffer,
+                uBuffer,
+                vBuffer,
+                width,
+                chromaWidth(),
+                bufferWidth()
+        );
+    }
+
     /// Converts the decoded planes directly into the remaining destination region.
     ///
     /// The destination position and limit are not changed.
@@ -72,5 +87,22 @@ final class Vp8Frame {
                     bufferWidth()
             );
         }
+    }
+
+    /// Converts the decoded planes into RGB while preserving destination alpha bytes.
+    ///
+    /// The destination position and limit are not changed.
+    ///
+    /// @param buffer the packed `ARGB` destination containing reconstructed alpha
+    void fillRgbPreservingAlpha(IntBuffer buffer) {
+        LossyYuv.fillRgbBufferSimple(
+                buffer,
+                yBuffer,
+                uBuffer,
+                vBuffer,
+                width,
+                chromaWidth(),
+                bufferWidth()
+        );
     }
 }

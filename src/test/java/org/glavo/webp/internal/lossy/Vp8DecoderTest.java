@@ -80,6 +80,20 @@ final class Vp8DecoderTest {
         assertTrue(headerFromBuffer.forDisplay);
     }
 
+    /// Verifies that all per-frame state is reset when one decoder instance is reused.
+    @Test
+    void reusableDecoderProducesStableResults() throws Exception {
+        byte[] payload = vp8Payload();
+        Vp8Decoder decoder = new Vp8Decoder();
+        int[] first = new int[4];
+        int[] second = new int[4];
+
+        decoder.decodeArgb(payload, false, first);
+        decoder.decodeArgb(payload, false, second);
+
+        assertArrayEquals(first, second);
+    }
+
     private static byte[] vp8Payload() {
         return Arrays.copyOfRange(
                 SIMPLE_WEBP,

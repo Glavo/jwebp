@@ -34,6 +34,13 @@ public final class LosslessDecoder {
     private final LosslessBitReader bitReader;
     private final LosslessTransforms.@Nullable Transform[] transforms = new LosslessTransforms.Transform[NUM_TRANSFORM_TYPES];
     private final int[] transformOrder = new int[NUM_TRANSFORM_TYPES];
+    /// Temporary arrays reused while constructing consecutive Huffman trees.
+    private final LosslessHuffmanTree.BuildWorkspace huffmanBuildWorkspace =
+            new LosslessHuffmanTree.BuildWorkspace();
+    /// Code lengths for the code-length alphabet.
+    private final int[] codeLengthCodeLengths = new int[LosslessConstants.CODE_LENGTH_CODES];
+    /// Growable code-length storage reused across alphabets.
+    private int[] codeLengths = ArrayUtils.EMPTY_INT_ARRAY;
     private int transformOrderSize;
     private int width;
     private int height;
@@ -200,8 +207,8 @@ public final class LosslessDecoder {
     }
 
     private void decodeImageStream(int xsize, int ysize, boolean readMeta, int[] data) throws WebPException {
-        Integer colorCacheBits = readColorCache();
-        ColorCache colorCache = colorCacheBits == null ? null : new ColorCache(colorCacheBits);
+        int colorCacheBits = readColorCacheBits();
+        ColorCache colorCache = colorCacheBits == 0 ? null : new ColorCache(colorCacheBits);
         HuffmanInfo huffmanInfo = readHuffmanCodes(readMeta, xsize, ysize, colorCache);
         decodeImageData(xsize, ysize, huffmanInfo, data);
     }
@@ -219,8 +226,8 @@ public final class LosslessDecoder {
             boolean readMeta,
             IntBuffer data
     ) throws WebPException {
-        Integer colorCacheBits = readColorCache();
-        ColorCache colorCache = colorCacheBits == null ? null : new ColorCache(colorCacheBits);
+        int colorCacheBits = readColorCacheBits();
+        ColorCache colorCache = colorCacheBits == 0 ? null : new ColorCache(colorCacheBits);
         HuffmanInfo huffmanInfo = readHuffmanCodes(readMeta, xsize, ysize, colorCache);
         decodeImageData(xsize, ysize, huffmanInfo, data);
     }
@@ -345,17 +352,17 @@ public final class LosslessDecoder {
             return LosslessHuffmanTree.pair(zeroSymbol, oneSymbol);
         }
 
-        int[] codeLengthCodeLengths = new int[LosslessConstants.CODE_LENGTH_CODES];
+        Arrays.fill(codeLengthCodeLengths, 0);
         int numCodeLengths = 4 + bitReader.readBits(4);
         for (int i = 0; i < numCodeLengths; i++) {
             codeLengthCodeLengths[LosslessConstants.CODE_LENGTH_CODE_ORDER[i]] = bitReader.readBits(3);
         }
         int[] codeLengths = readHuffmanCodeLengths(codeLengthCodeLengths, alphabetSize);
-        return LosslessHuffmanTree.implicit(codeLengths);
+        return LosslessHuffmanTree.implicit(codeLengths, huffmanBuildWorkspace);
     }
 
     private int[] readHuffmanCodeLengths(int[] codeLengthCodeLengths, int numSymbols) throws WebPException {
-        LosslessHuffmanTree table = LosslessHuffmanTree.implicit(codeLengthCodeLengths);
+        LosslessHuffmanTree table = LosslessHuffmanTree.implicit(codeLengthCodeLengths, huffmanBuildWorkspace);
         int maxSymbol;
         if (bitReader.readBits(1) == 1) {
             int lengthBits = 2 + 2 * bitReader.readBits(3);
@@ -368,7 +375,11 @@ public final class LosslessDecoder {
             maxSymbol = numSymbols;
         }
 
-        int[] codeLengths = new int[numSymbols];
+        if (codeLengths.length < numSymbols) {
+            codeLengths = new int[numSymbols];
+        } else {
+            Arrays.fill(codeLengths, 0);
+        }
         int previousCodeLength = 8;
         int symbol = 0;
         while (symbol < numSymbols) {
@@ -511,10 +522,11 @@ public final class LosslessDecoder {
                 index++;
 
                 if (index < nextBlockStart) {
-                    LosslessHuffmanTree.PeekedSymbol peeked = tree[GREEN].peekSymbol(bitReader);
-                    if (peeked != null && peeked.symbol() >= 280) {
-                        bitReader.consume(peeked.bits());
-                        data[index] = huffmanInfo.colorCache.lookup(peeked.symbol() - 280);
+                    int peeked = tree[GREEN].peekSymbol(bitReader);
+                    int peekedSymbol = peeked & 0xFFF;
+                    if (peeked >= 0 && peekedSymbol >= 280) {
+                        bitReader.consume(peeked >>> 12);
+                        data[index] = huffmanInfo.colorCache.lookup(peekedSymbol - 280);
                         index++;
                     }
                 }
@@ -629,10 +641,11 @@ public final class LosslessDecoder {
                 index++;
 
                 if (index < nextBlockStart) {
-                    LosslessHuffmanTree.PeekedSymbol peeked = tree[GREEN].peekSymbol(bitReader);
-                    if (peeked != null && peeked.symbol() >= 280) {
-                        bitReader.consume(peeked.bits());
-                        data.put(index, huffmanInfo.colorCache.lookup(peeked.symbol() - 280));
+                    int peeked = tree[GREEN].peekSymbol(bitReader);
+                    int peekedSymbol = peeked & 0xFFF;
+                    if (peeked >= 0 && peekedSymbol >= 280) {
+                        bitReader.consume(peeked >>> 12);
+                        data.put(index, huffmanInfo.colorCache.lookup(peekedSymbol - 280));
                         index++;
                     }
                 }
@@ -640,7 +653,11 @@ public final class LosslessDecoder {
         }
     }
 
-    private @Nullable Integer readColorCache() throws WebPException {
+    /// Reads the optional color-cache width.
+    ///
+    /// @return the cache width in bits, or `0` when the stream has no color cache
+    /// @throws WebPException if the encoded cache width is invalid
+    private int readColorCacheBits() throws WebPException {
         if (bitReader.readBits(1) == 1) {
             int codeBits = bitReader.readBits(4);
             if (codeBits < 1 || codeBits > 11) {
@@ -648,7 +665,7 @@ public final class LosslessDecoder {
             }
             return codeBits;
         }
-        return null;
+        return 0;
     }
 
     private int getCopyDistance(int prefixCode) throws WebPException {

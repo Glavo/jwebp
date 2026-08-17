@@ -158,6 +158,47 @@ final class LossyYuv {
         }
     }
 
+    /// Converts the visible YUV planes into the RGB bits of an integer array while preserving
+    /// each destination pixel's existing alpha byte.
+    ///
+    /// @param buffer the destination containing reconstructed alpha bytes
+    /// @param yBuffer the padded luma plane
+    /// @param uBuffer the padded U chroma plane
+    /// @param vBuffer the padded V chroma plane
+    /// @param width the visible frame width
+    /// @param chromaWidth the visible chroma width
+    /// @param bufferWidth the padded luma-plane stride
+    static void fillRgbBufferSimple(
+            int[] buffer,
+            byte[] yBuffer,
+            byte[] uBuffer,
+            byte[] vBuffer,
+            int width,
+            int chromaWidth,
+            int bufferWidth
+    ) {
+        int chromaStride = bufferWidth / 2;
+        int chromaRow = 0;
+
+        for (int y = 0; y < buffer.length / width; y++) {
+            fillRgbRowSimple(
+                    yBuffer,
+                    y * bufferWidth,
+                    uBuffer,
+                    chromaRow * chromaStride,
+                    vBuffer,
+                    chromaRow * chromaStride,
+                    width,
+                    chromaWidth,
+                    buffer,
+                    y * width
+            );
+            if ((y & 1) != 0) {
+                chromaRow++;
+            }
+        }
+    }
+
     /// Converts the visible YUV planes directly into a writable integer buffer using nearest
     /// chroma samples.
     ///
@@ -184,6 +225,51 @@ final class LossyYuv {
 
         for (int y = 0; y < rowCount; y++) {
             fillArgbRowSimple(
+                    yBuffer,
+                    y * bufferWidth,
+                    uBuffer,
+                    chromaRow * chromaStride,
+                    vBuffer,
+                    chromaRow * chromaStride,
+                    width,
+                    chromaWidth,
+                    buffer,
+                    destinationOffset + y * width
+            );
+            if ((y & 1) != 0) {
+                chromaRow++;
+            }
+        }
+    }
+
+    /// Converts the visible YUV planes into the RGB bits of an integer buffer while preserving
+    /// each destination pixel's existing alpha byte.
+    ///
+    /// The destination position and limit are not changed.
+    ///
+    /// @param buffer the destination containing reconstructed alpha bytes
+    /// @param yBuffer the padded luma plane
+    /// @param uBuffer the padded U chroma plane
+    /// @param vBuffer the padded V chroma plane
+    /// @param width the visible frame width
+    /// @param chromaWidth the visible chroma width
+    /// @param bufferWidth the padded luma-plane stride
+    static void fillRgbBufferSimple(
+            IntBuffer buffer,
+            byte[] yBuffer,
+            byte[] uBuffer,
+            byte[] vBuffer,
+            int width,
+            int chromaWidth,
+            int bufferWidth
+    ) {
+        int chromaStride = bufferWidth / 2;
+        int chromaRow = 0;
+        int rowCount = buffer.remaining() / width;
+        int destinationOffset = buffer.position();
+
+        for (int y = 0; y < rowCount; y++) {
+            fillRgbRowSimple(
                     yBuffer,
                     y * bufferWidth,
                     uBuffer,
@@ -723,6 +809,155 @@ final class LossyYuv {
                     U_TO_B_COEFFICIENTS[u]
             ));
         }
+    }
+
+    /// Converts one luma row into RGB while retaining alpha from an integer-array destination.
+    ///
+    /// @param yVec the luma plane
+    /// @param yOffset the first visible luma sample
+    /// @param uVec the U chroma plane
+    /// @param uOffset the first visible U sample
+    /// @param vVec the V chroma plane
+    /// @param vOffset the first visible V sample
+    /// @param width the number of visible luma samples
+    /// @param chromaWidth the number of available chroma samples
+    /// @param argb the destination pixel array
+    /// @param dstOffset the first destination index
+    private static void fillRgbRowSimple(
+            byte[] yVec,
+            int yOffset,
+            byte[] uVec,
+            int uOffset,
+            byte[] vVec,
+            int vOffset,
+            int width,
+            int chromaWidth,
+            int[] argb,
+            int dstOffset
+    ) {
+        int yIndex = yOffset;
+        int dst = dstOffset;
+        int pairedChromaWidth = Math.min(width / 2, chromaWidth);
+        for (int chroma = 0; chroma < pairedChromaWidth; chroma++) {
+            int u = uVec[uOffset + chroma] & 0xFF;
+            int v = vVec[vOffset + chroma] & 0xFF;
+            int rCoeff = V_TO_R_COEFFICIENTS[v];
+            int guCoeff = U_TO_G_COEFFICIENTS[u];
+            int gvCoeff = V_TO_G_COEFFICIENTS[v];
+            int bCoeff = U_TO_B_COEFFICIENTS[u];
+
+            int color = argbPixelFromCoefficients(
+                    Y_COEFFICIENTS[yVec[yIndex++] & 0xFF],
+                    rCoeff,
+                    guCoeff,
+                    gvCoeff,
+                    bCoeff
+            );
+            argb[dst] = preserveAlpha(argb[dst], color);
+            dst++;
+
+            color = argbPixelFromCoefficients(
+                    Y_COEFFICIENTS[yVec[yIndex++] & 0xFF],
+                    rCoeff,
+                    guCoeff,
+                    gvCoeff,
+                    bCoeff
+            );
+            argb[dst] = preserveAlpha(argb[dst], color);
+            dst++;
+        }
+
+        if (pairedChromaWidth < chromaWidth && (width & 1) != 0) {
+            int u = uVec[uOffset + pairedChromaWidth] & 0xFF;
+            int v = vVec[vOffset + pairedChromaWidth] & 0xFF;
+            int color = argbPixelFromCoefficients(
+                    Y_COEFFICIENTS[yVec[yIndex] & 0xFF],
+                    V_TO_R_COEFFICIENTS[v],
+                    U_TO_G_COEFFICIENTS[u],
+                    V_TO_G_COEFFICIENTS[v],
+                    U_TO_B_COEFFICIENTS[u]
+            );
+            argb[dst] = preserveAlpha(argb[dst], color);
+        }
+    }
+
+    /// Converts one luma row into RGB while retaining alpha from an integer-buffer destination.
+    ///
+    /// @param yVec the luma plane
+    /// @param yOffset the first visible luma sample
+    /// @param uVec the U chroma plane
+    /// @param uOffset the first visible U sample
+    /// @param vVec the V chroma plane
+    /// @param vOffset the first visible V sample
+    /// @param width the number of visible luma samples
+    /// @param chromaWidth the number of available chroma samples
+    /// @param argb the destination pixel buffer
+    /// @param dstOffset the first destination index
+    private static void fillRgbRowSimple(
+            byte[] yVec,
+            int yOffset,
+            byte[] uVec,
+            int uOffset,
+            byte[] vVec,
+            int vOffset,
+            int width,
+            int chromaWidth,
+            IntBuffer argb,
+            int dstOffset
+    ) {
+        int yIndex = yOffset;
+        int dst = dstOffset;
+        int pairedChromaWidth = Math.min(width / 2, chromaWidth);
+        for (int chroma = 0; chroma < pairedChromaWidth; chroma++) {
+            int u = uVec[uOffset + chroma] & 0xFF;
+            int v = vVec[vOffset + chroma] & 0xFF;
+            int rCoeff = V_TO_R_COEFFICIENTS[v];
+            int guCoeff = U_TO_G_COEFFICIENTS[u];
+            int gvCoeff = V_TO_G_COEFFICIENTS[v];
+            int bCoeff = U_TO_B_COEFFICIENTS[u];
+
+            int color = argbPixelFromCoefficients(
+                    Y_COEFFICIENTS[yVec[yIndex++] & 0xFF],
+                    rCoeff,
+                    guCoeff,
+                    gvCoeff,
+                    bCoeff
+            );
+            argb.put(dst, preserveAlpha(argb.get(dst), color));
+            dst++;
+
+            color = argbPixelFromCoefficients(
+                    Y_COEFFICIENTS[yVec[yIndex++] & 0xFF],
+                    rCoeff,
+                    guCoeff,
+                    gvCoeff,
+                    bCoeff
+            );
+            argb.put(dst, preserveAlpha(argb.get(dst), color));
+            dst++;
+        }
+
+        if (pairedChromaWidth < chromaWidth && (width & 1) != 0) {
+            int u = uVec[uOffset + pairedChromaWidth] & 0xFF;
+            int v = vVec[vOffset + pairedChromaWidth] & 0xFF;
+            int color = argbPixelFromCoefficients(
+                    Y_COEFFICIENTS[yVec[yIndex] & 0xFF],
+                    V_TO_R_COEFFICIENTS[v],
+                    U_TO_G_COEFFICIENTS[u],
+                    V_TO_G_COEFFICIENTS[v],
+                    U_TO_B_COEFFICIENTS[u]
+            );
+            argb.put(dst, preserveAlpha(argb.get(dst), color));
+        }
+    }
+
+    /// Combines an existing alpha byte with newly converted opaque RGB bits.
+    ///
+    /// @param existing the destination pixel containing the alpha byte
+    /// @param opaqueColor the converted opaque ARGB color
+    /// @return the existing alpha byte followed by the converted RGB bits
+    private static int preserveAlpha(int existing, int opaqueColor) {
+        return (existing & 0xFF000000) | (opaqueColor & 0x00FFFFFF);
     }
 
     /// Builds all scaled contributions for one YUV conversion coefficient.

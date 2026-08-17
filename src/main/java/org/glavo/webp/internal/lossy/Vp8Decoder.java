@@ -17,6 +17,7 @@ import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.ReadOnlyBufferException;
 import java.util.Arrays;
+import java.util.Objects;
 
 /// Pure-Java VP8 keyframe decoder.
 ///
@@ -28,59 +29,6 @@ import java.util.Arrays;
 @NotNullByDefault
 public final class Vp8Decoder {
 
-    /// Reusable storage for the decoded VP8 color planes.
-    ///
-    /// A workspace may be shared by consecutive calls from one thread. It retains only byte
-    /// arrays; all bitstream and prediction state remains local to each decoder invocation.
-    @NotNullByDefault
-    public static final class DecodeWorkspace {
-        /// Reusable full-resolution luma plane.
-        private byte[] yBuffer = ArrayUtils.EMPTY_BYTE_ARRAY;
-
-        /// Reusable half-resolution blue-difference chroma plane.
-        private byte[] uBuffer = ArrayUtils.EMPTY_BYTE_ARRAY;
-
-        /// Reusable half-resolution red-difference chroma plane.
-        private byte[] vBuffer = ArrayUtils.EMPTY_BYTE_ARRAY;
-
-        /// Creates an empty workspace whose planes are allocated on first use.
-        public DecodeWorkspace() {
-        }
-
-        /// Returns a luma plane with at least the requested capacity.
-        ///
-        /// @param length the minimum plane length
-        /// @return the retained luma plane
-        private byte[] acquireYBuffer(int length) {
-            if (yBuffer.length < length) {
-                yBuffer = new byte[length];
-            }
-            return yBuffer;
-        }
-
-        /// Returns a blue-difference chroma plane with at least the requested capacity.
-        ///
-        /// @param length the minimum plane length
-        /// @return the retained blue-difference chroma plane
-        private byte[] acquireUBuffer(int length) {
-            if (uBuffer.length < length) {
-                uBuffer = new byte[length];
-            }
-            return uBuffer;
-        }
-
-        /// Returns a red-difference chroma plane with at least the requested capacity.
-        ///
-        /// @param length the minimum plane length
-        /// @return the retained red-difference chroma plane
-        private byte[] acquireVBuffer(int length) {
-            if (vBuffer.length < length) {
-                vBuffer = new byte[length];
-            }
-            return vBuffer;
-        }
-    }
-
     private static final int[] CHROMA_GROUP_STARTS = {5, 7};
     private static final int FILTER_INFO_SEGMENT_MASK = 0x03;
     private static final int FILTER_INFO_LUMA_MODE_SHIFT = 2;
@@ -89,9 +37,14 @@ public final class Vp8Decoder {
     private static final int FILTER_INFO_NON_ZERO_DCT = 1 << 6;
     private static final IntraMode[] INTRA_MODE_BY_CODE = buildIntraModeByCode();
 
-    private final ByteBuffer input;
-    /// Optional color-plane storage retained by the caller across frame decodes.
-    private final @Nullable DecodeWorkspace workspace;
+    /// Encoded VP8 payload shared by the header and token partitions.
+    private byte[] input = ArrayUtils.EMPTY_BYTE_ARRAY;
+
+    /// Index of the next unread payload byte.
+    private int inputPosition;
+
+    /// Exclusive end index of the VP8 payload.
+    private int inputLimit;
     private final LossyArithmeticDecoder headerDecoder = new LossyArithmeticDecoder();
 
     private int macroblockWidth;
@@ -120,9 +73,13 @@ public final class Vp8Decoder {
     private int numPartitions = 1;
 
     private final int[] segmentProbs = {255, 255, 255};
-    private final int[][][][] tokenProbs = LossyTables.copyCoeffProbs();
+    /// Coefficient probabilities, shared with the immutable defaults until the frame updates one.
+    private int[] tokenProbs = LossyTables.FLAT_COEFF_PROBS;
+    /// Mutable coefficient probabilities allocated only for streams that update the defaults.
+    private int @Nullable [] mutableTokenProbs;
 
-    private @Nullable Integer probSkipFalse;
+    /// Probability of a false skip-coefficients flag, or `-1` when the flag is absent.
+    private int probSkipFalse = -1;
     private byte[] topBpred = ArrayUtils.EMPTY_BYTE_ARRAY;
     private byte[] topComplexity = ArrayUtils.EMPTY_BYTE_ARRAY;
     private final byte[] leftBpred = new byte[4];
@@ -140,16 +97,76 @@ public final class Vp8Decoder {
     private final byte[] lumaWorkspace = new byte[LossyPrediction.LUMA_BLOCK_SIZE];
     private final byte[] uWorkspace = new byte[LossyPrediction.CHROMA_BLOCK_SIZE];
     private final byte[] vWorkspace = new byte[LossyPrediction.CHROMA_BLOCK_SIZE];
+    /// Prediction and coefficient metadata reused for every macroblock.
+    private final MacroBlock macroBlock = new MacroBlock();
 
-    private Vp8Decoder(ByteBuffer input) {
-        this(input, null);
+    /// Creates a reusable decoder with no input attached.
+    ///
+    /// The decoder is stateful and must not be used concurrently. Retained work arrays grow to fit
+    /// the largest frame decoded by this instance.
+    public Vp8Decoder() {
+        initializeSegments();
     }
 
-    private Vp8Decoder(ByteBuffer input, @Nullable DecodeWorkspace workspace) {
-        this.input = input;
-        this.workspace = workspace;
+    /// Creates mutable segment records retained for the lifetime of this decoder.
+    private void initializeSegments() {
         for (int i = 0; i < segments.length; i++) {
             segments[i] = new Segment();
+        }
+    }
+
+    /// Selects an encoded buffer range and resets per-frame state.
+    ///
+    /// The caller's position and limit are not changed.
+    ///
+    /// @param input the encoded VP8 payload
+    private void resetInput(ByteBuffer input) {
+        Objects.requireNonNull(input, "input");
+        if (input.hasArray()) {
+            this.input = input.array();
+            this.inputPosition = input.arrayOffset() + input.position();
+            this.inputLimit = this.inputPosition + input.remaining();
+        } else {
+            byte[] copy = new byte[input.remaining()];
+            input.duplicate().get(copy);
+            this.input = copy;
+            this.inputPosition = 0;
+            this.inputLimit = copy.length;
+        }
+        resetFrameState();
+    }
+
+    /// Selects an encoded payload array and resets per-frame state.
+    ///
+    /// @param input the encoded VP8 payload
+    private void resetInput(byte[] input) {
+        this.input = Objects.requireNonNull(input, "input");
+        this.inputPosition = 0;
+        this.inputLimit = input.length;
+        resetFrameState();
+    }
+
+    /// Restores bitstream-dependent fields to their keyframe defaults.
+    private void resetFrameState() {
+        segmentsEnabled = false;
+        segmentsUpdateMap = false;
+        loopFilterAdjustmentsEnabled = false;
+        numPartitions = 1;
+        probSkipFalse = -1;
+        tokenProbs = LossyTables.FLAT_COEFF_PROBS;
+        Arrays.fill(refDelta, 0);
+        Arrays.fill(modeDelta, 0);
+        Arrays.fill(segmentProbs, 255);
+        for (Segment segment : segments) {
+            segment.ydc = 0;
+            segment.yac = 0;
+            segment.y2dc = 0;
+            segment.y2ac = 0;
+            segment.uvdc = 0;
+            segment.uvac = 0;
+            segment.deltaValues = false;
+            segment.quantizerLevel = 0;
+            segment.loopFilterLevel = 0;
         }
     }
 
@@ -162,7 +179,8 @@ public final class Vp8Decoder {
     /// @return a frame object initialized from the VP8 header
     /// @throws WebPException if the VP8 stream is malformed
     static Vp8Frame decodeFrameHeader(ByteBuffer input) throws WebPException {
-        Vp8Decoder decoder = new Vp8Decoder(input.slice());
+        Vp8Decoder decoder = new Vp8Decoder();
+        decoder.resetInput(input);
         decoder.readFrameHeader();
         return decoder.frame;
     }
@@ -177,7 +195,9 @@ public final class Vp8Decoder {
     /// @return tightly packed non-premultiplied `ARGB` pixels
     /// @throws WebPException if the VP8 bitstream is malformed
     public static int[] decodeArgb(ByteBuffer input, boolean fancyUpsampling) throws WebPException {
-        Vp8Frame frame = new Vp8Decoder(input.slice()).decodeFrameInternal();
+        Vp8Decoder decoder = new Vp8Decoder();
+        decoder.resetInput(input);
+        Vp8Frame frame = decoder.decodeFrameInternal();
         int[] argb = new int[frame.width * frame.height];
         frame.fillArgb(argb, fancyUpsampling);
         return argb;
@@ -194,7 +214,17 @@ public final class Vp8Decoder {
     /// @throws IllegalArgumentException if the destination size does not match the frame dimensions
     /// @throws WebPException if the VP8 bitstream is malformed
     public static void decodeArgb(ByteBuffer input, boolean fancyUpsampling, int[] argb) throws WebPException {
-        decodeArgb(input, fancyUpsampling, argb, null);
+        Vp8Decoder decoder = new Vp8Decoder();
+        decoder.resetInput(input);
+        Vp8Frame frame = decoder.decodeFrameInternal();
+        int expectedLength = frame.width * frame.height;
+        if (argb.length != expectedLength) {
+            throw new IllegalArgumentException(
+                    "ARGB buffer length does not match VP8 frame dimensions: "
+                            + argb.length + " != " + expectedLength
+            );
+        }
+        frame.fillArgb(argb, fancyUpsampling);
     }
 
     /// Decodes one raw VP8 frame payload directly into an existing packed `ARGB` buffer.
@@ -209,63 +239,12 @@ public final class Vp8Decoder {
     /// @throws ReadOnlyBufferException if the destination is read-only
     /// @throws WebPException if the VP8 bitstream is malformed
     public static void decodeArgb(ByteBuffer input, boolean fancyUpsampling, IntBuffer argb) throws WebPException {
-        decodeArgb(input, fancyUpsampling, argb, null);
-    }
-
-    /// Decodes one raw VP8 frame payload into an existing packed `ARGB` buffer while reusing plane
-    /// storage.
-    ///
-    /// The workspace must not be used concurrently. Its retained arrays may grow to fit the
-    /// largest decoded frame. The supplied destination must contain exactly one entry per decoded
-    /// frame pixel.
-    ///
-    /// @param input the raw VP8 frame payload
-    /// @param fancyUpsampling whether to use the high-quality chroma upsampler
-    /// @param argb the destination for tightly packed non-premultiplied `ARGB` pixels
-    /// @param workspace reusable color-plane storage, or `null` to allocate per call
-    /// @throws IllegalArgumentException if the destination size does not match the frame dimensions
-    /// @throws WebPException if the VP8 bitstream is malformed
-    public static void decodeArgb(
-            ByteBuffer input,
-            boolean fancyUpsampling,
-            int[] argb,
-            @Nullable DecodeWorkspace workspace
-    ) throws WebPException {
-        Vp8Frame frame = new Vp8Decoder(input.slice(), workspace).decodeFrameInternal();
-        int expectedLength = frame.width * frame.height;
-        if (argb.length != expectedLength) {
-            throw new IllegalArgumentException(
-                    "ARGB buffer length does not match VP8 frame dimensions: "
-                            + argb.length + " != " + expectedLength
-            );
-        }
-        frame.fillArgb(argb, fancyUpsampling);
-    }
-
-    /// Decodes one raw VP8 frame payload directly into an existing packed `ARGB` buffer while
-    /// reusing plane storage.
-    ///
-    /// The workspace must not be used concurrently. Its retained arrays may grow to fit the
-    /// largest decoded frame. The destination must have exactly one remaining entry per decoded
-    /// frame pixel. Neither the input nor destination position or limit is changed.
-    ///
-    /// @param input the raw VP8 frame payload
-    /// @param fancyUpsampling whether to use the high-quality chroma upsampler
-    /// @param argb the destination for tightly packed non-premultiplied `ARGB` pixels
-    /// @param workspace reusable color-plane storage, or `null` to allocate per call
-    /// @throws IllegalArgumentException if the destination size does not match the frame dimensions
-    /// @throws ReadOnlyBufferException if the destination is read-only
-    /// @throws WebPException if the VP8 bitstream is malformed
-    public static void decodeArgb(
-            ByteBuffer input,
-            boolean fancyUpsampling,
-            IntBuffer argb,
-            @Nullable DecodeWorkspace workspace
-    ) throws WebPException {
         if (argb.isReadOnly()) {
             throw new ReadOnlyBufferException();
         }
-        Vp8Frame frame = new Vp8Decoder(input.slice(), workspace).decodeFrameInternal();
+        Vp8Decoder decoder = new Vp8Decoder();
+        decoder.resetInput(input);
+        Vp8Frame frame = decoder.decodeFrameInternal();
         int expectedLength = frame.width * frame.height;
         if (argb.remaining() != expectedLength) {
             throw new IllegalArgumentException(
@@ -276,18 +255,142 @@ public final class Vp8Decoder {
         frame.fillArgb(argb, fancyUpsampling);
     }
 
+    /// Decodes one array-backed VP8 payload into an existing packed `ARGB` array.
+    ///
+    /// The payload array is read directly and must not be modified during this call. Retained work
+    /// arrays grow to fit the largest frame decoded by this instance. The decoder must not be used
+    /// concurrently.
+    ///
+    /// @param input the raw VP8 frame payload
+    /// @param fancyUpsampling whether to use the high-quality chroma upsampler
+    /// @param argb the destination for tightly packed non-premultiplied `ARGB` pixels
+    /// @throws IllegalArgumentException if the destination size does not match the frame dimensions
+    /// @throws WebPException if the VP8 bitstream is malformed
+    public void decodeArgb(
+            byte[] input,
+            boolean fancyUpsampling,
+            int[] argb
+    ) throws WebPException {
+        resetInput(input);
+        Vp8Frame frame = decodeFrameInternal();
+        int expectedLength = frame.width * frame.height;
+        if (argb.length != expectedLength) {
+            throw new IllegalArgumentException(
+                    "ARGB buffer length does not match VP8 frame dimensions: "
+                            + argb.length + " != " + expectedLength
+            );
+        }
+        frame.fillArgb(argb, fancyUpsampling);
+    }
+
+    /// Decodes one array-backed VP8 payload into the RGB bits of an `ARGB` array while preserving
+    /// its existing alpha bytes.
+    ///
+    /// The payload array is read directly and must not be modified during this call. Chroma uses
+    /// nearest-neighbor upsampling. The decoder must not be used concurrently.
+    ///
+    /// @param input the raw VP8 frame payload
+    /// @param argb the exact-sized destination containing reconstructed alpha bytes
+    /// @throws IllegalArgumentException if the destination size does not match the frame dimensions
+    /// @throws WebPException if the VP8 bitstream is malformed
+    public void decodeRgbPreservingAlpha(
+            byte[] input,
+            int[] argb
+    ) throws WebPException {
+        resetInput(input);
+        Vp8Frame frame = decodeFrameInternal();
+        int expectedLength = frame.width * frame.height;
+        if (argb.length != expectedLength) {
+            throw new IllegalArgumentException(
+                    "ARGB buffer length does not match VP8 frame dimensions: "
+                            + argb.length + " != " + expectedLength
+            );
+        }
+        frame.fillRgbPreservingAlpha(argb);
+    }
+
+    /// Decodes one array-backed VP8 payload directly into an integer buffer.
+    ///
+    /// The payload array is read directly and must not be modified during this call. The decoder
+    /// must not be used concurrently. The destination position and limit are not changed.
+    ///
+    /// @param input the raw VP8 frame payload
+    /// @param fancyUpsampling whether to use the high-quality chroma upsampler
+    /// @param argb the destination for tightly packed non-premultiplied `ARGB` pixels
+    /// @throws IllegalArgumentException if the destination size does not match the frame dimensions
+    /// @throws ReadOnlyBufferException if the destination is read-only
+    /// @throws WebPException if the VP8 bitstream is malformed
+    public void decodeArgb(
+            byte[] input,
+            boolean fancyUpsampling,
+            IntBuffer argb
+    ) throws WebPException {
+        if (argb.isReadOnly()) {
+            throw new ReadOnlyBufferException();
+        }
+        resetInput(input);
+        Vp8Frame frame = decodeFrameInternal();
+        int expectedLength = frame.width * frame.height;
+        if (argb.remaining() != expectedLength) {
+            throw new IllegalArgumentException(
+                    "ARGB buffer size does not match VP8 frame dimensions: "
+                            + argb.remaining() + " != " + expectedLength
+            );
+        }
+        frame.fillArgb(argb, fancyUpsampling);
+    }
+
+    /// Decodes one array-backed VP8 payload into the RGB bits of an integer buffer while
+    /// preserving its existing alpha bytes.
+    ///
+    /// The payload array is read directly and must not be modified during this call. Chroma uses
+    /// nearest-neighbor upsampling. The decoder must not be used concurrently. The destination
+    /// position and limit are not changed.
+    ///
+    /// @param input the raw VP8 frame payload
+    /// @param argb the exact-sized destination containing reconstructed alpha bytes
+    /// @throws IllegalArgumentException if the destination size does not match the frame dimensions
+    /// @throws ReadOnlyBufferException if the destination is read-only
+    /// @throws WebPException if the VP8 bitstream is malformed
+    public void decodeRgbPreservingAlpha(
+            byte[] input,
+            IntBuffer argb
+    ) throws WebPException {
+        if (argb.isReadOnly()) {
+            throw new ReadOnlyBufferException();
+        }
+        resetInput(input);
+        Vp8Frame frame = decodeFrameInternal();
+        int expectedLength = frame.width * frame.height;
+        if (argb.remaining() != expectedLength) {
+            throw new IllegalArgumentException(
+                    "ARGB buffer size does not match VP8 frame dimensions: "
+                            + argb.remaining() + " != " + expectedLength
+            );
+        }
+        frame.fillRgbPreservingAlpha(argb);
+    }
+
     private void updateTokenProbabilities() throws WebPException {
-        for (int i = 0; i < LossyTables.COEFF_UPDATE_PROBS.length; i++) {
-            for (int j = 0; j < LossyTables.COEFF_UPDATE_PROBS[i].length; j++) {
-                for (int k = 0; k < LossyTables.COEFF_UPDATE_PROBS[i][j].length; k++) {
-                    for (int t = 0; t < LossyCommon.NUM_DCT_TOKENS - 1; t++) {
-                        int prob = LossyTables.COEFF_UPDATE_PROBS[i][j][k][t];
-                        if (headerDecoder.readBool(prob)) {
-                            int updated = headerDecoder.readLiteral(8);
-                            tokenProbs[i][j][k][t] = updated;
-                        }
+        int[] updateProbabilities = LossyTables.FLAT_COEFF_UPDATE_PROBS;
+        for (int probabilityIndex = 0; probabilityIndex < updateProbabilities.length; probabilityIndex++) {
+            if (headerDecoder.readBool(updateProbabilities[probabilityIndex])) {
+                int updated = headerDecoder.readLiteral(8);
+                if (tokenProbs == LossyTables.FLAT_COEFF_PROBS) {
+                    if (mutableTokenProbs == null) {
+                        mutableTokenProbs = LossyTables.FLAT_COEFF_PROBS.clone();
+                    } else {
+                        System.arraycopy(
+                                LossyTables.FLAT_COEFF_PROBS,
+                                0,
+                                mutableTokenProbs,
+                                0,
+                                LossyTables.FLAT_COEFF_PROBS.length
+                        );
                     }
+                    tokenProbs = mutableTokenProbs;
                 }
+                tokenProbs[probabilityIndex] = updated;
             }
         }
         headerDecoder.ensureNotPastEof();
@@ -295,16 +398,19 @@ public final class Vp8Decoder {
 
     private void initPartitions(int partitionCount) throws WebPException {
         if (partitionCount > 1) {
-            ByteBuffer sizes = readExactly(3 * partitionCount - 3);
+            int sizesOffset = readExactly(3 * partitionCount - 3);
             for (int i = 0; i < partitionCount - 1; i++) {
-                int sizeOffset = i * 3;
-                int partitionSize = Byte.toUnsignedInt(sizes.get(sizeOffset))
-                        | (Byte.toUnsignedInt(sizes.get(sizeOffset + 1)) << 8)
-                        | (Byte.toUnsignedInt(sizes.get(sizeOffset + 2)) << 16);
-                partitions[i].init(readExactly(partitionSize));
+                int sizeOffset = sizesOffset + i * 3;
+                int partitionSize = Byte.toUnsignedInt(input[sizeOffset])
+                        | (Byte.toUnsignedInt(input[sizeOffset + 1]) << 8)
+                        | (Byte.toUnsignedInt(input[sizeOffset + 2]) << 16);
+                int partitionOffset = readExactly(partitionSize);
+                partitions[i].init(input, partitionOffset, partitionSize);
             }
         }
-        partitions[partitionCount - 1].init(readExactly(input.remaining()));
+        int finalPartitionSize = inputLimit - inputPosition;
+        int finalPartitionOffset = readExactly(finalPartitionSize);
+        partitions[partitionCount - 1].init(input, finalPartitionOffset, finalPartitionSize);
     }
 
     private void readQuantizationIndices() throws WebPException {
@@ -379,7 +485,7 @@ public final class Vp8Decoder {
     }
 
     private void readFrameHeader() throws WebPException {
-        int tag = readU24LE(input);
+        int tag = readU24LE();
         if ((tag & 1) != 0) {
             throw new WebPException("Only VP8 keyframes are supported");
         }
@@ -388,15 +494,15 @@ public final class Vp8Decoder {
         frame.forDisplay = ((tag >> 4) & 1) != 0;
 
         int firstPartitionSize = tag >> 5;
-        int signature0 = readU8(input);
-        int signature1 = readU8(input);
-        int signature2 = readU8(input);
+        int signature0 = readU8();
+        int signature1 = readU8();
+        int signature2 = readU8();
         if (signature0 != 0x9D || signature1 != 0x01 || signature2 != 0x2A) {
             throw new WebPException("Invalid VP8 frame signature");
         }
 
-        int widthBits = readU16LE(input);
-        int heightBits = readU16LE(input);
+        int widthBits = readU16LE();
+        int heightBits = readU16LE();
         frame.width = widthBits & 0x3FFF;
         frame.height = heightBits & 0x3FFF;
         if (frame.width <= 0 || frame.height <= 0) {
@@ -422,24 +528,25 @@ public final class Vp8Decoder {
 
         int yBufferLength = macroblockWidth * 16 * macroblockHeight * 16;
         int chromaBufferLength = macroblockWidth * 8 * macroblockHeight * 8;
-        if (workspace == null) {
+        if (frame.yBuffer.length < yBufferLength) {
             frame.yBuffer = new byte[yBufferLength];
+        }
+        if (frame.uBuffer.length < chromaBufferLength) {
             frame.uBuffer = new byte[chromaBufferLength];
+        }
+        if (frame.vBuffer.length < chromaBufferLength) {
             frame.vBuffer = new byte[chromaBufferLength];
-        } else {
-            frame.yBuffer = workspace.acquireYBuffer(yBufferLength);
-            frame.uBuffer = workspace.acquireUBuffer(chromaBufferLength);
-            frame.vBuffer = workspace.acquireVBuffer(chromaBufferLength);
         }
 
-        topBorderY = filled(frame.width + 20, (byte) 127);
-        leftBorderY = filled(17, (byte) 129);
-        topBorderU = filled(8 * macroblockWidth, (byte) 127);
-        leftBorderU = filled(9, (byte) 129);
-        topBorderV = filled(8 * macroblockWidth, (byte) 127);
-        leftBorderV = filled(9, (byte) 129);
+        topBorderY = prepareFilled(topBorderY, frame.width + 20, (byte) 127);
+        leftBorderY = prepareFilled(leftBorderY, 17, (byte) 129);
+        topBorderU = prepareFilled(topBorderU, 8 * macroblockWidth, (byte) 127);
+        leftBorderU = prepareFilled(leftBorderU, 9, (byte) 129);
+        topBorderV = prepareFilled(topBorderV, 8 * macroblockWidth, (byte) 127);
+        leftBorderV = prepareFilled(leftBorderV, 9, (byte) 129);
 
-        headerDecoder.init(readExactly(firstPartitionSize));
+        int firstPartitionOffset = readExactly(firstPartitionSize);
+        headerDecoder.init(input, firstPartitionOffset, firstPartitionSize);
 
         int colorSpace = headerDecoder.readLiteral(1);
         frame.pixelType = (byte) headerDecoder.readLiteral(1);
@@ -472,7 +579,7 @@ public final class Vp8Decoder {
         updateTokenProbabilities();
 
         int macroblockNoSkipCoeff = headerDecoder.readLiteral(1);
-        probSkipFalse = macroblockNoSkipCoeff == 1 ? headerDecoder.readLiteral(8) : null;
+        probSkipFalse = macroblockNoSkipCoeff == 1 ? headerDecoder.readLiteral(8) : -1;
         headerDecoder.ensureNotPastEof();
     }
 
@@ -489,7 +596,7 @@ public final class Vp8Decoder {
             macroBlock.segmentId = headerDecoder.readWithTree(LossyTables.SEGMENT_ID_TREE, segmentProbs);
         }
 
-        macroBlock.coefficientsSkipped = probSkipFalse != null && headerDecoder.readBool(probSkipFalse);
+        macroBlock.coefficientsSkipped = probSkipFalse >= 0 && headerDecoder.readBool(probSkipFalse);
 
         int lumaModeCode = headerDecoder.readWithTree(
                 LossyTables.KEYFRAME_YMODE_TREE,
@@ -665,48 +772,40 @@ public final class Vp8Decoder {
         assert complexity <= 2;
 
         int firstCoeff = plane == Plane.Y_COEFF_1 ? 1 : 0;
-        int[][][] probabilities = tokenProbs[plane.ordinal()];
         LossyArithmeticDecoder decoder = partitions[partition];
+        int probabilityPlaneOffset = plane.ordinal() * LossyTables.COEFF_PROBABILITY_COUNT_PER_PLANE;
 
         int complexityState = complexity;
         boolean hasCoefficients = false;
-        boolean skip = false;
+        int i = firstCoeff;
+        while (i < 16) {
+            int probabilityOffset = probabilityPlaneOffset
+                    + LossyTables.COEFF_BAND_PROBABILITY_OFFSETS[i]
+                    + complexityState * LossyTables.COEFF_TOKEN_PROBABILITY_COUNT;
 
-        for (int i = firstCoeff; i < 16; i++) {
-            int band = LossyTables.COEFF_BANDS[i];
-            int[] tokenProbabilities = probabilities[band][complexityState];
-            int token = decoder.readWithTree(
-                    LossyTables.DCT_TOKEN_TREE,
-                    tokenProbabilities,
-                    skip ? 1 : 0
-            );
-
-            int absoluteValue;
-            if (token == LossyTables.DCT_EOB) {
+            if (!decoder.readBool(tokenProbs[probabilityOffset])) {
                 break;
-            } else if (token == LossyTables.DCT_0) {
-                skip = true;
-                hasCoefficients = true;
-                complexityState = 0;
-                continue;
-            } else if (token >= LossyTables.DCT_1 && token <= LossyTables.DCT_4) {
-                absoluteValue = token;
-            } else if (token >= LossyTables.DCT_CAT1 && token <= LossyTables.DCT_CAT6) {
-                int[] categoryProbabilities = LossyTables.PROB_DCT_CAT[token - LossyTables.DCT_CAT1];
-                int extra = 0;
-                for (int probability : categoryProbabilities) {
-                    if (probability == 0) {
-                        break;
-                    }
-                    extra = extra + extra + (decoder.readBool(probability) ? 1 : 0);
-                }
-                absoluteValue = LossyTables.DCT_CAT_BASE[token - LossyTables.DCT_CAT1] + extra;
-            } else {
-                throw new WebPException("Unknown VP8 DCT token: " + token);
             }
 
-            skip = false;
-            complexityState = absoluteValue == 0 ? 0 : (absoluteValue == 1 ? 1 : 2);
+            while (!decoder.readBool(tokenProbs[probabilityOffset + 1])) {
+                hasCoefficients = true;
+                complexityState = 0;
+                if (++i == 16) {
+                    decoder.ensureNotPastEof();
+                    return true;
+                }
+                probabilityOffset = probabilityPlaneOffset
+                        + LossyTables.COEFF_BAND_PROBABILITY_OFFSETS[i];
+            }
+
+            int absoluteValue;
+            if (!decoder.readBool(tokenProbs[probabilityOffset + 2])) {
+                absoluteValue = 1;
+            } else {
+                absoluteValue = readLargeCoefficientValue(decoder, probabilityOffset);
+            }
+
+            complexityState = absoluteValue == 1 ? 1 : 2;
             if (decoder.readSign()) {
                 absoluteValue = -absoluteValue;
             }
@@ -714,10 +813,46 @@ public final class Vp8Decoder {
             int zigzag = LossyTables.ZIGZAG[i];
             block[blockOffset + zigzag] = absoluteValue * (zigzag > 0 ? acq : dcq);
             hasCoefficients = true;
+            i++;
         }
 
         decoder.ensureNotPastEof();
         return hasCoefficients;
+    }
+
+    /// Reads a coefficient magnitude greater than one from the token probability branches.
+    ///
+    /// @param decoder the active coefficient-partition decoder
+    /// @param probabilityOffset the first token probability for the current coefficient
+    /// @return a coefficient magnitude in the range `2` through `2114`
+    private int readLargeCoefficientValue(LossyArithmeticDecoder decoder, int probabilityOffset) {
+        int[] probabilities = tokenProbs;
+        if (!decoder.readBool(probabilities[probabilityOffset + 3])) {
+            if (!decoder.readBool(probabilities[probabilityOffset + 4])) {
+                return 2;
+            }
+            return 3 + (decoder.readBool(probabilities[probabilityOffset + 5]) ? 1 : 0);
+        }
+
+        if (!decoder.readBool(probabilities[probabilityOffset + 6])) {
+            if (!decoder.readBool(probabilities[probabilityOffset + 7])) {
+                return 5 + (decoder.readBool(159) ? 1 : 0);
+            }
+            return 7
+                    + (decoder.readBool(165) ? 2 : 0)
+                    + (decoder.readBool(145) ? 1 : 0);
+        }
+
+        int highCategoryBit = decoder.readBool(probabilities[probabilityOffset + 8]) ? 1 : 0;
+        int lowCategoryBit = decoder.readBool(probabilities[probabilityOffset + 9 + highCategoryBit]) ? 1 : 0;
+        int category = (highCategoryBit << 1) | lowCategoryBit;
+        int categoryOffset = category * LossyTables.LARGE_DCT_CATEGORY_STRIDE;
+        int extra = 0;
+        int[] categoryProbabilities = LossyTables.LARGE_DCT_CATEGORY_PROBABILITIES;
+        for (int index = categoryOffset; categoryProbabilities[index] != 0; index++) {
+            extra = extra + extra + (decoder.readBool(categoryProbabilities[index]) ? 1 : 0);
+        }
+        return LossyTables.LARGE_DCT_CATEGORY_BASE[category] + extra;
     }
 
     /*
@@ -1077,7 +1212,6 @@ public final class Vp8Decoder {
     private Vp8Frame decodeFrameInternal() throws WebPException {
         readFrameHeader();
         int macroblockIndex = 0;
-        MacroBlock macroBlock = new MacroBlock();
 
         for (int macroblockY = 0; macroblockY < macroblockHeight; macroblockY++) {
             int partition = macroblockY % numPartitions;
@@ -1129,9 +1263,17 @@ public final class Vp8Decoder {
         System.arraycopy(chromaBlock, 8 * stride + 1, topBorder, macroblockX * 8, 8);
     }
 
-    private static byte[] filled(int length, byte value) {
-        byte[] bytes = new byte[length];
-        Arrays.fill(bytes, value);
+    /// Returns retained storage initialized over its active prefix.
+    ///
+    /// @param bytes the previously retained storage
+    /// @param length the active prefix length
+    /// @param value the initialization value
+    /// @return `bytes` when it is large enough, or a newly allocated array otherwise
+    private static byte[] prepareFilled(byte[] bytes, int length, byte value) {
+        if (bytes.length < length) {
+            bytes = new byte[length];
+        }
+        Arrays.fill(bytes, 0, length, value);
         return bytes;
     }
 
@@ -1156,30 +1298,46 @@ public final class Vp8Decoder {
         return LossyTables.AC_QUANT[Math.max(0, Math.min(127, index))];
     }
 
-    private ByteBuffer readExactly(int length) throws WebPException {
-        if (input.remaining() < length) {
+    /// Advances over an exact payload range and returns its starting offset.
+    ///
+    /// @param length the required byte count
+    /// @return the starting array offset of the consumed range
+    /// @throws WebPException if fewer than `length` bytes remain
+    private int readExactly(int length) throws WebPException {
+        if (length < 0 || inputLimit - inputPosition < length) {
             throw new WebPException("Unexpected end of VP8 partition data");
         }
 
-        ByteBuffer slice = input.slice();
-        slice.limit(length);
-        input.position(input.position() + length);
-        return slice;
+        int offset = inputPosition;
+        inputPosition += length;
+        return offset;
     }
 
-    private static int readU8(ByteBuffer input) throws WebPException {
-        if (!input.hasRemaining()) {
+    /// Reads one unsigned payload byte.
+    ///
+    /// @return the next byte widened to an unsigned integer
+    /// @throws WebPException if the payload is exhausted
+    private int readU8() throws WebPException {
+        if (inputPosition >= inputLimit) {
             throw new WebPException("Unexpected end of VP8 stream");
         }
-        return Byte.toUnsignedInt(input.get());
+        return Byte.toUnsignedInt(input[inputPosition++]);
     }
 
-    private static int readU16LE(ByteBuffer input) throws WebPException {
-        return readU8(input) | (readU8(input) << 8);
+    /// Reads one unsigned little-endian 16-bit payload value.
+    ///
+    /// @return the next unsigned 16-bit value
+    /// @throws WebPException if the payload is truncated
+    private int readU16LE() throws WebPException {
+        return readU8() | (readU8() << 8);
     }
 
-    private static int readU24LE(ByteBuffer input) throws WebPException {
-        return readU8(input) | (readU8(input) << 8) | (readU8(input) << 16);
+    /// Reads one unsigned little-endian 24-bit payload value.
+    ///
+    /// @return the next unsigned 24-bit value
+    /// @throws WebPException if the payload is truncated
+    private int readU24LE() throws WebPException {
+        return readU8() | (readU8() << 8) | (readU8() << 16);
     }
 
     /// Reusable prediction and coefficient metadata for one macroblock.

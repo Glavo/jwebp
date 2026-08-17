@@ -14,7 +14,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
@@ -124,11 +123,8 @@ public final class WebPImageReader implements AutoCloseable {
     /// Immutable output configuration captured when this reader was opened.
     private final WebPDecoder decoder;
 
-    /// Stateful ALPH decoder whose full-frame VP8L workspace is reused across animation frames.
-    private final ExtendedWebP.AlphaDecoder alphaDecoder = new ExtendedWebP.AlphaDecoder();
-
-    /// VP8 color-plane storage reused across animated frame decodes.
-    private final Vp8Decoder.DecodeWorkspace vp8Workspace = new Vp8Decoder.DecodeWorkspace();
+    /// Stateful VP8 decoder created on demand and reused across lossy frame decodes.
+    private @Nullable Vp8Decoder vp8Decoder;
 
     /// Index of the next presentation frame to decode.
     private int nextFrameIndex;
@@ -397,14 +393,16 @@ public final class WebPImageReader implements AutoCloseable {
             return argb;
         }
 
-        Vp8Decoder.decodeArgb(ByteBuffer.wrap(descriptor.imageChunk()), false, argb, vp8Workspace);
         if (descriptor.alphaChunk() != null) {
-            alphaDecoder.apply(
+            ExtendedWebP.decodeAlpha(
                     descriptor.alphaChunk(),
                     descriptor.width(),
                     descriptor.height(),
                     argb
             );
+            acquireVp8Decoder().decodeRgbPreservingAlpha(descriptor.imageChunk(), argb);
+        } else {
+            acquireVp8Decoder().decodeArgb(descriptor.imageChunk(), false, argb);
         }
         return argb;
     }
@@ -423,21 +421,30 @@ public final class WebPImageReader implements AutoCloseable {
                     argb
             );
         } else {
-            Vp8Decoder.decodeArgb(
-                    ByteBuffer.wrap(descriptor.imageChunk()),
-                    false,
-                    argb,
-                    vp8Workspace
-            );
             if (descriptor.alphaChunk() != null) {
-                alphaDecoder.apply(
+                ExtendedWebP.decodeAlpha(
                         descriptor.alphaChunk(),
                         descriptor.width(),
                         descriptor.height(),
                         argb
                 );
+                acquireVp8Decoder().decodeRgbPreservingAlpha(descriptor.imageChunk(), argb);
+            } else {
+                acquireVp8Decoder().decodeArgb(descriptor.imageChunk(), false, argb);
             }
         }
+    }
+
+    /// Returns the reader-local VP8 decoder, creating it for the first lossy frame.
+    ///
+    /// @return the reusable VP8 decoder
+    private Vp8Decoder acquireVp8Decoder() {
+        Vp8Decoder result = vp8Decoder;
+        if (result == null) {
+            result = new Vp8Decoder();
+            vp8Decoder = result;
+        }
+        return result;
     }
 
     /// Returns an exact-sized frame buffer, reusing it when animated frames share dimensions.

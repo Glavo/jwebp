@@ -4,22 +4,25 @@ package org.glavo.webp.internal.lossy;
 
 import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
-import org.jetbrains.annotations.UnmodifiableView;
+import org.jetbrains.annotations.Unmodifiable;
 
 import org.glavo.webp.WebPException;
-
-import java.nio.ByteBuffer;
 
 /// Decodes VP8 boolean-coded header and coefficient partitions.
 @NotNullByDefault
 final class LossyArithmeticDecoder {
 
     /// Shared zero-capacity input used before this decoder is initialized.
-    private static final @UnmodifiableView ByteBuffer EMPTY_INPUT =
-            ByteBuffer.wrap(ArrayUtils.EMPTY_BYTE_ARRAY).asReadOnlyBuffer();
+    private static final byte @Unmodifiable [] EMPTY_INPUT = ArrayUtils.EMPTY_BYTE_ARRAY;
 
     /// Remaining bytes in the current VP8 boolean-coded partition.
-    private ByteBuffer input = EMPTY_INPUT;
+    private byte[] input = EMPTY_INPUT;
+
+    /// Index of the next encoded byte.
+    private int inputPosition;
+
+    /// Exclusive end index of the encoded partition.
+    private int inputLimit;
 
     /// Buffered arithmetic-coded bits aligned to the current range.
     private long value;
@@ -40,19 +43,25 @@ final class LossyArithmeticDecoder {
     LossyArithmeticDecoder() {
     }
 
-    /// Initializes this decoder from one VP8 partition.
+    /// Initializes this decoder from one VP8 partition range.
     ///
-    /// The supplied buffer is sliced, so its position and limit are not modified.
-    ///
-    /// @param buffer the encoded partition bytes
+    /// @param input the array containing the encoded partition
+    /// @param offset the first encoded byte
+    /// @param length the partition length in bytes
     /// @throws WebPException if the partition is empty
-    void init(ByteBuffer buffer) throws WebPException {
-        ByteBuffer input = buffer.slice();
-        if (!input.hasRemaining()) {
+    void init(byte[] input, int offset, int length) throws WebPException {
+        if (length <= 0) {
             throw new WebPException("Not enough VP8 partition data");
+        }
+        if (offset < 0 || offset > input.length - length) {
+            throw new IndexOutOfBoundsException(
+                    "VP8 partition range is outside the input: " + offset + " + " + length
+            );
         }
 
         this.input = input;
+        this.inputPosition = offset;
+        this.inputLimit = offset + length;
         this.value = 0L;
         this.range = 255;
         this.bitCount = -8;
@@ -135,9 +144,20 @@ final class LossyArithmeticDecoder {
     /// @param firstNode the first internal-node index to evaluate
     /// @return the decoded symbol
     int readWithTree(int[] tree, int[] probabilities, int firstNode) {
+        return readWithTree(tree, probabilities, 0, firstNode);
+    }
+
+    /// Reads a symbol from a VP8 tree using a probability range within a flat array.
+    ///
+    /// @param tree the VP8 branch table, with two entries per internal node
+    /// @param probabilities the array containing zero-bit probabilities
+    /// @param probabilityOffset the array index corresponding to tree node zero
+    /// @param firstNode the first internal-node index to evaluate
+    /// @return the decoded symbol
+    int readWithTree(int[] tree, int[] probabilities, int probabilityOffset, int firstNode) {
         int node = firstNode;
         while (true) {
-            int branch = tree[node * 2 + (readBit(probabilities[node]) ? 1 : 0)];
+            int branch = tree[node * 2 + (readBit(probabilities[probabilityOffset + node]) ? 1 : 0)];
             if (branch <= 0) {
                 return -branch;
             }
@@ -151,11 +171,14 @@ final class LossyArithmeticDecoder {
     /// @return the decoded bit
     private boolean readBit(int probability) {
         if (bitCount < 0) {
-            if (input.remaining() >= Integer.BYTES) {
-                int nextValue = (Byte.toUnsignedInt(input.get()) << 24)
-                        | (Byte.toUnsignedInt(input.get()) << 16)
-                        | (Byte.toUnsignedInt(input.get()) << 8)
-                        | Byte.toUnsignedInt(input.get());
+            if (inputLimit - inputPosition >= Integer.BYTES) {
+                byte[] input = this.input;
+                int position = inputPosition;
+                int nextValue = (Byte.toUnsignedInt(input[position]) << 24)
+                        | (Byte.toUnsignedInt(input[position + 1]) << 16)
+                        | (Byte.toUnsignedInt(input[position + 2]) << 8)
+                        | Byte.toUnsignedInt(input[position + 3]);
+                inputPosition = position + Integer.BYTES;
                 value <<= 32;
                 value |= Integer.toUnsignedLong(nextValue);
                 bitCount += 32;
@@ -190,9 +213,9 @@ final class LossyArithmeticDecoder {
 
     /// Loads one tail byte or the single synthesized VP8 padding byte.
     private void loadFromTailBytes() {
-        if (input.hasRemaining()) {
+        if (inputPosition < inputLimit) {
             value <<= 8;
-            value |= Byte.toUnsignedInt(input.get());
+            value |= Byte.toUnsignedInt(input[inputPosition++]);
             bitCount += 8;
         } else if (zeroBytePending) {
             zeroBytePending = false;

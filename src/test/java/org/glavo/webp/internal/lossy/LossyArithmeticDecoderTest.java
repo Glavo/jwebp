@@ -7,7 +7,6 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.glavo.webp.WebPException;
 import org.junit.jupiter.api.Test;
 
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,7 +22,8 @@ final class LossyArithmeticDecoderTest {
     @Test
     void arithmeticDecoderHelloShort() throws Exception {
         LossyArithmeticDecoder decoder = new LossyArithmeticDecoder();
-        decoder.init(ByteBuffer.wrap("hel".getBytes(StandardCharsets.US_ASCII)));
+        byte[] input = "hel".getBytes(StandardCharsets.US_ASCII);
+        decoder.init(input, 0, input.length);
 
         assertFalse(decoder.readFlag());
         assertTrue(decoder.readBool(10));
@@ -39,7 +39,8 @@ final class LossyArithmeticDecoderTest {
     @Test
     void arithmeticDecoderHelloLong() throws Exception {
         LossyArithmeticDecoder decoder = new LossyArithmeticDecoder();
-        decoder.init(ByteBuffer.wrap("hello world".getBytes(StandardCharsets.US_ASCII)));
+        byte[] input = "hello world".getBytes(StandardCharsets.US_ASCII);
+        decoder.init(input, 0, input.length);
 
         assertFalse(decoder.readFlag());
         assertTrue(decoder.readBool(10));

@@ -3,6 +3,7 @@
 package org.glavo.webp.internal.lossy;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Unmodifiable;
 
 @NotNullByDefault
 final class LossyTables {
@@ -482,29 +483,42 @@ final class LossyTables {
             }
     };
 
-    static final int DCT_0 = 0;
-    static final int DCT_1 = 1;
-    static final int DCT_2 = 2;
-    static final int DCT_3 = 3;
-    static final int DCT_4 = 4;
-    static final int DCT_CAT1 = 5;
-    static final int DCT_CAT2 = 6;
-    static final int DCT_CAT3 = 7;
-    static final int DCT_CAT4 = 8;
-    static final int DCT_CAT5 = 9;
-    static final int DCT_CAT6 = 10;
-    static final int DCT_EOB = 11;
-    static final int[] DCT_TOKEN_TREE = {-DCT_EOB, 2, -DCT_0, 4, -DCT_1, 6, 8, 12, -DCT_2, 10, -DCT_3, -DCT_4, 14, 16, -DCT_CAT1, -DCT_CAT2, 18, 20, -DCT_CAT3, -DCT_CAT4, -DCT_CAT5, -DCT_CAT6};
-    static final int[][] PROB_DCT_CAT = {
-            {159, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-            {165, 145, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-            {173, 148, 140, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-            {176, 155, 140, 135, 0, 0, 0, 0, 0, 0, 0, 0},
-            {180, 157, 141, 134, 130, 0, 0, 0, 0, 0, 0, 0},
-            {254, 254, 243, 230, 196, 177, 153, 140, 133, 130, 129, 0}
+    /// Coefficient-update probabilities in plane, band, context, and token order.
+    static final int @Unmodifiable [] FLAT_COEFF_UPDATE_PROBS = flattenCoeffTable(COEFF_UPDATE_PROBS);
+
+    /// Default coefficient probabilities in plane, band, context, and token order.
+    static final int @Unmodifiable [] FLAT_COEFF_PROBS = flattenCoeffTable(COEFF_PROBS);
+
+    /// Number of coefficient bands in each VP8 plane probability table.
+    static final int COEFF_BAND_COUNT = 8;
+
+    /// Number of neighboring-coefficient contexts in each band.
+    static final int COEFF_CONTEXT_COUNT = 3;
+
+    /// Number of branch probabilities in the coefficient token tree.
+    static final int COEFF_TOKEN_PROBABILITY_COUNT = LossyCommon.NUM_DCT_TOKENS - 1;
+
+    /// Number of coefficient probabilities for one plane.
+    static final int COEFF_PROBABILITY_COUNT_PER_PLANE =
+            COEFF_BAND_COUNT * COEFF_CONTEXT_COUNT * COEFF_TOKEN_PROBABILITY_COUNT;
+
+    /// Extra-bit probabilities for coefficient categories 3 through 6.
+    static final int @Unmodifiable [] LARGE_DCT_CATEGORY_PROBABILITIES = {
+            173, 148, 140, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            176, 155, 140, 135, 0, 0, 0, 0, 0, 0, 0, 0,
+            180, 157, 141, 134, 130, 0, 0, 0, 0, 0, 0, 0,
+            254, 254, 243, 230, 196, 177, 153, 140, 133, 130, 129, 0
     };
-    static final int[] DCT_CAT_BASE = {5, 7, 11, 19, 35, 67};
-    static final int[] COEFF_BANDS = {0, 1, 2, 3, 6, 4, 5, 6, 6, 6, 6, 6, 6, 6, 6, 7};
+
+    /// Number of padded probability entries per large coefficient category.
+    static final int LARGE_DCT_CATEGORY_STRIDE = 12;
+
+    /// Base coefficient values for categories 3 through 6.
+    static final int @Unmodifiable [] LARGE_DCT_CATEGORY_BASE = {11, 19, 35, 67};
+    static final int @Unmodifiable [] COEFF_BANDS = {0, 1, 2, 3, 6, 4, 5, 6, 6, 6, 6, 6, 6, 6, 6, 7};
+
+    /// Flat probability-table offset for each coefficient's band.
+    static final int @Unmodifiable [] COEFF_BAND_PROBABILITY_OFFSETS = buildCoeffBandProbabilityOffsets();
     static final short[] DC_QUANT = {
             4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14, 15, 16, 17, 17,
             18, 19, 20, 20, 21, 21, 22, 22, 23, 23, 24, 25, 25, 26, 27, 28,
@@ -530,20 +544,42 @@ final class LossyTables {
     private LossyTables() {
     }
 
-    /// Copies the default coefficient probabilities for per-frame updates.
+    /// Flattens a nested specification table into the decoder's lookup layout.
     ///
-    /// @return a deep mutable copy of [#COEFF_PROBS]
-    static int[][][][] copyCoeffProbs() {
-        int[][][][] copy = new int[COEFF_PROBS.length][][][];
-        for (int i = 0; i < copy.length; i++) {
-            copy[i] = new int[COEFF_PROBS[i].length][][];
-            for (int j = 0; j < copy[i].length; j++) {
-                copy[i][j] = new int[COEFF_PROBS[i][j].length][];
-                for (int k = 0; k < copy[i][j].length; k++) {
-                    copy[i][j][k] = COEFF_PROBS[i][j][k].clone();
+    /// @param table the plane, band, context, and token probability table
+    /// @return the flattened probabilities
+    private static int[] flattenCoeffTable(int[][][][] table) {
+        int length = 0;
+        for (int[][][] plane : table) {
+            for (int[][] band : plane) {
+                for (int[] context : band) {
+                    length += context.length;
                 }
             }
         }
-        return copy;
+
+        int[] flattened = new int[length];
+        int offset = 0;
+        for (int[][][] plane : table) {
+            for (int[][] band : plane) {
+                for (int[] context : band) {
+                    System.arraycopy(context, 0, flattened, offset, context.length);
+                    offset += context.length;
+                }
+            }
+        }
+        return flattened;
+    }
+
+    /// Builds the flat probability-table offset for each coefficient band.
+    ///
+    /// @return the per-coefficient band offsets
+    private static int[] buildCoeffBandProbabilityOffsets() {
+        int[] offsets = new int[COEFF_BANDS.length];
+        int probabilitiesPerBand = COEFF_CONTEXT_COUNT * COEFF_TOKEN_PROBABILITY_COUNT;
+        for (int i = 0; i < offsets.length; i++) {
+            offsets[i] = COEFF_BANDS[i] * probabilitiesPerBand;
+        }
+        return offsets;
     }
 }

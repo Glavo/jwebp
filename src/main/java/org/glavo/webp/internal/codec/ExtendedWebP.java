@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.webp.internal.codec;
 
-import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -10,8 +9,6 @@ import org.glavo.webp.WebPException;
 import org.glavo.webp.internal.Argb;
 import org.glavo.webp.internal.lossless.LosslessDecoder;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.nio.ReadOnlyBufferException;
 import java.util.Arrays;
@@ -29,191 +26,150 @@ public final class ExtendedWebP {
         GRADIENT
     }
 
-    /// Decodes ALPH chunks and reuses the full-size VP8L destination between compatible frames.
-    @NotNullByDefault
-    public static final class AlphaDecoder {
-
-        /// Validated ALPH decoding parameters.
-        ///
-        /// @param compression the ALPH compression method
-        /// @param filteringMethod the inverse-filter predictor
-        @NotNullByDefault
-        private record AlphaParameters(int compression, FilteringMethod filteringMethod) {
+    /// Decodes an ALPH payload into the high byte of an integer pixel array.
+    ///
+    /// Lower 24 bits are discarded. Compressed samples use the destination itself as the nested
+    /// VP8L workspace, allowing subsequent VP8 color conversion to preserve the reconstructed alpha
+    /// channel without allocating a second full-size pixel array.
+    ///
+    /// @param payload the ALPH chunk payload
+    /// @param width the frame width
+    /// @param height the frame height
+    /// @param argb the exact-sized writable destination
+    /// @throws IllegalArgumentException if the dimensions are invalid or the destination size does
+    ///                                  not match them
+    /// @throws WebPException if the alpha payload is malformed
+    public static void decodeAlpha(byte[] payload, int width, int height, int[] argb) throws WebPException {
+        int expectedLength = pixelCount(width, height);
+        if (argb.length != expectedLength) {
+            throw new IllegalArgumentException(
+                    "ARGB buffer length does not match ALPH dimensions: "
+                            + argb.length + " != " + expectedLength
+            );
         }
 
-        /// Full-size destination reused for nested VP8L alpha streams of the same dimensions.
-        private int[] losslessBuffer = ArrayUtils.EMPTY_INT_ARRAY;
-
-        /// Direct destination reused for nested VP8L alpha streams applied to direct frames.
-        private @Nullable IntBuffer directLosslessBuffer;
-
-        /// Creates an ALPH decoder with no allocated frame workspace.
-        public AlphaDecoder() {
+        int parameters = parseAlphaParameters(payload, expectedLength);
+        int compression = parameters & 0b11;
+        FilteringMethod filteringMethod = filteringMethod((parameters >>> 2) & 0b11);
+        if (compression == 1) {
+            new LosslessDecoder(payload, 1, payload.length - 1)
+                    .decodeFrame(width, height, true, argb);
         }
 
-        /// Decodes an ALPH payload and applies its reconstructed samples to an `ARGB` frame.
-        ///
-        /// Raw alpha samples are consumed directly from the payload. Compressed samples are decoded
-        /// from the nested headerless VP8L range into a reusable internal buffer.
-        ///
-        /// @param payload the ALPH chunk payload
-        /// @param width the frame width
-        /// @param height the frame height
-        /// @param argb the frame pixels whose alpha channel will be replaced
-        /// @throws IllegalArgumentException if the dimensions are invalid or the destination size
-        ///                                  does not match them
-        /// @throws WebPException if the alpha payload is malformed
-        public void apply(byte[] payload, int width, int height, int[] argb) throws WebPException {
-            int expectedLength = pixelCount(width, height);
-            if (argb.length != expectedLength) {
-                throw new IllegalArgumentException(
-                        "ARGB buffer length does not match ALPH dimensions: "
-                                + argb.length + " != " + expectedLength
-                );
-            }
-
-            AlphaParameters parameters = parseParameters(payload, expectedLength);
-            if (parameters.compression() == 1) {
-                if (losslessBuffer.length != expectedLength) {
-                    losslessBuffer = new int[expectedLength];
-                }
-                new LosslessDecoder(payload, 1, payload.length - 1)
-                        .decodeFrame(width, height, true, losslessBuffer);
-            }
-
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    int pixelIndex = y * width + x;
-                    int sample = parameters.compression() == 0
-                            ? payload[pixelIndex + 1] & 0xFF
-                            : Argb.green(losslessBuffer[pixelIndex]);
-                    int predictor = getAlphaPredictor(x, y, width, parameters.filteringMethod(), argb);
-                    argb[pixelIndex] = Argb.withAlpha(argb[pixelIndex], (sample + predictor) & 0xFF);
-                }
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int pixelIndex = y * width + x;
+                int sample = compression == 0
+                        ? payload[pixelIndex + 1] & 0xFF
+                        : Argb.green(argb[pixelIndex]);
+                int predictor = getAlphaPredictor(x, y, width, filteringMethod, argb);
+                argb[pixelIndex] = ((sample + predictor) & 0xFF) << 24;
             }
         }
+    }
 
-        /// Decodes an ALPH payload and applies its reconstructed samples directly to an `ARGB`
-        /// buffer.
-        ///
-        /// Raw alpha samples are consumed directly from the payload. Compressed samples are decoded
-        /// into a reusable direct workspace, so this path does not introduce a full-size heap pixel
-        /// array. The destination position and limit are not changed.
-        ///
-        /// @param payload the ALPH chunk payload
-        /// @param width the frame width
-        /// @param height the frame height
-        /// @param argb the frame pixels whose alpha channel will be replaced
-        /// @throws IllegalArgumentException if the dimensions are invalid or the destination size
-        ///                                  does not match them
-        /// @throws ReadOnlyBufferException if the destination is read-only
-        /// @throws WebPException if the alpha payload is malformed
-        public void apply(byte[] payload, int width, int height, IntBuffer argb) throws WebPException {
-            if (argb.isReadOnly()) {
-                throw new ReadOnlyBufferException();
-            }
-            int expectedLength = pixelCount(width, height);
-            if (argb.remaining() != expectedLength) {
-                throw new IllegalArgumentException(
-                        "ARGB buffer size does not match ALPH dimensions: "
-                                + argb.remaining() + " != " + expectedLength
-                );
-            }
-
-            AlphaParameters parameters = parseParameters(payload, expectedLength);
-            @Nullable IntBuffer lossless = null;
-            if (parameters.compression() == 1) {
-                lossless = directLosslessBuffer;
-                if (lossless == null || lossless.capacity() != expectedLength) {
-                    int byteCount;
-                    try {
-                        byteCount = Math.multiplyExact(expectedLength, Integer.BYTES);
-                    } catch (ArithmeticException ex) {
-                        throw new IllegalArgumentException("ALPH buffer is too large for direct storage", ex);
-                    }
-                    lossless = ByteBuffer.allocateDirect(byteCount)
-                            .order(ByteOrder.nativeOrder())
-                            .asIntBuffer();
-                    directLosslessBuffer = lossless;
-                }
-                lossless.clear();
-                new LosslessDecoder(payload, 1, payload.length - 1)
-                        .decodeFrame(width, height, true, lossless);
-            }
-
-            IntBuffer output = argb.slice();
-            assert parameters.compression() == 0 || lossless != null;
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    int pixelIndex = y * width + x;
-                    int sample = parameters.compression() == 0
-                            ? payload[pixelIndex + 1] & 0xFF
-                            : Argb.green(lossless.get(pixelIndex));
-                    int predictor = getAlphaPredictor(
-                            x,
-                            y,
-                            width,
-                            parameters.filteringMethod(),
-                            output
-                    );
-                    output.put(pixelIndex, Argb.withAlpha(output.get(pixelIndex), (sample + predictor) & 0xFF));
-                }
-            }
+    /// Decodes an ALPH payload into the high byte of an integer buffer.
+    ///
+    /// Lower 24 bits are discarded. The destination itself is used for compressed VP8L samples.
+    /// Its position and limit are not changed.
+    ///
+    /// @param payload the ALPH chunk payload
+    /// @param width the frame width
+    /// @param height the frame height
+    /// @param argb the exact-sized writable destination region
+    /// @throws IllegalArgumentException if the dimensions are invalid or the destination size does
+    ///                                  not match them
+    /// @throws ReadOnlyBufferException if the destination is read-only
+    /// @throws WebPException if the alpha payload is malformed
+    public static void decodeAlpha(byte[] payload, int width, int height, IntBuffer argb) throws WebPException {
+        if (argb.isReadOnly()) {
+            throw new ReadOnlyBufferException();
+        }
+        int expectedLength = pixelCount(width, height);
+        if (argb.remaining() != expectedLength) {
+            throw new IllegalArgumentException(
+                    "ARGB buffer size does not match ALPH dimensions: "
+                            + argb.remaining() + " != " + expectedLength
+            );
         }
 
-        /// Returns the validated number of pixels for ALPH dimensions.
-        ///
-        /// @param width the frame width
-        /// @param height the frame height
-        /// @return `width * height`
-        /// @throws IllegalArgumentException if either dimension is non-positive or their product
-        ///                                  exceeds the integer range
-        private static int pixelCount(int width, int height) {
-            if (width <= 0 || height <= 0) {
-                throw new IllegalArgumentException("ALPH dimensions must be positive: " + width + "x" + height);
-            }
-            try {
-                return Math.multiplyExact(width, height);
-            } catch (ArithmeticException ex) {
-                throw new IllegalArgumentException("ALPH dimensions are too large: " + width + "x" + height, ex);
-            }
+        int parameters = parseAlphaParameters(payload, expectedLength);
+        int compression = parameters & 0b11;
+        FilteringMethod filteringMethod = filteringMethod((parameters >>> 2) & 0b11);
+        IntBuffer output = argb.slice();
+        if (compression == 1) {
+            new LosslessDecoder(payload, 1, payload.length - 1)
+                    .decodeFrame(width, height, true, output);
         }
 
-        /// Parses and validates the ALPH control byte and payload size.
-        ///
-        /// @param payload the ALPH payload
-        /// @param expectedLength the required number of alpha samples
-        /// @return the validated decoding parameters
-        /// @throws WebPException if the payload is malformed or uses unsupported compression
-        private static AlphaParameters parseParameters(byte[] payload, int expectedLength) throws WebPException {
-            if (payload.length < 1) {
-                throw new WebPException("ALPH chunk is too small");
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int pixelIndex = y * width + x;
+                int sample = compression == 0
+                        ? payload[pixelIndex + 1] & 0xFF
+                        : Argb.green(output.get(pixelIndex));
+                int predictor = getAlphaPredictor(x, y, width, filteringMethod, output);
+                output.put(pixelIndex, ((sample + predictor) & 0xFF) << 24);
             }
-
-            int infoByte = payload[0] & 0xFF;
-            int preprocessing = (infoByte >>> 4) & 0b11;
-            int filtering = (infoByte >>> 2) & 0b11;
-            int compression = infoByte & 0b11;
-
-            if (preprocessing > 1) {
-                throw new WebPException("Invalid ALPH preprocessing value: " + preprocessing);
-            }
-            if (compression == 0 && payload.length - 1 != expectedLength) {
-                throw new WebPException("ALPH chunk size does not match the frame dimensions");
-            }
-            if (compression > 1) {
-                throw new WebPException("Unsupported ALPH compression method: " + compression);
-            }
-
-            FilteringMethod filteringMethod = switch (filtering) {
-                case 0 -> FilteringMethod.NONE;
-                case 1 -> FilteringMethod.HORIZONTAL;
-                case 2 -> FilteringMethod.VERTICAL;
-                case 3 -> FilteringMethod.GRADIENT;
-                default -> throw new WebPException("Invalid ALPH filtering value: " + filtering);
-            };
-            return new AlphaParameters(compression, filteringMethod);
         }
+    }
+
+    /// Returns the validated number of pixels for ALPH dimensions.
+    ///
+    /// @param width the frame width
+    /// @param height the frame height
+    /// @return `width * height`
+    /// @throws IllegalArgumentException if either dimension is non-positive or their product
+    ///                                  exceeds the integer range
+    private static int pixelCount(int width, int height) {
+        if (width <= 0 || height <= 0) {
+            throw new IllegalArgumentException("ALPH dimensions must be positive: " + width + "x" + height);
+        }
+        try {
+            return Math.multiplyExact(width, height);
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("ALPH dimensions are too large: " + width + "x" + height, ex);
+        }
+    }
+
+    /// Parses and validates the ALPH control byte and raw payload size.
+    ///
+    /// @param payload the ALPH payload
+    /// @param expectedLength the required number of alpha samples
+    /// @return the validated control byte
+    /// @throws WebPException if the payload is malformed or uses unsupported compression
+    private static int parseAlphaParameters(byte[] payload, int expectedLength) throws WebPException {
+        if (payload.length < 1) {
+            throw new WebPException("ALPH chunk is too small");
+        }
+
+        int infoByte = payload[0] & 0xFF;
+        int preprocessing = (infoByte >>> 4) & 0b11;
+        int compression = infoByte & 0b11;
+        if (preprocessing > 1) {
+            throw new WebPException("Invalid ALPH preprocessing value: " + preprocessing);
+        }
+        if (compression == 0 && payload.length - 1 != expectedLength) {
+            throw new WebPException("ALPH chunk size does not match the frame dimensions");
+        }
+        if (compression > 1) {
+            throw new WebPException("Unsupported ALPH compression method: " + compression);
+        }
+        return infoByte;
+    }
+
+    /// Resolves an ALPH filtering code.
+    ///
+    /// @param filtering the two-bit filtering code
+    /// @return the corresponding filtering method
+    private static FilteringMethod filteringMethod(int filtering) {
+        return switch (filtering) {
+            case 0 -> FilteringMethod.NONE;
+            case 1 -> FilteringMethod.HORIZONTAL;
+            case 2 -> FilteringMethod.VERTICAL;
+            case 3 -> FilteringMethod.GRADIENT;
+            default -> throw new AssertionError("Invalid ALPH filtering value: " + filtering);
+        };
     }
 
     private ExtendedWebP() {

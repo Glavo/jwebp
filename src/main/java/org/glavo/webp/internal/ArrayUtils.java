@@ -15,6 +15,9 @@ public final class ArrayUtils {
     /// Shared zero-length byte array.
     public static final byte @Unmodifiable [] EMPTY_BYTE_ARRAY = new byte[0];
 
+    /// Shared zero-length char array.
+    public static final char @Unmodifiable [] EMPTY_CHAR_ARRAY = new char[0];
+
     /// Shared zero-length int array.
     public static final int @Unmodifiable [] EMPTY_INT_ARRAY = new int[0];
 
