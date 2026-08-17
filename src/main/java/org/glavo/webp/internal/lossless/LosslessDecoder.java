@@ -23,6 +23,8 @@ import org.jetbrains.annotations.Unmodifiable;
 import org.glavo.webp.WebPException;
 import org.glavo.webp.internal.Argb;
 
+import java.nio.IntBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.util.Arrays;
 
 /// Pure-Java VP8L decoder.
@@ -75,6 +77,106 @@ public final class LosslessDecoder {
     /// @param buffer the `ARGB` destination buffer
     /// @throws WebPException if the bitstream is malformed or inconsistent
     public void decodeFrame(int width, int height, boolean implicitDimensions, int[] buffer) throws WebPException {
+        int transformedWidth = prepareFrame(width, height, implicitDimensions);
+        decodeImageStream(transformedWidth, this.height, true, buffer);
+
+        int currentWidth = transformedWidth;
+        for (int i = transformOrderSize - 1; i >= 0; i--) {
+            LosslessTransforms.Transform transform = transforms[transformOrder[i]];
+            switch (transform.kind) {
+                case LosslessTransforms.PREDICTOR -> LosslessTransforms.applyPredictorTransform(buffer, currentWidth, this.height, transform.sizeBits, transform.data);
+                case LosslessTransforms.COLOR -> LosslessTransforms.applyColorTransform(buffer, currentWidth, transform.sizeBits, transform.data);
+                case LosslessTransforms.SUBTRACT_GREEN -> LosslessTransforms.applySubtractGreenTransform(buffer);
+                case LosslessTransforms.COLOR_INDEXING -> {
+                    currentWidth = this.width;
+                    LosslessTransforms.applyColorIndexingTransform(buffer, currentWidth, this.height, transform.tableSize, transform.data);
+                }
+                default -> throw new WebPException("Unknown VP8L transform kind");
+            }
+        }
+    }
+
+    /// Decodes a VP8L frame directly into a writable `ARGB` buffer.
+    ///
+    /// The buffer must have exactly `width * height` remaining entries. Decoding uses absolute
+    /// access and therefore does not change its position or limit.
+    ///
+    /// @param width the expected width
+    /// @param height the expected height
+    /// @param implicitDimensions whether the VP8L header should be skipped because dimensions are
+    ///                           defined externally, as in ALPH chunks
+    /// @param buffer the writable `ARGB` destination buffer
+    /// @throws IllegalArgumentException if the destination size does not match the dimensions
+    /// @throws ReadOnlyBufferException if the destination is read-only
+    /// @throws WebPException if the bitstream is malformed or inconsistent
+    public void decodeFrame(
+            int width,
+            int height,
+            boolean implicitDimensions,
+            IntBuffer buffer
+    ) throws WebPException {
+        if (buffer.isReadOnly()) {
+            throw new ReadOnlyBufferException();
+        }
+        int expectedLength;
+        try {
+            expectedLength = Math.multiplyExact(width, height);
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("Frame dimensions are too large: " + width + "x" + height, ex);
+        }
+        if (buffer.remaining() != expectedLength) {
+            throw new IllegalArgumentException(
+                    "ARGB buffer size does not match VP8L frame dimensions: "
+                            + buffer.remaining() + " != " + expectedLength
+            );
+        }
+
+        IntBuffer output = buffer.slice();
+        int transformedWidth = prepareFrame(width, height, implicitDimensions);
+        decodeImageStream(transformedWidth, this.height, true, output);
+
+        int currentWidth = transformedWidth;
+        for (int i = transformOrderSize - 1; i >= 0; i--) {
+            LosslessTransforms.Transform transform = transforms[transformOrder[i]];
+            switch (transform.kind) {
+                case LosslessTransforms.PREDICTOR -> LosslessIntBufferTransforms.applyPredictorTransform(
+                        output,
+                        currentWidth,
+                        this.height,
+                        transform.sizeBits,
+                        transform.data
+                );
+                case LosslessTransforms.COLOR -> LosslessIntBufferTransforms.applyColorTransform(
+                        output,
+                        currentWidth,
+                        transform.sizeBits,
+                        transform.data
+                );
+                case LosslessTransforms.SUBTRACT_GREEN ->
+                        LosslessIntBufferTransforms.applySubtractGreenTransform(output);
+                case LosslessTransforms.COLOR_INDEXING -> {
+                    currentWidth = this.width;
+                    LosslessIntBufferTransforms.applyColorIndexingTransform(
+                            output,
+                            currentWidth,
+                            this.height,
+                            transform.tableSize,
+                            transform.data
+                    );
+                }
+                default -> throw new WebPException("Unknown VP8L transform kind");
+            }
+        }
+    }
+
+    /// Reads and validates the frame header and its transform descriptions.
+    ///
+    /// @param width the expected frame width
+    /// @param height the expected frame height
+    /// @param implicitDimensions whether dimensions are supplied by an enclosing ALPH chunk
+    /// @return the transformed image width used by entropy decoding
+    /// @throws WebPException if the bitstream is malformed or inconsistent
+    private int prepareFrame(int width, int height, boolean implicitDimensions) throws WebPException {
         resetState();
 
         if (implicitDimensions) {
@@ -99,25 +201,10 @@ public final class LosslessDecoder {
             }
         }
 
-        int transformedWidth = readTransforms();
-        decodeImageStream(transformedWidth, this.height, true, buffer);
-
-        int currentWidth = transformedWidth;
-        for (int i = transformOrderSize - 1; i >= 0; i--) {
-            LosslessTransforms.Transform transform = transforms[transformOrder[i]];
-            switch (transform.kind) {
-                case LosslessTransforms.PREDICTOR -> LosslessTransforms.applyPredictorTransform(buffer, currentWidth, this.height, transform.sizeBits, transform.data);
-                case LosslessTransforms.COLOR -> LosslessTransforms.applyColorTransform(buffer, currentWidth, transform.sizeBits, transform.data);
-                case LosslessTransforms.SUBTRACT_GREEN -> LosslessTransforms.applySubtractGreenTransform(buffer);
-                case LosslessTransforms.COLOR_INDEXING -> {
-                    currentWidth = this.width;
-                    LosslessTransforms.applyColorIndexingTransform(buffer, currentWidth, this.height, transform.tableSize, transform.data);
-                }
-                default -> throw new WebPException("Unknown VP8L transform kind");
-            }
-        }
+        return readTransforms();
     }
 
+    /// Clears state retained while decoding a previous frame.
     private void resetState() {
         Arrays.fill(transforms, null);
         transformOrderSize = 0;
@@ -126,6 +213,25 @@ public final class LosslessDecoder {
     }
 
     private void decodeImageStream(int xsize, int ysize, boolean readMeta, int[] data) throws WebPException {
+        Integer colorCacheBits = readColorCache();
+        ColorCache colorCache = colorCacheBits == null ? null : new ColorCache(colorCacheBits);
+        HuffmanInfo huffmanInfo = readHuffmanCodes(readMeta, xsize, ysize, colorCache);
+        decodeImageData(xsize, ysize, huffmanInfo, data);
+    }
+
+    /// Decodes one lossless image stream directly into an integer buffer.
+    ///
+    /// @param xsize the current transformed width
+    /// @param ysize the image height
+    /// @param readMeta whether to read meta-Huffman image data
+    /// @param data the position-zero destination buffer
+    /// @throws WebPException if the stream is malformed
+    private void decodeImageStream(
+            int xsize,
+            int ysize,
+            boolean readMeta,
+            IntBuffer data
+    ) throws WebPException {
         Integer colorCacheBits = readColorCache();
         ColorCache colorCache = colorCacheBits == null ? null : new ColorCache(colorCacheBits);
         HuffmanInfo huffmanInfo = readHuffmanCodes(readMeta, xsize, ysize, colorCache);
@@ -422,6 +528,124 @@ public final class LosslessDecoder {
                     if (peeked != null && peeked.symbol() >= 280) {
                         bitReader.consume(peeked.bits());
                         data[index] = huffmanInfo.colorCache.lookup(peeked.symbol() - 280);
+                        index++;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Decodes entropy-coded pixels directly into an integer buffer.
+    ///
+    /// @param width the current transformed width
+    /// @param height the image height
+    /// @param huffmanInfo the decoded Huffman metadata
+    /// @param data the position-zero destination buffer
+    /// @throws WebPException if the stream is malformed
+    private void decodeImageData(
+            int width,
+            int height,
+            HuffmanInfo huffmanInfo,
+            IntBuffer data
+    ) throws WebPException {
+        int numValues = width * height;
+        LosslessHuffmanTree[] tree = huffmanInfo.huffmanCodeGroups[huffmanInfo.getHuffIndex(0, 0)];
+        int index = 0;
+        int nextBlockStart = 0;
+
+        while (index < numValues) {
+            bitReader.fill();
+
+            if (index >= nextBlockStart) {
+                int x = index % width;
+                int y = index / width;
+                nextBlockStart = Math.min(x | huffmanInfo.mask, width - 1) + y * width + 1;
+                tree = huffmanInfo.huffmanCodeGroups[huffmanInfo.getHuffIndex(x, y)];
+
+                boolean allSingle = true;
+                for (int channel = 0; channel < 4; channel++) {
+                    if (!tree[channel].isSingleNode()) {
+                        allSingle = false;
+                        break;
+                    }
+                }
+                if (allSingle) {
+                    int code = tree[GREEN].readSymbol(bitReader);
+                    if (code < 256) {
+                        int count = huffmanInfo.bits == 0 ? numValues : nextBlockStart - index;
+                        int red = tree[RED].readSymbol(bitReader);
+                        int blue = tree[BLUE].readSymbol(bitReader);
+                        int alpha = tree[ALPHA].readSymbol(bitReader);
+                        int value = Argb.pack(alpha, red, code, blue);
+
+                        for (int offset = 0; offset < count; offset++) {
+                            data.put(index + offset, value);
+                        }
+                        if (huffmanInfo.colorCache != null) {
+                            huffmanInfo.colorCache.insert(value);
+                        }
+                        index += count;
+                        continue;
+                    }
+                }
+            }
+
+            int code = tree[GREEN].readSymbol(bitReader);
+            if (code < 256) {
+                int green = code;
+                int red = tree[RED].readSymbol(bitReader);
+                int blue = tree[BLUE].readSymbol(bitReader);
+                if (bitReader.bitCount() < 15) {
+                    bitReader.fill();
+                }
+                int alpha = tree[ALPHA].readSymbol(bitReader);
+
+                int value = Argb.pack(alpha, red, green, blue);
+                data.put(index, value);
+
+                if (huffmanInfo.colorCache != null) {
+                    huffmanInfo.colorCache.insert(value);
+                }
+                index++;
+            } else if (code < 256 + 24) {
+                int lengthSymbol = code - 256;
+                int length = getCopyDistance(lengthSymbol);
+                int distSymbol = tree[DIST].readSymbol(bitReader);
+                int distCode = getCopyDistance(distSymbol);
+                int dist = planeCodeToDistance(width, distCode);
+
+                if (index < dist || numValues - index < length) {
+                    throw new WebPException("Corrupt VP8L bitstream");
+                }
+
+                if (dist == 1) {
+                    int value = data.get(index - 1);
+                    for (int offset = 0; offset < length; offset++) {
+                        data.put(index + offset, value);
+                    }
+                } else {
+                    for (int offset = 0; offset < length; offset++) {
+                        data.put(index + offset, data.get(index + offset - dist));
+                    }
+                    if (huffmanInfo.colorCache != null) {
+                        for (int offset = 0; offset < length; offset++) {
+                            huffmanInfo.colorCache.insert(data.get(index + offset));
+                        }
+                    }
+                }
+                index += length;
+            } else {
+                if (huffmanInfo.colorCache == null) {
+                    throw new WebPException("Corrupt VP8L bitstream");
+                }
+                data.put(index, huffmanInfo.colorCache.lookup(code - 280));
+                index++;
+
+                if (index < nextBlockStart) {
+                    LosslessHuffmanTree.PeekedSymbol peeked = tree[GREEN].peekSymbol(bitReader);
+                    if (peeked != null && peeked.symbol() >= 280) {
+                        bitReader.consume(peeked.bits());
+                        data.put(index, huffmanInfo.colorCache.lookup(peeked.symbol() - 280));
                         index++;
                     }
                 }

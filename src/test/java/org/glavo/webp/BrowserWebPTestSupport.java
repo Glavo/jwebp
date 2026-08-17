@@ -49,6 +49,14 @@ final class BrowserWebPTestSupport {
         byte[] encoded = readResource(resourceName);
         WebPImage eager = WebPImage.read(new ByteArrayInputStream(encoded));
 
+        if (!eager.isAnimated()) {
+            WebPImage direct = WebPDecoder.DEFAULT
+                    .withDirect(true)
+                    .read(new ByteArrayInputStream(encoded));
+            assertTrue(direct.getFirstFrame().getPixels().isDirect(), resourceName + " direct storage");
+            assertImageEquals(eager, direct, resourceName + " direct decode");
+        }
+
         try (WebPImageReader reader = WebPImageReader.open(new ByteArrayInputStream(encoded))) {
             assertEquals(eager.getWidth(), reader.getWidth(), resourceName + " canvas width");
             assertEquals(eager.getHeight(), reader.getHeight(), resourceName + " canvas height");

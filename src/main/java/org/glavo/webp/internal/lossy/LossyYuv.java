@@ -18,6 +18,8 @@ package org.glavo.webp.internal.lossy;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.nio.IntBuffer;
+
 /// YUV to RGB conversion helpers used by the VP8 decoder.
 @NotNullByDefault
 final class LossyYuv {
@@ -85,12 +87,127 @@ final class LossyYuv {
         }
     }
 
+    /// Converts the visible YUV planes directly into a writable integer buffer using fancy chroma
+    /// upsampling.
+    ///
+    /// @param buffer the destination whose remaining region is filled without changing its position
+    /// @param yBuffer the padded luma plane
+    /// @param uBuffer the padded U chroma plane
+    /// @param vBuffer the padded V chroma plane
+    /// @param width the visible frame width
+    /// @param height the visible frame height
+    /// @param bufferWidth the padded luma-plane stride
+    static void fillArgbBufferFancy(
+            IntBuffer buffer,
+            byte[] yBuffer,
+            byte[] uBuffer,
+            byte[] vBuffer,
+            int width,
+            int height,
+            int bufferWidth
+    ) {
+        int chromaBufferWidth = bufferWidth / 2;
+        int chromaWidth = (width + 1) / 2;
+        int end = buffer.limit();
+
+        int rowBufferOffset = buffer.position();
+        fillRowFancyWithOneUvRowArgb(buffer, rowBufferOffset, yBuffer, 0, uBuffer, 0, vBuffer, 0, width);
+
+        rowBufferOffset += width;
+        int yOffset = bufferWidth;
+        int chromaWindowOffset = 0;
+
+        while (rowBufferOffset + width * 2 <= end && yOffset + bufferWidth * 2 <= height * bufferWidth) {
+            fillRowFancyWithTwoUvRowsArgb(
+                    buffer, rowBufferOffset,
+                    yBuffer, yOffset,
+                    uBuffer, chromaWindowOffset,
+                    uBuffer, chromaWindowOffset + chromaBufferWidth,
+                    vBuffer, chromaWindowOffset,
+                    vBuffer, chromaWindowOffset + chromaBufferWidth,
+                    width, chromaWidth
+            );
+            fillRowFancyWithTwoUvRowsArgb(
+                    buffer, rowBufferOffset + width,
+                    yBuffer, yOffset + bufferWidth,
+                    uBuffer, chromaWindowOffset + chromaBufferWidth,
+                    uBuffer, chromaWindowOffset,
+                    vBuffer, chromaWindowOffset + chromaBufferWidth,
+                    vBuffer, chromaWindowOffset,
+                    width, chromaWidth
+            );
+
+            rowBufferOffset += width * 2;
+            yOffset += bufferWidth * 2;
+            chromaWindowOffset += chromaBufferWidth;
+        }
+
+        if (rowBufferOffset < end) {
+            int chromaHeight = (height + 1) / 2;
+            int startChromaIndex = (chromaHeight - 1) * chromaBufferWidth;
+            fillRowFancyWithOneUvRowArgb(
+                    buffer,
+                    rowBufferOffset,
+                    yBuffer,
+                    yOffset,
+                    uBuffer,
+                    startChromaIndex,
+                    vBuffer,
+                    startChromaIndex,
+                    width
+            );
+        }
+    }
+
     static void fillArgbBufferSimple(int[] buffer, byte[] yBuffer, byte[] uBuffer, byte[] vBuffer, int width, int chromaWidth, int bufferWidth) {
         int chromaStride = bufferWidth / 2;
         int chromaRow = 0;
 
         for (int y = 0; y < buffer.length / width; y++) {
             fillArgbRowSimple(yBuffer, y * bufferWidth, uBuffer, chromaRow * chromaStride, vBuffer, chromaRow * chromaStride, width, chromaWidth, buffer, y * width);
+            if ((y & 1) != 0) {
+                chromaRow++;
+            }
+        }
+    }
+
+    /// Converts the visible YUV planes directly into a writable integer buffer using nearest
+    /// chroma samples.
+    ///
+    /// @param buffer the destination whose remaining region is filled without changing its position
+    /// @param yBuffer the padded luma plane
+    /// @param uBuffer the padded U chroma plane
+    /// @param vBuffer the padded V chroma plane
+    /// @param width the visible frame width
+    /// @param chromaWidth the visible chroma width
+    /// @param bufferWidth the padded luma-plane stride
+    static void fillArgbBufferSimple(
+            IntBuffer buffer,
+            byte[] yBuffer,
+            byte[] uBuffer,
+            byte[] vBuffer,
+            int width,
+            int chromaWidth,
+            int bufferWidth
+    ) {
+        int chromaStride = bufferWidth / 2;
+        int chromaRow = 0;
+        int rowCount = buffer.remaining() / width;
+        int destinationOffset = buffer.position();
+
+        for (int y = 0; y < rowCount; y++) {
+            fillArgbRowSimple(
+                    yBuffer,
+                    y * bufferWidth,
+                    uBuffer,
+                    chromaRow * chromaStride,
+                    vBuffer,
+                    chromaRow * chromaStride,
+                    width,
+                    chromaWidth,
+                    buffer,
+                    destinationOffset + y * width
+            );
             if ((y & 1) != 0) {
                 chromaRow++;
             }
@@ -291,6 +408,101 @@ final class LossyYuv {
         }
     }
 
+    /// Converts one luma row using vertically adjacent chroma rows into an integer buffer.
+    ///
+    /// @param rowBuffer the destination buffer
+    /// @param rowBufferOffset the first destination index
+    /// @param yRow the luma plane
+    /// @param yOffset the first visible luma sample
+    /// @param uRow1 the first U chroma row
+    /// @param uOffset1 the first sample in the first U row
+    /// @param uRow2 the second U chroma row
+    /// @param uOffset2 the first sample in the second U row
+    /// @param vRow1 the first V chroma row
+    /// @param vOffset1 the first sample in the first V row
+    /// @param vRow2 the second V chroma row
+    /// @param vOffset2 the first sample in the second V row
+    /// @param width the visible luma width
+    /// @param chromaWidth the visible chroma width
+    private static void fillRowFancyWithTwoUvRowsArgb(
+            IntBuffer rowBuffer,
+            int rowBufferOffset,
+            byte[] yRow,
+            int yOffset,
+            byte[] uRow1,
+            int uOffset1,
+            byte[] uRow2,
+            int uOffset2,
+            byte[] vRow1,
+            int vOffset1,
+            byte[] vRow2,
+            int vOffset2,
+            int width,
+            int chromaWidth
+    ) {
+        rowBuffer.put(rowBufferOffset, argbPixel(
+                yRow[yOffset] & 0xFF,
+                getFancyChromaValue(
+                        uRow1[uOffset1] & 0xFF,
+                        uRow1[uOffset1] & 0xFF,
+                        uRow2[uOffset2] & 0xFF,
+                        uRow2[uOffset2] & 0xFF
+                ),
+                getFancyChromaValue(
+                        vRow1[vOffset1] & 0xFF,
+                        vRow1[vOffset1] & 0xFF,
+                        vRow2[vOffset2] & 0xFF,
+                        vRow2[vOffset2] & 0xFF
+                )
+        ));
+
+        int dst = rowBufferOffset + 1;
+        int yIndex = yOffset + 1;
+        for (int chroma = 0; chroma + 1 < chromaWidth && yIndex + 1 < yOffset + width; chroma++) {
+            int u1 = uRow1[uOffset1 + chroma] & 0xFF;
+            int u2 = uRow1[uOffset1 + chroma + 1] & 0xFF;
+            int u3 = uRow2[uOffset2 + chroma] & 0xFF;
+            int u4 = uRow2[uOffset2 + chroma + 1] & 0xFF;
+            int v1 = vRow1[vOffset1 + chroma] & 0xFF;
+            int v2 = vRow1[vOffset1 + chroma + 1] & 0xFF;
+            int v3 = vRow2[vOffset2 + chroma] & 0xFF;
+            int v4 = vRow2[vOffset2 + chroma + 1] & 0xFF;
+
+            rowBuffer.put(
+                    dst++,
+                    argbPixel(
+                            yRow[yIndex] & 0xFF,
+                            getFancyChromaValue(u1, u2, u3, u4),
+                            getFancyChromaValue(v1, v2, v3, v4)
+                    )
+            );
+            yIndex++;
+            if (yIndex < yOffset + width) {
+                rowBuffer.put(
+                        dst++,
+                        argbPixel(
+                                yRow[yIndex] & 0xFF,
+                                getFancyChromaValue(u2, u1, u4, u3),
+                                getFancyChromaValue(v2, v1, v4, v3)
+                        )
+                );
+                yIndex++;
+            }
+        }
+
+        if (yIndex < yOffset + width) {
+            int finalU1 = uRow1[uOffset1 + chromaWidth - 1] & 0xFF;
+            int finalU2 = uRow2[uOffset2 + chromaWidth - 1] & 0xFF;
+            int finalV1 = vRow1[vOffset1 + chromaWidth - 1] & 0xFF;
+            int finalV2 = vRow2[vOffset2 + chromaWidth - 1] & 0xFF;
+            rowBuffer.put(dst, argbPixel(
+                    yRow[yIndex] & 0xFF,
+                    getFancyChromaValue(finalU1, finalU1, finalU2, finalU2),
+                    getFancyChromaValue(finalV1, finalV1, finalV2, finalV2)
+            ));
+        }
+    }
+
     private static void fillRowFancyWithOneUvRowArgb(int[] rowBuffer, int rowBufferOffset, byte[] yRow, int yOffset, byte[] uRow, int uOffset, byte[] vRow, int vOffset, int width) {
         rowBuffer[rowBufferOffset] = argbPixel(yRow[yOffset] & 0xFF, uRow[uOffset] & 0xFF, vRow[vOffset] & 0xFF);
 
@@ -313,6 +525,76 @@ final class LossyYuv {
 
         if (yIndex < yOffset + width) {
             rowBuffer[dst] = argbPixel(yRow[yIndex] & 0xFF, uRow[uOffset + chromaWidth - 1] & 0xFF, vRow[vOffset + chromaWidth - 1] & 0xFF);
+        }
+    }
+
+    /// Converts one luma row using one chroma row into an integer buffer.
+    ///
+    /// @param rowBuffer the destination buffer
+    /// @param rowBufferOffset the first destination index
+    /// @param yRow the luma plane
+    /// @param yOffset the first visible luma sample
+    /// @param uRow the U chroma row
+    /// @param uOffset the first visible U sample
+    /// @param vRow the V chroma row
+    /// @param vOffset the first visible V sample
+    /// @param width the visible luma width
+    private static void fillRowFancyWithOneUvRowArgb(
+            IntBuffer rowBuffer,
+            int rowBufferOffset,
+            byte[] yRow,
+            int yOffset,
+            byte[] uRow,
+            int uOffset,
+            byte[] vRow,
+            int vOffset,
+            int width
+    ) {
+        rowBuffer.put(
+                rowBufferOffset,
+                argbPixel(yRow[yOffset] & 0xFF, uRow[uOffset] & 0xFF, vRow[vOffset] & 0xFF)
+        );
+
+        int dst = rowBufferOffset + 1;
+        int yIndex = yOffset + 1;
+        int chromaWidth = (width + 1) / 2;
+        for (int chroma = 0; chroma + 1 < chromaWidth && yIndex + 1 < yOffset + width; chroma++) {
+            int u1 = uRow[uOffset + chroma] & 0xFF;
+            int u2 = uRow[uOffset + chroma + 1] & 0xFF;
+            int v1 = vRow[vOffset + chroma] & 0xFF;
+            int v2 = vRow[vOffset + chroma + 1] & 0xFF;
+
+            rowBuffer.put(
+                    dst++,
+                    argbPixel(
+                            yRow[yIndex] & 0xFF,
+                            getFancyChromaValue(u1, u2, u1, u2),
+                            getFancyChromaValue(v1, v2, v1, v2)
+                    )
+            );
+            yIndex++;
+            if (yIndex < yOffset + width) {
+                rowBuffer.put(
+                        dst++,
+                        argbPixel(
+                                yRow[yIndex] & 0xFF,
+                                getFancyChromaValue(u2, u1, u2, u1),
+                                getFancyChromaValue(v2, v1, v2, v1)
+                        )
+                );
+                yIndex++;
+            }
+        }
+
+        if (yIndex < yOffset + width) {
+            rowBuffer.put(
+                    dst,
+                    argbPixel(
+                            yRow[yIndex] & 0xFF,
+                            uRow[uOffset + chromaWidth - 1] & 0xFF,
+                            vRow[vOffset + chromaWidth - 1] & 0xFF
+                    )
+            );
         }
     }
 
@@ -380,6 +662,79 @@ final class LossyYuv {
                     V_TO_G_COEFFICIENTS[v],
                     U_TO_B_COEFFICIENTS[u]
             );
+        }
+    }
+
+    /// Converts one luma row using one chroma sample for each pair of adjacent pixels into an
+    /// integer buffer.
+    ///
+    /// @param yVec the luma plane
+    /// @param yOffset the first visible luma sample
+    /// @param uVec the U chroma plane
+    /// @param uOffset the first visible U sample
+    /// @param vVec the V chroma plane
+    /// @param vOffset the first visible V sample
+    /// @param width the number of visible luma samples
+    /// @param chromaWidth the number of available chroma samples
+    /// @param argb the destination pixel buffer
+    /// @param dstOffset the first destination index
+    private static void fillArgbRowSimple(
+            byte[] yVec,
+            int yOffset,
+            byte[] uVec,
+            int uOffset,
+            byte[] vVec,
+            int vOffset,
+            int width,
+            int chromaWidth,
+            IntBuffer argb,
+            int dstOffset
+    ) {
+        int yIndex = yOffset;
+        int dst = dstOffset;
+        int pairedChromaWidth = Math.min(width / 2, chromaWidth);
+        for (int chroma = 0; chroma < pairedChromaWidth; chroma++) {
+            int u = uVec[uOffset + chroma] & 0xFF;
+            int v = vVec[vOffset + chroma] & 0xFF;
+            int rCoeff = V_TO_R_COEFFICIENTS[v];
+            int guCoeff = U_TO_G_COEFFICIENTS[u];
+            int gvCoeff = V_TO_G_COEFFICIENTS[v];
+            int bCoeff = U_TO_B_COEFFICIENTS[u];
+
+            argb.put(
+                    dst++,
+                    argbPixelFromCoefficients(
+                            Y_COEFFICIENTS[yVec[yIndex] & 0xFF],
+                            rCoeff,
+                            guCoeff,
+                            gvCoeff,
+                            bCoeff
+                    )
+            );
+            yIndex++;
+            argb.put(
+                    dst++,
+                    argbPixelFromCoefficients(
+                            Y_COEFFICIENTS[yVec[yIndex] & 0xFF],
+                            rCoeff,
+                            guCoeff,
+                            gvCoeff,
+                            bCoeff
+                    )
+            );
+            yIndex++;
+        }
+
+        if (pairedChromaWidth < chromaWidth && (width & 1) != 0) {
+            int u = uVec[uOffset + pairedChromaWidth] & 0xFF;
+            int v = vVec[vOffset + pairedChromaWidth] & 0xFF;
+            argb.put(dst, argbPixelFromCoefficients(
+                    Y_COEFFICIENTS[yVec[yIndex] & 0xFF],
+                    V_TO_R_COEFFICIENTS[v],
+                    U_TO_G_COEFFICIENTS[u],
+                    V_TO_G_COEFFICIENTS[v],
+                    U_TO_B_COEFFICIENTS[u]
+            ));
         }
     }
 

@@ -19,6 +19,7 @@ import com.twelvemonkeys.imageio.plugins.webp.WebPImageReaderSpi;
 import dev.matrixlab.webp4j.WebPCodec;
 import javafx.embed.swing.SwingFXUtils;
 import javafx.scene.image.Image;
+import org.glavo.webp.WebPDecoder;
 import org.glavo.webp.WebPImage;
 import org.glavo.webp.javafx.WebPFXImage;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -56,6 +57,9 @@ public class StaticImageBenchmark {
     private static final String TEST_DATA_ROOT = "jwebp-test-data/";
     private static final WebPImageReaderSpi TWELVE_MONKEYS_SPI = new WebPImageReaderSpi();
 
+    /// Decoder that retains final frame pixels in direct memory.
+    private static final WebPDecoder DIRECT_DECODER = WebPDecoder.DEFAULT.withDirect(true);
+
     @State(Scope.Benchmark)
     public static class BenchmarkImages {
         @Param({
@@ -84,6 +88,16 @@ public class StaticImageBenchmark {
         return WebPImage.read(new ByteArrayInputStream(images.lossyWebp));
     }
 
+    /// Measures lossy decoding directly into retained off-heap frame storage.
+    ///
+    /// @param images the selected benchmark inputs
+    /// @return the decoded image
+    /// @throws Exception if decoding fails
+    @Benchmark
+    public WebPImage jwebpLossyDirect(BenchmarkImages images) throws Exception {
+        return DIRECT_DECODER.read(new ByteArrayInputStream(images.lossyWebp));
+    }
+
     @Benchmark
     public BufferedImage twelveMonkeysLossy(BenchmarkImages images) throws Exception {
         return readStillImageWithProvider(images.lossyWebp);
@@ -102,6 +116,16 @@ public class StaticImageBenchmark {
     @Benchmark
     public WebPImage jwebpLossless(BenchmarkImages images) throws Exception {
         return WebPImage.read(new ByteArrayInputStream(images.losslessWebp));
+    }
+
+    /// Measures lossless decoding directly into retained off-heap frame storage.
+    ///
+    /// @param images the selected benchmark inputs
+    /// @return the decoded image
+    /// @throws Exception if decoding fails
+    @Benchmark
+    public WebPImage jwebpLosslessDirect(BenchmarkImages images) throws Exception {
+        return DIRECT_DECODER.read(new ByteArrayInputStream(images.losslessWebp));
     }
 
     @Benchmark

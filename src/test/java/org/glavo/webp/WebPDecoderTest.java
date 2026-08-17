@@ -145,6 +145,40 @@ final class WebPDecoderTest {
         }
     }
 
+    /// Verifies static direct decoding across opaque VP8, VP8 with alpha, and VP8L payloads.
+    @Test
+    void staticDirectFramesMatchHeapFramesAcrossCodecs() throws Exception {
+        for (String path : new String[]{
+                "images/gallery1-1.webp",
+                "images/gallery2-1_webp_a.webp",
+                "images/gallery2-1_webp_ll.webp"
+        }) {
+            for (WebPPixelFormat pixelFormat : WebPPixelFormat.values()) {
+                WebPDecoder heapDecoder = WebPDecoder.DEFAULT.withPixelFormat(pixelFormat);
+                WebPDecoder directDecoder = heapDecoder.withDirect(true);
+
+                WebPFrame heap = heapDecoder.read(resource(path)).getFirstFrame();
+                WebPFrame direct = directDecoder.read(resource(path)).getFirstFrame();
+
+                assertFalse(heap.getPixels().isDirect(), path);
+                assertTrue(direct.getPixels().isDirect(), path);
+                assertEquals(pixelFormat, direct.getPixelFormat(), path);
+                assertArrayEquals(storedPixels(heap), storedPixels(direct), path + ", " + pixelFormat);
+            }
+        }
+    }
+
+    /// Copies stored frame pixels without changing the frame-owned view.
+    ///
+    /// @param frame the frame whose stored representation is copied
+    /// @return the stored packed pixels
+    private static int[] storedPixels(WebPFrame frame) {
+        IntBuffer pixels = frame.getPixels();
+        int[] values = new int[pixels.remaining()];
+        pixels.get(values);
+        return values;
+    }
+
     /// Opens one classpath resource and fails clearly if test resources are incomplete.
     ///
     /// @param path the classpath-relative resource path

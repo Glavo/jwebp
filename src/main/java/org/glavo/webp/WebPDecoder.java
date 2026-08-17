@@ -15,10 +15,13 @@
  */
 package org.glavo.webp;
 
+import org.glavo.webp.internal.Argb;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.IntBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -32,6 +35,10 @@ import java.util.Objects;
 /// workspaces and animation compositing buffers may still use heap memory. Direct allocations are
 /// subject to the JVM's direct-memory limit and may remain allocated until their frame and all
 /// derived buffer views become unreachable.
+///
+/// @implNote Static direct frames are decoded into their final direct pixel storage without a
+///           full-size heap `ARGB` staging array. Codec planes, metadata, and animation composition
+///           may still allocate heap workspaces.
 @NotNullByDefault
 public final class WebPDecoder {
 
@@ -193,5 +200,60 @@ public final class WebPDecoder {
                 direct,
                 copyArgb
         );
+    }
+
+    /// Creates a decoded frame by taking ownership of prepared direct `ARGB` storage.
+    ///
+    /// Premultiplication, when requested by this decoder, is performed in place before ownership is
+    /// transferred to the returned frame. The caller must not access the buffer afterward.
+    ///
+    /// @param width the frame width in pixels
+    /// @param height the frame height in pixels
+    /// @param durationMillis the frame presentation duration
+    /// @param argbPixels the writable non-premultiplied direct pixel storage
+    /// @param opaque whether every source pixel is known to be fully opaque
+    /// @return a frame using this decoder's pixel format and the supplied storage
+    /// @throws NullPointerException if `argbPixels` is `null`
+    /// @throws IllegalArgumentException if the dimensions, duration, or buffer size are invalid, or
+    ///                                  the buffer is not direct
+    /// @throws ReadOnlyBufferException if the buffer is read-only
+    WebPFrame createFrame(
+            int width,
+            int height,
+            int durationMillis,
+            IntBuffer argbPixels,
+            boolean opaque
+    ) {
+        Objects.requireNonNull(argbPixels, "argbPixels");
+        if (width <= 0 || height <= 0) {
+            throw new IllegalArgumentException("Frame dimensions must be positive: " + width + "x" + height);
+        }
+        if (durationMillis < 0) {
+            throw new IllegalArgumentException("durationMillis < 0: " + durationMillis);
+        }
+        int expectedLength;
+        try {
+            expectedLength = Math.multiplyExact(width, height);
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("Frame dimensions are too large: " + width + "x" + height, ex);
+        }
+        if (!argbPixels.isDirect()) {
+            throw new IllegalArgumentException("Prepared frame storage must be direct");
+        }
+        if (argbPixels.isReadOnly()) {
+            throw new ReadOnlyBufferException();
+        }
+        if (argbPixels.remaining() != expectedLength) {
+            throw new IllegalArgumentException(
+                    "Pixel buffer size does not match frame dimensions: "
+                            + argbPixels.remaining() + " != " + expectedLength
+            );
+        }
+        if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE && !opaque) {
+            for (int index = argbPixels.position(); index < argbPixels.limit(); index++) {
+                argbPixels.put(index, Argb.premultiply(argbPixels.get(index)));
+            }
+        }
+        return new WebPFrame(width, height, durationMillis, pixelFormat, argbPixels);
     }
 }

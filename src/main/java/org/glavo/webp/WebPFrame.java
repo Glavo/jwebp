@@ -118,6 +118,53 @@ public final class WebPFrame {
         this.pixels = createPixels(argbPixels, pixelFormat, direct, copyArgb);
     }
 
+    /// Creates a frame by taking ownership of prepared pixel storage.
+    ///
+    /// The remaining buffer region must contain exactly one tightly packed pixel per frame pixel
+    /// in `pixelFormat`. The caller must not access or modify the buffer after this constructor is
+    /// invoked.
+    ///
+    /// @param width the frame width in pixels
+    /// @param height the frame height in pixels
+    /// @param durationMillis the display duration in milliseconds, or `0` for a still image
+    /// @param pixelFormat the stored pixel representation
+    /// @param pixels the prepared pixel storage whose ownership is transferred
+    /// @throws IllegalArgumentException if dimensions, duration, or buffer size are invalid
+    WebPFrame(
+            int width,
+            int height,
+            int durationMillis,
+            WebPPixelFormat pixelFormat,
+            IntBuffer pixels
+    ) {
+        Objects.requireNonNull(pixelFormat, "pixelFormat");
+        Objects.requireNonNull(pixels, "pixels");
+        if (width <= 0 || height <= 0) {
+            throw new IllegalArgumentException("Frame dimensions must be positive: " + width + "x" + height);
+        }
+        if (durationMillis < 0) {
+            throw new IllegalArgumentException("durationMillis < 0: " + durationMillis);
+        }
+        int pixelCount;
+        try {
+            pixelCount = Math.multiplyExact(width, height);
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("Frame dimensions are too large: " + width + "x" + height, ex);
+        }
+        if (pixels.remaining() != pixelCount) {
+            throw new IllegalArgumentException(
+                    "Pixel buffer size does not match frame dimensions: "
+                            + pixels.remaining() + " != " + pixelCount
+            );
+        }
+        this.width = width;
+        this.height = height;
+        this.scanlineStride = width;
+        this.durationMillis = durationMillis;
+        this.pixelFormat = pixelFormat;
+        this.pixels = pixels.slice().asReadOnlyBuffer();
+    }
+
     /// Returns the frame width.
     ///
     /// @return the frame width in pixels
@@ -237,15 +284,7 @@ public final class WebPFrame {
             return IntBuffer.wrap(output).asReadOnlyBuffer();
         }
 
-        int byteCount;
-        try {
-            byteCount = Math.multiplyExact(argbPixels.length, Integer.BYTES);
-        } catch (ArithmeticException ex) {
-            throw new IllegalArgumentException("Pixel buffer is too large for direct storage", ex);
-        }
-        IntBuffer output = ByteBuffer.allocateDirect(byteCount)
-                .order(ByteOrder.nativeOrder())
-                .asIntBuffer();
+        IntBuffer output = allocateDirectPixels(argbPixels.length);
         if (pixelFormat == WebPPixelFormat.INT_ARGB) {
             output.put(argbPixels);
         } else {
@@ -255,5 +294,23 @@ public final class WebPFrame {
         }
         output.flip();
         return output.asReadOnlyBuffer();
+    }
+
+    /// Allocates writable native-order direct storage for packed integer pixels.
+    ///
+    /// @param pixelCount the number of pixels to allocate
+    /// @return a position-zero direct integer buffer
+    /// @throws IllegalArgumentException if `pixelCount` is negative or the required byte size
+    ///                                  exceeds the supported range
+    static IntBuffer allocateDirectPixels(int pixelCount) {
+        int byteCount;
+        try {
+            byteCount = Math.multiplyExact(pixelCount, Integer.BYTES);
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("Pixel buffer is too large for direct storage", ex);
+        }
+        return ByteBuffer.allocateDirect(byteCount)
+                .order(ByteOrder.nativeOrder())
+                .asIntBuffer();
     }
 }

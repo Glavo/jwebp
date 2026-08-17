@@ -20,6 +20,10 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -129,6 +133,33 @@ final class LossyYuvTest {
             }
         }
 
+        assertArrayEquals(expected, actual);
+    }
+
+    /// Verifies that direct and array destinations produce identical fancy-upsampled pixels.
+    @Test
+    void fancyArgbDirectBufferMatchesArrayDestination() {
+        int width = 4;
+        int height = 4;
+        byte[] yBuffer = u(
+                77, 162, 202, 185,
+                28, 13, 199, 182,
+                135, 147, 164, 135,
+                66, 27, 171, 130
+        );
+        byte[] uBuffer = u(34, 101, 123, 163);
+        byte[] vBuffer = u(97, 167, 149, 23);
+
+        int[] expected = new int[width * height];
+        LossyYuv.fillArgbBufferFancy(expected, yBuffer, uBuffer, vBuffer, width, height, width);
+
+        IntBuffer direct = ByteBuffer.allocateDirect(expected.length * Integer.BYTES)
+                .order(ByteOrder.nativeOrder())
+                .asIntBuffer();
+        LossyYuv.fillArgbBufferFancy(direct, yBuffer, uBuffer, vBuffer, width, height, width);
+
+        int[] actual = new int[expected.length];
+        direct.get(actual);
         assertArrayEquals(expected, actual);
     }
 

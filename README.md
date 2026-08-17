@@ -69,6 +69,10 @@ WebPDecoder decoder = WebPDecoder.DEFAULT
 WebPImage image = decoder.read(Path.of("sample.webp"));
 ```
 
+For static images, direct output is decoded into the final frame buffer without first materializing
+a full-size heap `ARGB` array. Codec workspaces and animated-image composition may still use heap
+memory.
+
 Stream frames from an animated WebP:
 
 ```java

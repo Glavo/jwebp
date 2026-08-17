@@ -19,6 +19,9 @@ import org.glavo.webp.internal.Argb;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -66,6 +69,65 @@ final class LosslessTransformsTest {
             LosslessTransforms.applyColorIndexingTransform(imageData, width, height, tableSize, tableData);
 
             assertArrayEquals(expected, imageData, "tableSize=" + tableSize);
+
+            IntBuffer direct = ByteBuffer.allocateDirect(imageData.length * Integer.BYTES)
+                    .order(ByteOrder.nativeOrder())
+                    .asIntBuffer();
+            direct.put(createPackedColorIndexes(
+                    width,
+                    height,
+                    tableSize,
+                    pixelsPerPackedByte,
+                    bitsPerEntry,
+                    mask
+            ));
+            direct.clear();
+            LosslessIntBufferTransforms.applyColorIndexingTransform(
+                    direct,
+                    width,
+                    height,
+                    tableSize,
+                    tableData
+            );
+            int[] directActual = new int[expected.length];
+            direct.get(directActual);
+            assertArrayEquals(expected, directActual, "direct tableSize=" + tableSize);
         }
+    }
+
+    /// Creates packed color indexes in a full-size transform destination.
+    ///
+    /// @param width the expanded image width
+    /// @param height the image height
+    /// @param tableSize the number of table entries
+    /// @param pixelsPerPackedByte the number of indexes in one packed byte
+    /// @param bitsPerEntry the number of bits per packed index
+    /// @param mask the packed-index mask
+    /// @return the packed transform pixels
+    private static int[] createPackedColorIndexes(
+            int width,
+            int height,
+            int tableSize,
+            int pixelsPerPackedByte,
+            int bitsPerEntry,
+            int mask
+    ) {
+        int packedWidth = (width + pixelsPerPackedByte - 1) / pixelsPerPackedByte;
+        int[] imageData = new int[width * height];
+        Arrays.fill(imageData, 0xDEAD_BEEF);
+        for (int y = 0; y < height; y++) {
+            for (int block = 0; block < packedWidth; block++) {
+                int packed = 0;
+                for (int pixel = 0; pixel < pixelsPerPackedByte; pixel++) {
+                    int x = block * pixelsPerPackedByte + pixel;
+                    if (x < width) {
+                        int tableIndex = (x + y) & mask;
+                        packed |= tableIndex << (pixel * bitsPerEntry);
+                    }
+                }
+                imageData[y * packedWidth + block] = packed << 8;
+            }
+        }
+        return imageData;
     }
 }

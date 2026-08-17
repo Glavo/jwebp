@@ -20,6 +20,8 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -52,6 +54,28 @@ final class Vp8DecoderTest {
                 decodedFromBuffer[0],
                 decodedFromBuffer[0]
         }, decodedFromBuffer);
+    }
+
+    /// Verifies that VP8 conversion writes directly into an arbitrary remaining buffer region.
+    @Test
+    void decodesIntoDirectIntBufferWithoutChangingBufferState() throws Exception {
+        ByteBuffer input = ByteBuffer.wrap(vp8Payload());
+        IntBuffer destination = ByteBuffer.allocateDirect(6 * Integer.BYTES)
+                .order(ByteOrder.nativeOrder())
+                .asIntBuffer();
+        destination.position(1);
+        destination.limit(5);
+
+        Vp8Decoder.decodeArgb(input, false, destination);
+
+        assertEquals(0, input.position());
+        assertEquals(1, destination.position());
+        assertEquals(5, destination.limit());
+
+        int[] expected = Vp8Decoder.decodeArgb(ByteBuffer.wrap(vp8Payload()), false);
+        int[] actual = new int[4];
+        destination.slice().get(actual);
+        assertArrayEquals(expected, actual);
     }
 
     @Test

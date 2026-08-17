@@ -24,6 +24,7 @@
 ### Performance
 
 - Improve VP8 and VP8L decoding throughput and substantially reduce temporary allocations, especially for animated WebP images
+- Decode static direct-buffer frames into their final storage, avoiding a full-size heap `ARGB` staging array and the subsequent copy
 
 ### Fixed
 

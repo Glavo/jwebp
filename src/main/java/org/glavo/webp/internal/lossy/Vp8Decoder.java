@@ -27,6 +27,8 @@ import org.glavo.webp.internal.lossy.LossyCommon.Plane;
 import org.glavo.webp.internal.lossy.LossyCommon.Segment;
 
 import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.util.Arrays;
 
 /// Pure-Java VP8 keyframe decoder.
@@ -208,6 +210,21 @@ public final class Vp8Decoder {
         decodeArgb(input, fancyUpsampling, argb, null);
     }
 
+    /// Decodes one raw VP8 frame payload directly into an existing packed `ARGB` buffer.
+    ///
+    /// The destination must have exactly one remaining entry per decoded frame pixel. Neither the
+    /// input nor destination position or limit is changed.
+    ///
+    /// @param input the raw VP8 frame payload
+    /// @param fancyUpsampling whether to use the high-quality chroma upsampler
+    /// @param argb the destination for tightly packed non-premultiplied `ARGB` pixels
+    /// @throws IllegalArgumentException if the destination size does not match the frame dimensions
+    /// @throws ReadOnlyBufferException if the destination is read-only
+    /// @throws WebPException if the VP8 bitstream is malformed
+    public static void decodeArgb(ByteBuffer input, boolean fancyUpsampling, IntBuffer argb) throws WebPException {
+        decodeArgb(input, fancyUpsampling, argb, null);
+    }
+
     /// Decodes one raw VP8 frame payload into an existing packed `ARGB` buffer while reusing plane
     /// storage.
     ///
@@ -233,6 +250,40 @@ public final class Vp8Decoder {
             throw new IllegalArgumentException(
                     "ARGB buffer length does not match VP8 frame dimensions: "
                             + argb.length + " != " + expectedLength
+            );
+        }
+        frame.fillArgb(argb, fancyUpsampling);
+    }
+
+    /// Decodes one raw VP8 frame payload directly into an existing packed `ARGB` buffer while
+    /// reusing plane storage.
+    ///
+    /// The workspace must not be used concurrently. Its retained arrays may grow to fit the
+    /// largest decoded frame. The destination must have exactly one remaining entry per decoded
+    /// frame pixel. Neither the input nor destination position or limit is changed.
+    ///
+    /// @param input the raw VP8 frame payload
+    /// @param fancyUpsampling whether to use the high-quality chroma upsampler
+    /// @param argb the destination for tightly packed non-premultiplied `ARGB` pixels
+    /// @param workspace reusable color-plane storage, or `null` to allocate per call
+    /// @throws IllegalArgumentException if the destination size does not match the frame dimensions
+    /// @throws ReadOnlyBufferException if the destination is read-only
+    /// @throws WebPException if the VP8 bitstream is malformed
+    public static void decodeArgb(
+            ByteBuffer input,
+            boolean fancyUpsampling,
+            IntBuffer argb,
+            @Nullable DecodeWorkspace workspace
+    ) throws WebPException {
+        if (argb.isReadOnly()) {
+            throw new ReadOnlyBufferException();
+        }
+        Vp8Frame frame = new Vp8Decoder(input.slice(), workspace).decodeFrameInternal();
+        int expectedLength = frame.width * frame.height;
+        if (argb.remaining() != expectedLength) {
+            throw new IllegalArgumentException(
+                    "ARGB buffer size does not match VP8 frame dimensions: "
+                            + argb.remaining() + " != " + expectedLength
             );
         }
         frame.fillArgb(argb, fancyUpsampling);

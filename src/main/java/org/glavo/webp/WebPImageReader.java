@@ -28,6 +28,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -283,6 +284,10 @@ public final class WebPImageReader implements AutoCloseable {
         }
 
         ParsedFrameDescriptor descriptor = image.frames().get(nextFrameIndex++);
+        if (!image.animated() && direct) {
+            return decodeDirectStaticFrame(descriptor);
+        }
+
         int[] frameArgb = decodeFrameArgb(descriptor);
         if (image.animated()) {
             compositeAnimatedFrame(descriptor, frameArgb);
@@ -303,6 +308,29 @@ public final class WebPImageReader implements AutoCloseable {
                 frameArgb,
                 direct,
                 false
+        );
+    }
+
+    /// Decodes a static frame directly into the storage retained by the returned frame.
+    ///
+    /// @param descriptor the parsed static-frame descriptor
+    /// @return the decoded direct frame
+    /// @throws WebPException if VP8, VP8L, or ALPH decoding fails
+    private WebPFrame decodeDirectStaticFrame(ParsedFrameDescriptor descriptor) throws WebPException {
+        int pixelCount;
+        try {
+            pixelCount = Math.multiplyExact(descriptor.width(), descriptor.height());
+        } catch (ArithmeticException ex) {
+            throw new WebPException("Frame dimensions are too large", ex);
+        }
+        IntBuffer frameArgb = WebPFrame.allocateDirectPixels(pixelCount);
+        decodeFrameArgb(descriptor, frameArgb);
+        return decoder.createFrame(
+                descriptor.width(),
+                descriptor.height(),
+                descriptor.durationMillis(),
+                frameArgb,
+                !descriptor.lossless() && descriptor.alphaChunk() == null
         );
     }
 
@@ -392,6 +420,37 @@ public final class WebPImageReader implements AutoCloseable {
             );
         }
         return argb;
+    }
+
+    /// Decodes one raw frame payload directly to tightly packed non-premultiplied `ARGB` pixels.
+    ///
+    /// @param descriptor the parsed frame descriptor and encoded payload
+    /// @param argb the exact-sized direct destination
+    /// @throws WebPException if VP8, VP8L, or ALPH decoding fails
+    private void decodeFrameArgb(ParsedFrameDescriptor descriptor, IntBuffer argb) throws WebPException {
+        if (descriptor.lossless()) {
+            new LosslessDecoder(descriptor.imageChunk()).decodeFrame(
+                    descriptor.width(),
+                    descriptor.height(),
+                    false,
+                    argb
+            );
+        } else {
+            Vp8Decoder.decodeArgb(
+                    ByteBuffer.wrap(descriptor.imageChunk()),
+                    false,
+                    argb,
+                    vp8Workspace
+            );
+            if (descriptor.alphaChunk() != null) {
+                alphaDecoder.apply(
+                        descriptor.alphaChunk(),
+                        descriptor.width(),
+                        descriptor.height(),
+                        argb
+                );
+            }
+        }
     }
 
     /// Returns an exact-sized frame buffer, reusing it when animated frames share dimensions.
