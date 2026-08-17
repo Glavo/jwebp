@@ -106,9 +106,22 @@ javafx.scene.image.Image image = WebPFXImage.of(fxDecoder.read(...));
 
 // Create a JavaFX image from a WebPFrame.
 javafx.scene.image.Image frameImage = WebPFXImage.of(fxDecoder.read(...).getFirstFrame());
+
+// Scale into a 640-by-480 bounding box while preserving the aspect ratio.
+javafx.scene.image.Image scaledImage = WebPFXImage.of(
+        fxDecoder.read(...),
+        640,
+        480,
+        true,
+        true
+);
 ```
 
-Static `INT_ARGB_PRE` frames are used directly as the JavaFX `PixelBuffer` backing store.
+The scaling arguments follow the order used by JavaFX `Image`: requested width, requested height,
+preserve ratio, and smooth filtering. Scaling affects only the JavaFX presentation; decoded
+`WebPFrame` and `WebPImage` objects retain their intrinsic dimensions. Intrinsic-size static
+`INT_ARGB_PRE` frames are used directly as the JavaFX `PixelBuffer` backing store. When conversion
+or scaling requires a new buffer, it follows the source frame's heap or direct storage location.
 
 ### Swing Integration
 

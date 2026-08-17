@@ -4,7 +4,7 @@
 
 ### Breaking Changes
 
-- Remove `WebPImageLoadOptions`, the scale-aware `WebPImage#read` and `WebPImageReader#open` overloads, and the `getSourceWidth()` / `getSourceHeight()` methods; images are now always decoded at their intrinsic canvas size
+- Remove `WebPImageLoadOptions`, the scale-aware `WebPImage#read` and `WebPImageReader#open` overloads, and the `getSourceWidth()` / `getSourceHeight()` methods; core images are now always decoded at their intrinsic canvas size, with presentation scaling available through `WebPFXImage#of(...)`
 - Replace the public `WebPFXImage` constructors with `WebPFXImage#of(...)` factory methods
 - `WebPFXImage#getPixelWriter()` is now unsupported because `WebPFXImage` is backed by a `PixelBuffer`
 
@@ -14,10 +14,12 @@
 - New API: `WebPSwingUtils`
 - New immutable `WebPDecoder` API for configuring decoded pixel format and the default frame buffer location
 - Heap-backed and direct frame buffers for `INT_ARGB` and `INT_ARGB_PRE` pixels, with per-frame overrides during streaming decode
+- JavaFX-style scaling overloads for `WebPFXImage#of(...)`, including aspect-ratio preservation and smooth filtering
 
 ### Changed
 
-- Back JavaFX images with `PixelBuffer`, allowing static `INT_ARGB_PRE` frames to be presented without copying
+- Back JavaFX images with `PixelBuffer`, allowing intrinsic-size static `INT_ARGB_PRE` frames to be presented without copying
+- For scaled animated JavaFX images, scale frames once during construction and retain only their target-size pixel storage
 
 ### Performance
 

@@ -17,6 +17,7 @@ package org.glavo.webp;
 
 import javafx.animation.Animation;
 import javafx.application.Platform;
+import javafx.scene.image.Image;
 import javafx.scene.image.PixelReader;
 import javafx.util.Duration;
 import org.glavo.webp.javafx.WebPFXImage;
@@ -42,16 +43,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @NotNullByDefault
 final class WebPFXImageTest {
 
+    /// Opaque red test pixel.
     private static final int RED = 0xFFFF0000;
+
+    /// Opaque green test pixel.
     private static final int GREEN = 0xFF00FF00;
+
+    /// Opaque blue test pixel.
     private static final int BLUE = 0xFF0000FF;
+
+    /// Opaque white test pixel.
+    private static final int WHITE = 0xFFFFFFFF;
 
     /// Verifies that every public factory rejects a null decoded source.
     @Test
     void factoryMethodsRejectNullSources() {
         assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPFrame) null));
+        assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPFrame) null, 1, 1, false, true));
         assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPImage) null));
         assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPImage) null, false));
+        assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPImage) null, 1, 1, false, true));
+        assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPImage) null, 1, 1, false, true, false));
     }
 
     @BeforeAll
@@ -89,6 +101,69 @@ final class WebPFXImageTest {
         assertJavaFxImageEquals(image, "reference/regression-tiny.png");
     }
 
+    /// Verifies that requested dimensions follow JavaFX's integer-size behavior.
+    @Test
+    void scaledDimensionsMatchJavaFxImageSemantics() throws Exception {
+        WebPImage decoded = WebPImage.read(resource("images/regression-tiny.webp"));
+
+        assertScaledDimensionsMatchJavaFx(decoded, "reference/regression-tiny.png", 180, 0, true, true);
+        assertScaledDimensionsMatchJavaFx(decoded, "reference/regression-tiny.png", 0, 96, true, true);
+        assertScaledDimensionsMatchJavaFx(decoded, "reference/regression-tiny.png", 180, 120, true, true);
+        assertScaledDimensionsMatchJavaFx(decoded, "reference/regression-tiny.png", 37, 29, false, false);
+    }
+
+    /// Verifies nearest-neighbor expansion without color interpolation.
+    @Test
+    void nearestNeighborScalingReplicatesSourcePixels() throws Exception {
+        WebPFrame frame = frame(2, 2, 0, RED, GREEN, BLUE, WHITE);
+
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(frame, 4, 4, false, false));
+        WebPFXImage minimumWidth = callOnFxThread(() -> WebPFXImage.of(frame, 0.4, 0, false, false));
+
+        callOnFxThread(() -> {
+            PixelReader pixels = image.getPixelReader();
+            assertEquals(4, (int) image.getWidth());
+            assertEquals(4, (int) image.getHeight());
+            assertEquals(RED, pixels.getArgb(0, 0));
+            assertEquals(RED, pixels.getArgb(1, 1));
+            assertEquals(GREEN, pixels.getArgb(3, 0));
+            assertEquals(BLUE, pixels.getArgb(0, 3));
+            assertEquals(WHITE, pixels.getArgb(3, 3));
+            assertEquals(1, (int) minimumWidth.getWidth());
+            assertEquals(2, (int) minimumWidth.getHeight());
+            return null;
+        });
+    }
+
+    /// Verifies that smooth scaling interpolates in premultiplied color space.
+    @Test
+    void smoothScalingInterpolatesPremultipliedPixels() throws Exception {
+        WebPFrame frame = frame(2, 1, 0, 0x00FF0000, BLUE);
+
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(frame, 3, 1, false, true));
+        int center = callOnFxThread(() -> image.getPixelReader().getArgb(1, 0));
+
+        assertEquals(0x80, center >>> 24);
+        assertEquals(0, (center >>> 16) & 0xFF);
+        assertEquals(0, (center >>> 8) & 0xFF);
+        assertEquals(0xFF, center & 0xFF);
+    }
+
+    /// Verifies that unsupported floating-point dimensions fail before allocation.
+    @Test
+    void scalingRejectsNonFiniteDimensions() {
+        WebPFrame frame = frame(RED, 0);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> WebPFXImage.of(frame, Double.NaN, 0, false, true)
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> WebPFXImage.of(frame, 0, Double.POSITIVE_INFINITY, false, true)
+        );
+    }
+
     @Test
     void javaFxImageFromDecodedImageStartsPausedOnFirstFrame() throws Exception {
         WebPImage decoded = animatedImage(0, frame(RED, 40), frame(GREEN, 40), frame(BLUE, 40));
@@ -117,6 +192,36 @@ final class WebPFXImageTest {
 
         assertNotNull(animation);
         assertJavaFxImageEquals(image, "reference/animated/random_lossless-1.png");
+    }
+
+    /// Verifies that every frame of a scaled animation uses the target dimensions.
+    @Test
+    void scaledAnimationPresentsEveryFrameAtTargetSize() throws Exception {
+        WebPImage decoded = animatedImage(
+                0,
+                frame(2, 1, 120, RED, GREEN),
+                frame(2, 1, 120, BLUE, WHITE)
+        );
+
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(decoded, 4, 2, false, false, false));
+        Animation animation = callOnFxThread(() -> {
+            Animation value = image.getAnimation();
+            assertNotNull(value);
+            value.play();
+            return value;
+        });
+
+        assertEquals(4, (int) image.getWidth());
+        assertEquals(2, (int) image.getHeight());
+        assertEquals(RED, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
+        assertEquals(GREEN, callOnFxThread(() -> image.getPixelReader().getArgb(3, 1)));
+        waitForCondition(() -> callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)) == BLUE, 500);
+        assertEquals(WHITE, callOnFxThread(() -> image.getPixelReader().getArgb(3, 1)));
+
+        callOnFxThread(() -> {
+            animation.stop();
+            return null;
+        });
     }
 
     @Test
@@ -249,6 +354,11 @@ final class WebPFXImageTest {
         assertEquals(RED, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
     }
 
+    /// Creates a synthetic eager animation from fully composited frames.
+    ///
+    /// @param loopCount the declared animation loop count
+    /// @param frames the presentation frames
+    /// @return the synthetic decoded image
     private static WebPImage animatedImage(int loopCount, WebPFrame... frames) {
         long loopDurationMillis = 0L;
         for (WebPFrame frame : frames) {
@@ -256,8 +366,8 @@ final class WebPFXImageTest {
         }
 
         return new WebPImage(
-                1,
-                1,
+                frames[0].getWidth(),
+                frames[0].getHeight(),
                 false,
                 true,
                 false,
@@ -268,8 +378,62 @@ final class WebPFXImageTest {
         );
     }
 
+    /// Creates a one-pixel synthetic frame.
+    ///
+    /// @param argb the non-premultiplied pixel
+    /// @param durationMillis the presentation duration
+    /// @return the synthetic frame
     private static WebPFrame frame(int argb, int durationMillis) {
         return new WebPFrame(1, 1, durationMillis, new int[]{argb});
+    }
+
+    /// Creates a synthetic frame from tightly packed pixels.
+    ///
+    /// @param width the frame width
+    /// @param height the frame height
+    /// @param durationMillis the presentation duration
+    /// @param argb the tightly packed non-premultiplied pixels
+    /// @return the synthetic frame
+    private static WebPFrame frame(int width, int height, int durationMillis, int... argb) {
+        return new WebPFrame(width, height, durationMillis, argb);
+    }
+
+    /// Compares adapter dimensions with JavaFX loading of the matching reference image.
+    ///
+    /// @param decoded the decoded WebP source
+    /// @param expectedPath the matching reference image resource
+    /// @param requestedWidth the requested width
+    /// @param requestedHeight the requested height
+    /// @param preserveRatio whether to preserve the aspect ratio
+    /// @param smooth whether to enable smooth filtering
+    private static void assertScaledDimensionsMatchJavaFx(
+            WebPImage decoded,
+            String expectedPath,
+            double requestedWidth,
+            double requestedHeight,
+            boolean preserveRatio,
+            boolean smooth
+    ) throws Exception {
+        try (InputStream input = resource(expectedPath)) {
+            callOnFxThread(() -> {
+                Image expected = new Image(input, requestedWidth, requestedHeight, preserveRatio, smooth);
+                WebPFXImage actual = WebPFXImage.of(
+                        decoded,
+                        requestedWidth,
+                        requestedHeight,
+                        preserveRatio,
+                        smooth,
+                        false
+                );
+                String parameters = "requested=" + requestedWidth + "x" + requestedHeight
+                        + ", preserveRatio=" + preserveRatio
+                        + ", JavaFX=" + expected.getWidth() + "x" + expected.getHeight()
+                        + ", WebPFXImage=" + actual.getWidth() + "x" + actual.getHeight();
+                assertEquals((int) expected.getWidth(), (int) actual.getWidth(), parameters);
+                assertEquals((int) expected.getHeight(), (int) actual.getHeight(), parameters);
+                return null;
+            });
+        }
     }
 
     private static void assertJavaFxImageEquals(WebPFXImage image, String expectedPath) throws Exception {
