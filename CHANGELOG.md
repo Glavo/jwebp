@@ -2,6 +2,11 @@
 
 ## 0.3.0 (In development)
 
+### Breaking Changes
+
+- Remove `WebPImageLoadOptions`, the scale-aware `WebPImage#read` and `WebPImageReader#open` overloads, and the `getSourceWidth()` / `getSourceHeight()` methods; images are now always decoded at their intrinsic canvas size
+- `WebPFXImage#getPixelWriter()` is now unsupported because `WebPFXImage` is backed by a `PixelBuffer`
+
 ### Added
 
 - New API: `WebPFrame#getArgb(int, int)`
@@ -11,8 +16,7 @@
 
 ### Changed
 
-- Decode images at their intrinsic canvas size and remove the JavaFX-style loading scale options
-- Back JavaFX images with `PixelBuffer`, allowing static `INT_ARGB_PRE` frames to be presented without copying; `WebPFXImage#getPixelWriter()` is consequently unsupported
+- Back JavaFX images with `PixelBuffer`, allowing static `INT_ARGB_PRE` frames to be presented without copying
 
 ### Performance
 
