@@ -101,27 +101,29 @@ WebPDecoder fxDecoder = WebPDecoder.DEFAULT
 
 // Create a JavaFX image from a WebPImage.
 // If it is an animated WebP, it will automatically play the animation.
-// You can control its behavior by passing the autoplay parameter.
+// You can control its presentation by passing WebPFXImageOptions.
 javafx.scene.image.Image image = WebPFXImage.of(fxDecoder.read(...));
 
 // Create a JavaFX image from a WebPFrame.
 javafx.scene.image.Image frameImage = WebPFXImage.of(fxDecoder.read(...).getFirstFrame());
 
 // Scale into a 640-by-480 bounding box while preserving the aspect ratio.
+WebPFXImageOptions fxOptions = WebPFXImageOptions.DEFAULT
+        .withRequestedSize(640, 480)
+        .withPreserveRatio(true)
+        .withSmooth(true);
 javafx.scene.image.Image scaledImage = WebPFXImage.of(
         fxDecoder.read(...),
-        640,
-        480,
-        true,
-        true
+        fxOptions
 );
 ```
 
-The scaling arguments follow the order used by JavaFX `Image`: requested width, requested height,
-preserve ratio, and smooth filtering. Scaling affects only the JavaFX presentation; decoded
-`WebPFrame` and `WebPImage` objects retain their intrinsic dimensions. Intrinsic-size static
-`INT_ARGB_PRE` frames are used directly as the JavaFX `PixelBuffer` backing store. When conversion
-or scaling requires a new buffer, it follows the source frame's heap or direct storage location.
+`WebPFXImageOptions` configures the requested size, aspect-ratio preservation, smooth filtering,
+and animation autoplay without ambiguous positional boolean arguments. Scaling affects only the
+JavaFX presentation; decoded `WebPFrame` and `WebPImage` objects retain their intrinsic dimensions.
+Intrinsic-size static `INT_ARGB_PRE` frames are used directly as the JavaFX `PixelBuffer` backing
+store. When conversion or scaling requires a new buffer, it follows the source frame's heap or
+direct storage location.
 
 ### Swing Integration
 

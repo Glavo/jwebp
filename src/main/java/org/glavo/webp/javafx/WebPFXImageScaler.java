@@ -299,25 +299,19 @@ final class WebPFXImageScaler {
         ///
         /// @param sourceWidth the intrinsic width in pixels
         /// @param sourceHeight the intrinsic height in pixels
-        /// @param requestedWidth the requested width before integer rounding
-        /// @param requestedHeight the requested height before integer rounding
-        /// @param preserveRatio whether to fit within the requested bounding box
-        /// @param smooth whether to use bilinear filtering
+        /// @param options the JavaFX presentation options
         /// @return the resulting scale plan
         static ScalePlan create(
                 int sourceWidth,
                 int sourceHeight,
-                double requestedWidth,
-                double requestedHeight,
-                boolean preserveRatio,
-                boolean smooth
+                WebPFXImageOptions options
         ) {
-            requireFinite(requestedWidth, "requestedWidth");
-            requireFinite(requestedHeight, "requestedHeight");
+            double requestedWidth = options.getRequestedWidth();
+            double requestedHeight = options.getRequestedHeight();
 
             int targetWidth = sourceWidth;
             int targetHeight = sourceHeight;
-            if (preserveRatio) {
+            if (options.isPreserveRatio()) {
                 if (requestedWidth > 0.0 && requestedHeight > 0.0) {
                     double scale = Math.min(
                             requestedWidth / sourceWidth,
@@ -343,18 +337,13 @@ final class WebPFXImageScaler {
                 }
             }
 
-            return new ScalePlan(sourceWidth, sourceHeight, targetWidth, targetHeight, smooth);
-        }
-
-        /// Verifies that one requested dimension has a finite value.
-        ///
-        /// @param value the requested floating-point dimension
-        /// @param name the parameter name used in exceptions
-        /// @throws IllegalArgumentException if `value` is not finite
-        private static void requireFinite(double value, String name) {
-            if (!Double.isFinite(value)) {
-                throw new IllegalArgumentException(name + " must be finite: " + value);
-            }
+            return new ScalePlan(
+                    sourceWidth,
+                    sourceHeight,
+                    targetWidth,
+                    targetHeight,
+                    options.isSmooth()
+            );
         }
 
         /// Rounds and validates one positive target dimension.

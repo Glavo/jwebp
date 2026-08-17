@@ -48,7 +48,8 @@ import java.util.Objects;
 /// Because the superclass is constructed from a `PixelBuffer`, the inherited
 /// [#getPixelWriter()] operation is unsupported.
 ///
-/// Use [#of(WebPFrame)] or [#of(WebPImage)] to create an instance.
+/// Use [#of(WebPFrame)] or [#of(WebPImage)] for the default presentation, or pass
+/// [WebPFXImageOptions] to configure scaling, filtering, and animation playback.
 @NotNullByDefault
 public final class WebPFXImage extends WritableImage {
 
@@ -79,45 +80,26 @@ public final class WebPFXImage extends WritableImage {
     /// @return the JavaFX image
     /// @throws NullPointerException if `frame` is `null`
     public static WebPFXImage of(WebPFrame frame) {
-        return of(frame, 0.0, 0.0, false, true);
+        return of(frame, WebPFXImageOptions.DEFAULT);
     }
 
-    /// Creates a JavaFX image from one decoded frame with JavaFX-style scaling parameters.
+    /// Creates a JavaFX image from one decoded frame using immutable presentation options.
     ///
-    /// A requested dimension less than or equal to zero selects the corresponding intrinsic
-    /// dimension. Positive target dimensions are rounded to the nearest integer and clamped to at
-    /// least one pixel. If `preserveRatio` is `true`, the requested dimensions form a bounding box
-    /// and the source aspect ratio is retained. Otherwise, each positive requested dimension
-    /// independently replaces its intrinsic counterpart. Scaling uses bilinear filtering when
-    /// `smooth` is `true` and nearest-neighbor filtering otherwise.
+    /// The `autoPlay` setting has no effect because a [WebPFrame] is a static presentation frame.
     ///
     /// @param frame the decoded frame to display
-    /// @param requestedWidth the requested bounding-box width, or a non-positive value to use the
-    ///                       intrinsic width
-    /// @param requestedHeight the requested bounding-box height, or a non-positive value to use
-    ///                        the intrinsic height
-    /// @param preserveRatio whether to preserve the intrinsic aspect ratio
-    /// @param smooth whether to use bilinear rather than nearest-neighbor filtering
+    /// @param options the scaling and presentation options
     /// @return the JavaFX image
-    /// @throws NullPointerException if `frame` is `null`
-    /// @throws IllegalArgumentException if a requested dimension is not finite, rounds beyond the
-    ///                                  supported integer range, or produces an unsupported buffer
-    ///                                  size
-    public static WebPFXImage of(
-            WebPFrame frame,
-            double requestedWidth,
-            double requestedHeight,
-            boolean preserveRatio,
-            boolean smooth
-    ) {
+    /// @throws NullPointerException if `frame` or `options` is `null`
+    /// @throws IllegalArgumentException if a requested dimension rounds beyond the supported
+    ///                                  integer range or produces an unsupported buffer size
+    public static WebPFXImage of(WebPFrame frame, WebPFXImageOptions options) {
         Objects.requireNonNull(frame, "frame");
+        Objects.requireNonNull(options, "options");
         ScalePlan scalePlan = ScalePlan.create(
                 frame.getWidth(),
                 frame.getHeight(),
-                requestedWidth,
-                requestedHeight,
-                preserveRatio,
-                smooth
+                options
         );
         return createStaticImage(frame, scalePlan);
     }
@@ -131,90 +113,28 @@ public final class WebPFXImage extends WritableImage {
     /// @return the JavaFX image
     /// @throws NullPointerException if `image` is `null`
     public static WebPFXImage of(WebPImage image) {
-        return of(image, 0.0, 0.0, false, true, true);
+        return of(image, WebPFXImageOptions.DEFAULT);
     }
 
-    /// Creates an intrinsic-size JavaFX image from fully decoded WebP content.
+    /// Creates a JavaFX image from fully decoded WebP content using immutable presentation options.
     ///
-    /// The first frame is visible immediately. Animated content starts playing when `autoPlay` is
-    /// `true`; otherwise its timeline remains stopped until started through [#getAnimation()].
-    ///
-    /// @param image the decoded WebP image
-    /// @param autoPlay whether to start playing the animation automatically
-    /// @return the JavaFX image
-    /// @throws NullPointerException if `image` is `null`
-    public static WebPFXImage of(WebPImage image, boolean autoPlay) {
-        return of(image, 0.0, 0.0, false, true, autoPlay);
-    }
-
-    /// Creates a scaled JavaFX image from fully decoded WebP content.
-    ///
-    /// The scaling parameters have the same order and roles as those of the corresponding JavaFX
-    /// `Image` constructors. The first frame is visible immediately, and animated content starts
-    /// playing automatically. A non-positive requested dimension uses its intrinsic counterpart;
-    /// positive target dimensions are rounded to the nearest integer and clamped to at least one
-    /// pixel. Animated frames are scaled once during construction.
+    /// The first frame is visible immediately. Animated content starts playing when
+    /// [WebPFXImageOptions#isAutoPlay()] is `true`; otherwise its timeline remains stopped until
+    /// started through [#getAnimation()]. Animated frames are scaled once during construction.
     ///
     /// @param image the decoded WebP image
-    /// @param requestedWidth the requested bounding-box width, or a non-positive value to use the
-    ///                       intrinsic width
-    /// @param requestedHeight the requested bounding-box height, or a non-positive value to use
-    ///                        the intrinsic height
-    /// @param preserveRatio whether to preserve the intrinsic aspect ratio
-    /// @param smooth whether to use bilinear rather than nearest-neighbor filtering
+    /// @param options the scaling, filtering, and playback options
     /// @return the JavaFX image
-    /// @throws NullPointerException if `image` is `null`
-    /// @throws IllegalArgumentException if a requested dimension is not finite, rounds beyond the
-    ///                                  supported integer range, or produces an unsupported buffer
-    ///                                  size
-    public static WebPFXImage of(
-            WebPImage image,
-            double requestedWidth,
-            double requestedHeight,
-            boolean preserveRatio,
-            boolean smooth
-    ) {
-        return of(image, requestedWidth, requestedHeight, preserveRatio, smooth, true);
-    }
-
-    /// Creates a scaled JavaFX image from fully decoded WebP content.
-    ///
-    /// The scaling parameters have the same order and roles as those of the corresponding JavaFX
-    /// `Image` constructors. The first frame is visible immediately. Animated content starts
-    /// playing when `autoPlay` is `true`; otherwise its timeline remains stopped until started
-    /// through [#getAnimation()]. Dimension and filtering behavior is identical to
-    /// [#of(WebPImage, double, double, boolean, boolean)]. Animated frames are scaled once during
-    /// construction.
-    ///
-    /// @param image the decoded WebP image
-    /// @param requestedWidth the requested bounding-box width, or a non-positive value to use the
-    ///                       intrinsic width
-    /// @param requestedHeight the requested bounding-box height, or a non-positive value to use
-    ///                        the intrinsic height
-    /// @param preserveRatio whether to preserve the intrinsic aspect ratio
-    /// @param smooth whether to use bilinear rather than nearest-neighbor filtering
-    /// @param autoPlay whether to start playing the animation automatically
-    /// @return the JavaFX image
-    /// @throws NullPointerException if `image` is `null`
-    /// @throws IllegalArgumentException if a requested dimension is not finite, rounds beyond the
-    ///                                  supported integer range, or produces an unsupported buffer
-    ///                                  size
-    public static WebPFXImage of(
-            WebPImage image,
-            double requestedWidth,
-            double requestedHeight,
-            boolean preserveRatio,
-            boolean smooth,
-            boolean autoPlay
-    ) {
+    /// @throws NullPointerException if `image` or `options` is `null`
+    /// @throws IllegalArgumentException if a requested dimension rounds beyond the supported
+    ///                                  integer range or produces an unsupported buffer size
+    public static WebPFXImage of(WebPImage image, WebPFXImageOptions options) {
         Objects.requireNonNull(image, "image");
+        Objects.requireNonNull(options, "options");
         ScalePlan scalePlan = ScalePlan.create(
                 image.getWidth(),
                 image.getHeight(),
-                requestedWidth,
-                requestedHeight,
-                preserveRatio,
-                smooth
+                options
         );
 
         if (!image.isAnimated()) {
@@ -242,7 +162,7 @@ public final class WebPFXImage extends WritableImage {
                 animationBuffer,
                 animationFrames,
                 image.getLoopCount(),
-                autoPlay
+                options.isAutoPlay()
         );
     }
 

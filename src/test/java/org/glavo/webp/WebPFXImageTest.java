@@ -21,6 +21,7 @@ import javafx.scene.image.Image;
 import javafx.scene.image.PixelReader;
 import javafx.util.Duration;
 import org.glavo.webp.javafx.WebPFXImage;
+import org.glavo.webp.javafx.WebPFXImageOptions;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -34,8 +35,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -55,15 +59,62 @@ final class WebPFXImageTest {
     /// Opaque white test pixel.
     private static final int WHITE = 0xFFFFFFFF;
 
+    /// Intrinsic-size presentation options that keep animations paused.
+    private static final WebPFXImageOptions PAUSED = WebPFXImageOptions.DEFAULT.withAutoPlay(false);
+
     /// Verifies that every public factory rejects a null decoded source.
     @Test
     void factoryMethodsRejectNullSources() {
         assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPFrame) null));
-        assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPFrame) null, 1, 1, false, true));
+        assertThrows(
+                NullPointerException.class,
+                () -> WebPFXImage.of((WebPFrame) null, WebPFXImageOptions.DEFAULT)
+        );
+        assertThrows(
+                NullPointerException.class,
+                () -> WebPFXImage.of(frame(RED, 0), (WebPFXImageOptions) null)
+        );
         assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPImage) null));
-        assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPImage) null, false));
-        assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPImage) null, 1, 1, false, true));
-        assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPImage) null, 1, 1, false, true, false));
+        assertThrows(
+                NullPointerException.class,
+                () -> WebPFXImage.of((WebPImage) null, WebPFXImageOptions.DEFAULT)
+        );
+        assertThrows(
+                NullPointerException.class,
+                () -> WebPFXImage.of(
+                        animatedImage(0, frame(RED, 40), frame(GREEN, 40)),
+                        (WebPFXImageOptions) null
+                )
+        );
+    }
+
+    /// Verifies the defaults and copy-on-write behavior of JavaFX presentation options.
+    @Test
+    void imageOptionsAreImmutable() {
+        WebPFXImageOptions defaults = WebPFXImageOptions.DEFAULT;
+        WebPFXImageOptions configured = defaults
+                .withRequestedSize(640, 480)
+                .withPreserveRatio(true)
+                .withSmooth(false)
+                .withAutoPlay(false);
+
+        assertEquals(0.0, defaults.getRequestedWidth());
+        assertEquals(0.0, defaults.getRequestedHeight());
+        assertFalse(defaults.isPreserveRatio());
+        assertTrue(defaults.isSmooth());
+        assertTrue(defaults.isAutoPlay());
+
+        assertEquals(640.0, configured.getRequestedWidth());
+        assertEquals(480.0, configured.getRequestedHeight());
+        assertTrue(configured.isPreserveRatio());
+        assertFalse(configured.isSmooth());
+        assertFalse(configured.isAutoPlay());
+        assertNotSame(defaults, configured);
+
+        assertSame(defaults, defaults.withRequestedSize(0, 0));
+        assertSame(defaults, defaults.withPreserveRatio(false));
+        assertSame(defaults, defaults.withSmooth(true));
+        assertSame(defaults, defaults.withAutoPlay(true));
     }
 
     @BeforeAll
@@ -117,8 +168,10 @@ final class WebPFXImageTest {
     void nearestNeighborScalingReplicatesSourcePixels() throws Exception {
         WebPFrame frame = frame(2, 2, 0, RED, GREEN, BLUE, WHITE);
 
-        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(frame, 4, 4, false, false));
-        WebPFXImage minimumWidth = callOnFxThread(() -> WebPFXImage.of(frame, 0.4, 0, false, false));
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(frame, options(4, 4, false, false)));
+        WebPFXImage minimumWidth = callOnFxThread(
+                () -> WebPFXImage.of(frame, options(0.4, 0, false, false))
+        );
 
         callOnFxThread(() -> {
             PixelReader pixels = image.getPixelReader();
@@ -140,7 +193,7 @@ final class WebPFXImageTest {
     void smoothScalingInterpolatesPremultipliedPixels() throws Exception {
         WebPFrame frame = frame(2, 1, 0, 0x00FF0000, BLUE);
 
-        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(frame, 3, 1, false, true));
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(frame, options(3, 1, false, true)));
         int center = callOnFxThread(() -> image.getPixelReader().getArgb(1, 0));
 
         assertEquals(0x80, center >>> 24);
@@ -149,18 +202,16 @@ final class WebPFXImageTest {
         assertEquals(0xFF, center & 0xFF);
     }
 
-    /// Verifies that unsupported floating-point dimensions fail before allocation.
+    /// Verifies that presentation options reject unsupported floating-point dimensions.
     @Test
-    void scalingRejectsNonFiniteDimensions() {
-        WebPFrame frame = frame(RED, 0);
-
+    void optionsRejectNonFiniteDimensions() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> WebPFXImage.of(frame, Double.NaN, 0, false, true)
+                () -> WebPFXImageOptions.DEFAULT.withRequestedSize(Double.NaN, 0)
         );
         assertThrows(
                 IllegalArgumentException.class,
-                () -> WebPFXImage.of(frame, 0, Double.POSITIVE_INFINITY, false, true)
+                () -> WebPFXImageOptions.DEFAULT.withRequestedSize(0, Double.POSITIVE_INFINITY)
         );
     }
 
@@ -183,7 +234,7 @@ final class WebPFXImageTest {
     void javaFxImageFromDecodedAnimatedImageMatchesFirstFrame() throws Exception {
         WebPImage decoded = WebPImage.read(resource("images/animated-random_lossless.webp"));
 
-        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(decoded, false));
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(decoded, PAUSED));
         Animation animation = callOnFxThread(() -> {
             Animation value = image.getAnimation();
             assertNotNull(value);
@@ -203,7 +254,9 @@ final class WebPFXImageTest {
                 frame(2, 1, 120, BLUE, WHITE)
         );
 
-        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(decoded, 4, 2, false, false, false));
+        WebPFXImage image = callOnFxThread(
+                () -> WebPFXImage.of(decoded, options(4, 2, false, false))
+        );
         Animation animation = callOnFxThread(() -> {
             Animation value = image.getAnimation();
             assertNotNull(value);
@@ -417,14 +470,12 @@ final class WebPFXImageTest {
         try (InputStream input = resource(expectedPath)) {
             callOnFxThread(() -> {
                 Image expected = new Image(input, requestedWidth, requestedHeight, preserveRatio, smooth);
-                WebPFXImage actual = WebPFXImage.of(
-                        decoded,
+                WebPFXImage actual = WebPFXImage.of(decoded, options(
                         requestedWidth,
                         requestedHeight,
                         preserveRatio,
-                        smooth,
-                        false
-                );
+                        smooth
+                ));
                 String parameters = "requested=" + requestedWidth + "x" + requestedHeight
                         + ", preserveRatio=" + preserveRatio
                         + ", JavaFX=" + expected.getWidth() + "x" + expected.getHeight()
@@ -434,6 +485,25 @@ final class WebPFXImageTest {
                 return null;
             });
         }
+    }
+
+    /// Creates presentation options with deterministic paused animation state.
+    ///
+    /// @param requestedWidth the requested presentation width
+    /// @param requestedHeight the requested presentation height
+    /// @param preserveRatio whether to preserve the intrinsic aspect ratio
+    /// @param smooth whether to use smooth filtering
+    /// @return the configured presentation options
+    private static WebPFXImageOptions options(
+            double requestedWidth,
+            double requestedHeight,
+            boolean preserveRatio,
+            boolean smooth
+    ) {
+        return PAUSED
+                .withRequestedSize(requestedWidth, requestedHeight)
+                .withPreserveRatio(preserveRatio)
+                .withSmooth(smooth);
     }
 
     private static void assertJavaFxImageEquals(WebPFXImage image, String expectedPath) throws Exception {
