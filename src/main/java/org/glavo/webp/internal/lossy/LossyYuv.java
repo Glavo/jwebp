@@ -18,8 +18,6 @@ package org.glavo.webp.internal.lossy;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 
-import org.glavo.webp.internal.Argb;
-
 /// YUV to RGB conversion helpers used by the VP8 decoder.
 @NotNullByDefault
 final class LossyYuv {
@@ -340,10 +338,25 @@ final class LossyYuv {
         }
     }
 
-    private static void fillArgbRowSimple(byte[] yVec, int yOffset, byte[] uVec, int uOffset, byte[] vVec, int vOffset, int width, int chromaWidth, int[] argb, int dstOffset) {
+    /// Converts one luma row using one chroma sample for each pair of adjacent pixels.
+    ///
+    /// @param yVec the luma plane
+    /// @param yOffset the first visible luma sample
+    /// @param uVec the U chroma plane
+    /// @param uOffset the first visible U sample
+    /// @param vVec the V chroma plane
+    /// @param vOffset the first visible V sample
+    /// @param width the number of visible luma samples
+    /// @param chromaWidth the number of available chroma samples
+    /// @param argb the destination pixel buffer
+    /// @param dstOffset the first destination index
+    private static void fillArgbRowSimple(byte[] yVec, int yOffset, byte[] uVec, int uOffset, byte[] vVec, int vOffset,
+                                          int width, int chromaWidth, int[] argb, int dstOffset) {
         int yIndex = yOffset;
         int dst = dstOffset;
-        for (int chroma = 0; chroma < chromaWidth && yIndex < yOffset + width; chroma++) {
+        // Every complete chroma sample covers two luma samples; only an odd width needs a tail.
+        int pairedChromaWidth = Math.min(width / 2, chromaWidth);
+        for (int chroma = 0; chroma < pairedChromaWidth; chroma++) {
             int u = uVec[uOffset + chroma] & 0xFF;
             int v = vVec[vOffset + chroma] & 0xFF;
             int rCoeff = V_TO_R_COEFFICIENTS[v];
@@ -353,10 +366,20 @@ final class LossyYuv {
 
             argb[dst++] = argbPixelFromCoefficients(Y_COEFFICIENTS[yVec[yIndex] & 0xFF], rCoeff, guCoeff, gvCoeff, bCoeff);
             yIndex++;
-            if (yIndex < yOffset + width) {
-                argb[dst++] = argbPixelFromCoefficients(Y_COEFFICIENTS[yVec[yIndex] & 0xFF], rCoeff, guCoeff, gvCoeff, bCoeff);
-                yIndex++;
-            }
+            argb[dst++] = argbPixelFromCoefficients(Y_COEFFICIENTS[yVec[yIndex] & 0xFF], rCoeff, guCoeff, gvCoeff, bCoeff);
+            yIndex++;
+        }
+
+        if (pairedChromaWidth < chromaWidth && (width & 1) != 0) {
+            int u = uVec[uOffset + pairedChromaWidth] & 0xFF;
+            int v = vVec[vOffset + pairedChromaWidth] & 0xFF;
+            argb[dst] = argbPixelFromCoefficients(
+                    Y_COEFFICIENTS[yVec[yIndex] & 0xFF],
+                    V_TO_R_COEFFICIENTS[v],
+                    U_TO_G_COEFFICIENTS[u],
+                    V_TO_G_COEFFICIENTS[v],
+                    U_TO_B_COEFFICIENTS[u]
+            );
         }
     }
 
@@ -452,16 +475,40 @@ final class LossyYuv {
         }
     }
 
+    /// Converts one set of unsigned YUV samples to an opaque packed pixel.
+    ///
+    /// @param y the luma sample
+    /// @param u the U chroma sample
+    /// @param v the V chroma sample
+    /// @return the opaque packed pixel
     private static int argbPixel(int y, int u, int v) {
-        return Argb.opaque(yuvToR(y, v), yuvToG(y, u, v), yuvToB(y, u));
+        return opaqueClippedPixel(yuvToR(y, v), yuvToG(y, u, v), yuvToB(y, u));
     }
 
+    /// Converts precomputed YUV coefficient contributions to an opaque packed pixel.
+    ///
+    /// @param yCoeff the scaled luma contribution
+    /// @param rCoeff the V-to-red contribution
+    /// @param guCoeff the U-to-green contribution
+    /// @param gvCoeff the V-to-green contribution
+    /// @param bCoeff the U-to-blue contribution
+    /// @return the opaque packed pixel
     private static int argbPixelFromCoefficients(int yCoeff, int rCoeff, int guCoeff, int gvCoeff, int bCoeff) {
-        return Argb.opaque(
+        return opaqueClippedPixel(
                 clip(yCoeff + rCoeff - 14234),
                 clip(yCoeff - guCoeff - gvCoeff + 8708),
                 clip(yCoeff + bCoeff - 17685)
         );
+    }
+
+    /// Packs three channels that have already been clipped to unsigned bytes.
+    ///
+    /// @param red the red channel in the range `0` through `255`
+    /// @param green the green channel in the range `0` through `255`
+    /// @param blue the blue channel in the range `0` through `255`
+    /// @return the opaque packed pixel
+    private static int opaqueClippedPixel(int red, int green, int blue) {
+        return 0xFF00_0000 | (red << 16) | (green << 8) | blue;
     }
 
     private static byte rgbToY(byte[] rgb, int offset) {

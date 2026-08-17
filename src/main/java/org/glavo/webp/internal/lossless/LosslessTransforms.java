@@ -89,14 +89,11 @@ public final class LosslessTransforms {
         for (int y = 1; y < height; y++) {
             int rowStart = y * width;
             imageData[rowStart] = Argb.add(imageData[rowStart], imageData[rowStart - width]);
-        }
-
-        for (int y = 1; y < height; y++) {
+            int predictorRowStart = (y >> sizeBits) * blockXSize;
             for (int blockX = 0; blockX < blockXSize; blockX++) {
-                int blockIndex = (y >> sizeBits) * blockXSize + blockX;
-                int predictor = Argb.green(predictorData[blockIndex]);
-                int startIndex = y * width + Math.max(blockX << sizeBits, 1);
-                int endIndex = y * width + Math.min((blockX + 1) << sizeBits, width);
+                int predictor = Argb.green(predictorData[predictorRowStart + blockX]);
+                int startIndex = rowStart + Math.max(blockX << sizeBits, 1);
+                int endIndex = rowStart + Math.min((blockX + 1) << sizeBits, width);
 
                 switch (predictor) {
                     case 0 -> applyPredictorTransform0(imageData, startIndex, endIndex);
@@ -176,22 +173,16 @@ public final class LosslessTransforms {
         int bitsPerEntry = 8 / pixelsPerPackedByte;
         int mask = (1 << bitsPerEntry) - 1;
         int packedImageWidth = (width + pixelsPerPackedByte - 1) / pixelsPerPackedByte;
-        int[] packedIndices = new int[packedImageWidth];
 
         for (int y = height - 1; y >= 0; y--) {
             int packedOffset = y * packedImageWidth;
-            for (int block = 0; block < packedImageWidth; block++) {
-                packedIndices[block] = Argb.green(imageData[packedOffset + block]);
-            }
-
             int outOffset = y * width;
-            for (int block = 0; block < packedImageWidth; block++) {
-                int packed = packedIndices[block];
-                for (int pixel = 0; pixel < pixelsPerPackedByte; pixel++) {
+            // Expanding right-to-left keeps every unread packed entry to the left of each write.
+            for (int block = packedImageWidth - 1; block >= 0; block--) {
+                int packed = Argb.green(imageData[packedOffset + block]);
+                int blockPixelCount = Math.min(pixelsPerPackedByte, width - block * pixelsPerPackedByte);
+                for (int pixel = 0; pixel < blockPixelCount; pixel++) {
                     int x = block * pixelsPerPackedByte + pixel;
-                    if (x >= width) {
-                        break;
-                    }
                     int tableIndex = (packed >> (pixel * bitsPerEntry)) & mask;
                     if (tableIndex < tableSize) {
                         imageData[outOffset + x] = tableData[tableIndex];

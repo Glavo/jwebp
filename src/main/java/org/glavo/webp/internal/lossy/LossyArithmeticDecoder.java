@@ -180,20 +180,22 @@ final class LossyArithmeticDecoder {
             }
         }
 
-        long split = 1L + (((long) range - 1L) * probability >> 8);
-        long bigSplit = split << bitCount;
+        // The normalized range is at most 255, so the product fits in an int.
+        int split = 1 + ((range - 1) * probability >> 8);
+        long bigSplit = (long) split << bitCount;
 
         boolean result;
         if (Long.compareUnsigned(value, bigSplit) >= 0) {
-            range -= (int) split;
+            range -= split;
             value -= bigSplit;
             result = true;
         } else {
-            range = (int) split;
+            range = split;
             result = false;
         }
 
-        int shift = Math.max(0, Integer.numberOfLeadingZeros(range) - 24);
+        // Either branch leaves range in 1 through 255, making the shift 0 through 7.
+        int shift = Integer.numberOfLeadingZeros(range) - 24;
         range <<= shift;
         bitCount -= shift;
         return result;

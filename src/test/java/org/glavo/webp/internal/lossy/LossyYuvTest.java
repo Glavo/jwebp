@@ -15,6 +15,7 @@
  */
 package org.glavo.webp.internal.lossy;
 
+import org.glavo.webp.internal.Argb;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 @NotNullByDefault
 final class LossyYuvTest {
 
+    /// Verifies fancy chroma interpolation against explicitly upsampled planes.
     @Test
     void fancyGridMatchesExplicitUpsampling() {
         byte[] yBuffer = u(
@@ -75,6 +77,62 @@ final class LossyYuvTest {
         assertArrayEquals(expected, rgbBuffer);
     }
 
+    /// Verifies simple ARGB conversion with padded strides, shared chroma rows, and an odd width.
+    @Test
+    void simpleArgbGridHandlesPaddedOddDimensions() {
+        int width = 5;
+        int height = 3;
+        int bufferWidth = 16;
+        int chromaWidth = (width + 1) / 2;
+        int chromaStride = bufferWidth / 2;
+
+        byte[] yBuffer = new byte[bufferWidth * height];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                yBuffer[y * bufferWidth + x] = (byte) (y * 53 + x * 29 + 17);
+            }
+        }
+
+        int chromaHeight = (height + 1) / 2;
+        byte[] uBuffer = new byte[chromaStride * chromaHeight];
+        byte[] vBuffer = new byte[chromaStride * chromaHeight];
+        for (int y = 0; y < chromaHeight; y++) {
+            for (int x = 0; x < chromaWidth; x++) {
+                uBuffer[y * chromaStride + x] = (byte) (y * 71 + x * 37 + 43);
+                vBuffer[y * chromaStride + x] = (byte) (y * 61 + x * 41 + 97);
+            }
+        }
+
+        int[] actual = new int[width * height];
+        LossyYuv.fillArgbBufferSimple(
+                actual,
+                yBuffer,
+                uBuffer,
+                vBuffer,
+                width,
+                chromaWidth,
+                bufferWidth
+        );
+
+        int[] expected = new int[actual.length];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int luma = yBuffer[y * bufferWidth + x] & 0xFF;
+                int chromaIndex = (y >>> 1) * chromaStride + (x >>> 1);
+                int u = uBuffer[chromaIndex] & 0xFF;
+                int v = vBuffer[chromaIndex] & 0xFF;
+                expected[y * width + x] = Argb.opaque(
+                        LossyYuv.yuvToR(luma, v),
+                        LossyYuv.yuvToG(luma, u, v),
+                        LossyYuv.yuvToB(luma, u)
+                );
+            }
+        }
+
+        assertArrayEquals(expected, actual);
+    }
+
+    /// Verifies individual conversion helpers against the upstream fixed-point constants.
     @Test
     void yuvConversionsMatchUpstreamConstants() {
         int y = 203;
@@ -86,6 +144,10 @@ final class LossyYuvTest {
         assertEquals(40, LossyYuv.yuvToB(y, u));
     }
 
+    /// Converts unsigned integer literals to their byte representation.
+    ///
+    /// @param values the unsigned values to convert
+    /// @return the byte representation
     private static byte[] u(int... values) {
         byte[] bytes = new byte[values.length];
         for (int i = 0; i < values.length; i++) {

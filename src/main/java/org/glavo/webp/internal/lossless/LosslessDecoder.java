@@ -18,13 +18,12 @@ package org.glavo.webp.internal.lossless;
 import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import org.glavo.webp.WebPException;
 import org.glavo.webp.internal.Argb;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 /// Pure-Java VP8L decoder.
 ///
@@ -205,11 +204,10 @@ public final class LosslessDecoder {
             huffmanXSize = LosslessTransforms.subsampleSize(xsize, huffmanBits);
             huffmanYSize = LosslessTransforms.subsampleSize(ysize, huffmanBits);
 
-            int[] data = new int[huffmanXSize * huffmanYSize];
-            decodeImageStream(huffmanXSize, huffmanYSize, false, data);
             entropyImage = new int[huffmanXSize * huffmanYSize];
+            decodeImageStream(huffmanXSize, huffmanYSize, false, entropyImage);
             for (int i = 0; i < entropyImage.length; i++) {
-                int metaHuffCode = (Argb.red(data[i]) << 8) | Argb.green(data[i]);
+                int metaHuffCode = (Argb.red(entropyImage[i]) << 8) | Argb.green(entropyImage[i]);
                 if (metaHuffCode >= numHuffGroups) {
                     numHuffGroups = metaHuffCode + 1;
                 }
@@ -217,7 +215,7 @@ public final class LosslessDecoder {
             }
         }
 
-        List<LosslessHuffmanTree[]> groups = new ArrayList<>(numHuffGroups);
+        LosslessHuffmanTree[][] groups = new LosslessHuffmanTree[numHuffGroups][];
         for (int groupIndex = 0; groupIndex < numHuffGroups; groupIndex++) {
             LosslessHuffmanTree[] group = new LosslessHuffmanTree[HUFFMAN_CODES_PER_META_CODE];
             for (int j = 0; j < HUFFMAN_CODES_PER_META_CODE; j++) {
@@ -227,7 +225,7 @@ public final class LosslessDecoder {
                 }
                 group[j] = readHuffmanCode(alphabetSize);
             }
-            groups.add(group);
+            groups[groupIndex] = group;
         }
 
         int huffmanMask = huffmanBits == 0 ? -1 : (1 << huffmanBits) - 1;
@@ -327,7 +325,7 @@ public final class LosslessDecoder {
 
     private void decodeImageData(int width, int height, HuffmanInfo huffmanInfo, int[] data) throws WebPException {
         int numValues = width * height;
-        LosslessHuffmanTree[] tree = huffmanInfo.huffmanCodeGroups.get(huffmanInfo.getHuffIndex(0, 0));
+        LosslessHuffmanTree[] tree = huffmanInfo.huffmanCodeGroups[huffmanInfo.getHuffIndex(0, 0)];
         int index = 0;
         int nextBlockStart = 0;
 
@@ -338,7 +336,7 @@ public final class LosslessDecoder {
                 int x = index % width;
                 int y = index / width;
                 nextBlockStart = Math.min(x | huffmanInfo.mask, width - 1) + y * width + 1;
-                tree = huffmanInfo.huffmanCodeGroups.get(huffmanInfo.getHuffIndex(x, y));
+                tree = huffmanInfo.huffmanCodeGroups[huffmanInfo.getHuffIndex(x, y)];
 
                 boolean allSingle = true;
                 for (int channel = 0; channel < 4; channel++) {
@@ -469,9 +467,11 @@ public final class LosslessDecoder {
         final int[] image;
         final int bits;
         final int mask;
-        final List<LosslessHuffmanTree[]> huffmanCodeGroups;
+        /// Huffman trees indexed first by entropy group and then by channel.
+        final LosslessHuffmanTree @Unmodifiable [] @Unmodifiable [] huffmanCodeGroups;
 
-        private HuffmanInfo(int xsize, @Nullable ColorCache colorCache, int[] image, int bits, int mask, List<LosslessHuffmanTree[]> huffmanCodeGroups) {
+        private HuffmanInfo(int xsize, @Nullable ColorCache colorCache, int[] image, int bits, int mask,
+                            LosslessHuffmanTree @Unmodifiable [] @Unmodifiable [] huffmanCodeGroups) {
             this.xsize = xsize;
             this.colorCache = colorCache;
             this.image = image;

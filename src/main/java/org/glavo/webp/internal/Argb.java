@@ -71,12 +71,10 @@ public final class Argb {
     /// VP8L inverse transforms operate on channels modulo 256, so the packed representation still
     /// needs explicit per-channel addition rather than normal integer addition.
     public static int add(int left, int right) {
-        return pack(
-                alpha(left) + alpha(right),
-                red(left) + red(right),
-                green(left) + green(right),
-                blue(left) + blue(right)
-        );
+        // The unused byte between each selected lane absorbs carries before the final mask.
+        int redBlue = (left & 0x00FF_00FF) + (right & 0x00FF_00FF);
+        int alphaGreen = ((left >>> 8) & 0x00FF_00FF) + ((right >>> 8) & 0x00FF_00FF);
+        return (redBlue & 0x00FF_00FF) | ((alphaGreen & 0x00FF_00FF) << 8);
     }
 
     /// Computes the channel-wise average of two pixels.
