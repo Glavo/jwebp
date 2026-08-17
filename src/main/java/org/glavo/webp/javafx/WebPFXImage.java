@@ -78,7 +78,8 @@ public final class WebPFXImage extends WritableImage {
     /// @throws NullPointerException if `frame` is `null`
     public static WebPFXImage of(WebPFrame frame) {
         Objects.requireNonNull(frame, "frame");
-        return new WebPFXImage(createInitialization(frame, false));
+        PixelBuffer<IntBuffer> pixelBuffer = createPixelBuffer(frame, false);
+        return new WebPFXImage(pixelBuffer);
     }
 
     /// Creates a JavaFX image from fully decoded WebP content.
@@ -104,19 +105,16 @@ public final class WebPFXImage extends WritableImage {
     /// @throws NullPointerException if `image` is `null`
     public static WebPFXImage of(WebPImage image, boolean autoPlay) {
         Objects.requireNonNull(image, "image");
-        return new WebPFXImage(
-                image,
-                autoPlay,
-                createInitialization(image.getFirstFrame(), image.isAnimated())
-        );
+        PixelBuffer<IntBuffer> pixelBuffer = createPixelBuffer(image.getFirstFrame(), image.isAnimated());
+        return new WebPFXImage(image, autoPlay, pixelBuffer);
     }
 
     /// Completes construction of a static image after its pixel buffer has been prepared.
     ///
-    /// @param initialization the prepared JavaFX storage
-    private WebPFXImage(Initialization initialization) {
-        super(initialization.pixelBuffer());
-        this.pixelBuffer = initialization.pixelBuffer();
+    /// @param pixelBuffer the prepared JavaFX storage
+    private WebPFXImage(PixelBuffer<IntBuffer> pixelBuffer) {
+        super(pixelBuffer);
+        this.pixelBuffer = pixelBuffer;
         this.animationBuffer = null;
         this.animationFrames = List.of();
         this.animated = false;
@@ -127,12 +125,12 @@ public final class WebPFXImage extends WritableImage {
     ///
     /// @param image the decoded WebP image
     /// @param autoPlay whether to start animation playback
-    /// @param initialization the prepared JavaFX storage
-    private WebPFXImage(WebPImage image, boolean autoPlay, Initialization initialization) {
-        super(initialization.pixelBuffer());
-        this.pixelBuffer = initialization.pixelBuffer();
-        this.animationBuffer = initialization.animationBuffer();
+    /// @param pixelBuffer the prepared JavaFX storage
+    private WebPFXImage(WebPImage image, boolean autoPlay, PixelBuffer<IntBuffer> pixelBuffer) {
+        super(pixelBuffer);
+        this.pixelBuffer = pixelBuffer;
         this.animated = image.isAnimated();
+        this.animationBuffer = animated ? pixelBuffer.getBuffer() : null;
         this.animationFrames = animated ? image.getFrames() : List.of();
         this.loopCount = image.getLoopCount();
 
@@ -215,27 +213,22 @@ public final class WebPFXImage extends WritableImage {
     ///
     /// @param frame the initially displayed frame
     /// @param mutable whether the returned storage must support animation updates
-    /// @return the JavaFX pixel buffer and optional mutable animation storage
-    private static Initialization createInitialization(WebPFrame frame, boolean mutable) {
+    /// @return the JavaFX pixel buffer
+    private static PixelBuffer<IntBuffer> createPixelBuffer(WebPFrame frame, boolean mutable) {
         IntBuffer buffer;
-        @Nullable IntBuffer animationBuffer = null;
         if (!mutable && frame.getPixelFormat() == WebPPixelFormat.INT_ARGB_PRE) {
             buffer = frame.getPixels();
         } else {
             buffer = allocateBuffer(frame);
             copyAsArgbPre(frame, buffer);
-            if (mutable) {
-                animationBuffer = buffer;
-            }
         }
 
-        PixelBuffer<IntBuffer> pixelBuffer = new PixelBuffer<>(
+        return new PixelBuffer<>(
                 frame.getWidth(),
                 frame.getHeight(),
                 buffer,
                 PixelFormat.getIntArgbPreInstance()
         );
-        return new Initialization(pixelBuffer, animationBuffer);
     }
 
     /// Allocates writable JavaFX presentation storage matching the frame's storage location.
@@ -271,14 +264,4 @@ public final class WebPFXImage extends WritableImage {
         target.rewind();
     }
 
-    /// Prepared JavaFX storage used to select the `WritableImage` superclass constructor.
-    ///
-    /// @param pixelBuffer the JavaFX pixel buffer
-    /// @param animationBuffer writable storage for animation updates, or `null` for a static image
-    @NotNullByDefault
-    private record Initialization(
-            PixelBuffer<IntBuffer> pixelBuffer,
-            @Nullable IntBuffer animationBuffer
-    ) {
-    }
 }
