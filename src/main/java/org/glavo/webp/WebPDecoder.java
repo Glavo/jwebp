@@ -27,34 +27,33 @@ import java.util.Objects;
 /// Instances are safe to reuse concurrently. Each call to [#open(InputStream)] or [#open(Path)]
 /// creates an independent stateful [WebPImageReader]. Configuration methods return a new decoder
 /// and never change the receiver.
+///
+/// The direct setting applies only to buffers retained by returned [WebPFrame] instances. Decoder
+/// workspaces and animation compositing buffers may still use heap memory. Direct allocations are
+/// subject to the JVM's direct-memory limit and may remain allocated until their frame and all
+/// derived buffer views become unreachable.
 @NotNullByDefault
 public final class WebPDecoder {
-
-    /// Minimum decoded frame size at which the automatic policy currently selects direct storage.
-    ///
-    /// The threshold is intentionally private because [WebPFrameStorage#AUTO] does not guarantee a
-    /// particular selection algorithm.
-    private static final long AUTO_DIRECT_THRESHOLD_BYTES = 4L * 1024L * 1024L;
 
     /// The default decoder, which produces heap-backed non-premultiplied `INT_ARGB` frames.
     public static final WebPDecoder DEFAULT = new WebPDecoder(
             WebPPixelFormat.INT_ARGB,
-            WebPFrameStorage.HEAP
+            false
     );
 
     /// Pixel representation requested for decoded frames.
     private final WebPPixelFormat pixelFormat;
 
-    /// Storage policy requested for decoded frames.
-    private final WebPFrameStorage frameStorage;
+    /// Whether decoded frames use direct buffers by default.
+    private final boolean direct;
 
     /// Creates an immutable decoder configuration.
     ///
     /// @param pixelFormat the decoded frame pixel format
-    /// @param frameStorage the decoded frame storage policy
-    private WebPDecoder(WebPPixelFormat pixelFormat, WebPFrameStorage frameStorage) {
+    /// @param direct whether decoded frames use direct buffers by default
+    private WebPDecoder(WebPPixelFormat pixelFormat, boolean direct) {
         this.pixelFormat = pixelFormat;
-        this.frameStorage = frameStorage;
+        this.direct = direct;
     }
 
     /// Returns the requested decoded frame pixel format.
@@ -64,11 +63,14 @@ public final class WebPDecoder {
         return pixelFormat;
     }
 
-    /// Returns the requested decoded frame storage policy.
+    /// Returns whether decoded frames use direct buffers by default.
     ///
-    /// @return the frame storage policy
-    public WebPFrameStorage getFrameStorage() {
-        return frameStorage;
+    /// A [WebPImageReader] may override this value for an individual frame through
+    /// [WebPImageReader#readNextFrame(boolean)].
+    ///
+    /// @return `true` if the default output is direct
+    public boolean isDirect() {
+        return direct;
     }
 
     /// Returns a decoder that produces frames in the supplied pixel format.
@@ -78,17 +80,15 @@ public final class WebPDecoder {
     /// @throws NullPointerException if `pixelFormat` is `null`
     public WebPDecoder withPixelFormat(WebPPixelFormat pixelFormat) {
         Objects.requireNonNull(pixelFormat, "pixelFormat");
-        return this.pixelFormat == pixelFormat ? this : new WebPDecoder(pixelFormat, frameStorage);
+        return this.pixelFormat == pixelFormat ? this : new WebPDecoder(pixelFormat, direct);
     }
 
-    /// Returns a decoder that uses the supplied frame storage policy.
+    /// Returns a decoder that uses heap or direct frame buffers by default.
     ///
-    /// @param frameStorage the requested storage policy
-    /// @return this decoder if the policy is unchanged; otherwise an independently reusable decoder
-    /// @throws NullPointerException if `frameStorage` is `null`
-    public WebPDecoder withFrameStorage(WebPFrameStorage frameStorage) {
-        Objects.requireNonNull(frameStorage, "frameStorage");
-        return this.frameStorage == frameStorage ? this : new WebPDecoder(pixelFormat, frameStorage);
+    /// @param direct `true` for direct buffers, or `false` for heap buffers
+    /// @return this decoder if the default is unchanged; otherwise an independently reusable decoder
+    public WebPDecoder withDirect(boolean direct) {
+        return this.direct == direct ? this : new WebPDecoder(pixelFormat, direct);
     }
 
     /// Opens a forward-only reader for a WebP stream.
@@ -162,31 +162,36 @@ public final class WebPDecoder {
     /// @param durationMillis the frame presentation duration
     /// @param argbPixels the source non-premultiplied pixels
     /// @param copyArgb whether heap output must copy rather than take ownership
-    /// @return a frame using this decoder's resolved pixel format and storage
+    /// @return a frame using this decoder's pixel format and default buffer location
     WebPFrame createFrame(int width, int height, int durationMillis, int[] argbPixels, boolean copyArgb) {
-        WebPFrameStorage resolvedStorage = resolveFrameStorage(argbPixels.length);
+        return createFrame(width, height, durationMillis, argbPixels, direct, copyArgb);
+    }
+
+    /// Creates a decoded frame with an explicit buffer-location override.
+    ///
+    /// @param width the frame width
+    /// @param height the frame height
+    /// @param durationMillis the frame presentation duration
+    /// @param argbPixels the source non-premultiplied pixels
+    /// @param direct whether the returned frame uses a direct buffer
+    /// @param copyArgb whether heap output must copy rather than take ownership
+    /// @return a frame using this decoder's pixel format and the requested buffer location
+    WebPFrame createFrame(
+            int width,
+            int height,
+            int durationMillis,
+            int[] argbPixels,
+            boolean direct,
+            boolean copyArgb
+    ) {
         return new WebPFrame(
                 width,
                 height,
                 durationMillis,
                 argbPixels,
                 pixelFormat,
-                resolvedStorage,
+                direct,
                 copyArgb
         );
-    }
-
-    /// Resolves the configured storage policy for one decoded frame.
-    ///
-    /// @param pixelCount the number of pixels retained by the frame
-    /// @return either [WebPFrameStorage#HEAP] or [WebPFrameStorage#DIRECT]
-    private WebPFrameStorage resolveFrameStorage(int pixelCount) {
-        if (frameStorage != WebPFrameStorage.AUTO) {
-            return frameStorage;
-        }
-        long byteCount = (long) pixelCount * Integer.BYTES;
-        return byteCount >= AUTO_DIRECT_THRESHOLD_BYTES
-                ? WebPFrameStorage.DIRECT
-                : WebPFrameStorage.HEAP;
     }
 }

@@ -6,8 +6,8 @@
 
 - New API: `WebPFrame#getArgb(int, int)`
 - New API: `WebPSwingUtils`
-- New immutable `WebPDecoder` API for configuring decoded pixel format and frame storage
-- Heap-backed, direct, and automatically selected frame storage for `INT_ARGB` and `INT_ARGB_PRE` pixels
+- New immutable `WebPDecoder` API for configuring decoded pixel format and the default frame buffer location
+- Heap-backed and direct frame buffers for `INT_ARGB` and `INT_ARGB_PRE` pixels, with per-frame overrides during streaming decode
 
 ### Changed
 

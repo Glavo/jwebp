@@ -71,7 +71,7 @@ final class WebPFXImageTest {
     void javaFxImageUsesPremultipliedDirectFrameThroughPixelBuffer() throws Exception {
         WebPDecoder decoder = WebPDecoder.DEFAULT
                 .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-                .withFrameStorage(WebPFrameStorage.DIRECT);
+                .withDirect(true);
         WebPFrame frame = decoder.read(resource("images/regression-tiny.webp")).getFirstFrame();
 
         assertTrue(frame.getPixels().isDirect());

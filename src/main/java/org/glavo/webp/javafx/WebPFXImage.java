@@ -23,7 +23,6 @@ import javafx.scene.image.PixelFormat;
 import javafx.scene.image.WritableImage;
 import javafx.util.Duration;
 import org.glavo.webp.WebPFrame;
-import org.glavo.webp.WebPFrameStorage;
 import org.glavo.webp.WebPImage;
 import org.glavo.webp.WebPPixelFormat;
 import org.glavo.webp.internal.Argb;
@@ -228,7 +227,7 @@ public final class WebPFXImage extends WritableImage {
     /// @return a position-zero writable buffer
     private static IntBuffer allocateBuffer(WebPFrame frame) {
         int pixelCount = Math.multiplyExact(frame.getWidth(), frame.getHeight());
-        if (frame.getFrameStorage() == WebPFrameStorage.DIRECT) {
+        if (frame.getPixels().isDirect()) {
             return ByteBuffer.allocateDirect(Math.multiplyExact(pixelCount, Integer.BYTES))
                     .order(ByteOrder.nativeOrder())
                     .asIntBuffer();

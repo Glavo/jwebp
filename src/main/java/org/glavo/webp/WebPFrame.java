@@ -47,9 +47,6 @@ public final class WebPFrame {
     /// Pixel representation used by [#pixels].
     private final WebPPixelFormat pixelFormat;
 
-    /// Resolved storage location used by [#pixels].
-    private final WebPFrameStorage frameStorage;
-
     /// Read-only, position-zero view of the frame's tightly packed pixels.
     private final @UnmodifiableView IntBuffer pixels;
 
@@ -66,7 +63,7 @@ public final class WebPFrame {
                 durationMillis,
                 argbPixels,
                 WebPPixelFormat.INT_ARGB,
-                WebPFrameStorage.HEAP,
+                false,
                 false
         );
     }
@@ -81,21 +78,20 @@ public final class WebPFrame {
     /// @param durationMillis the display duration in milliseconds, or `0` for a still image
     /// @param argbPixels tightly packed non-premultiplied `ARGB` source pixels
     /// @param pixelFormat the requested stored pixel representation
-    /// @param frameStorage the resolved storage location; [WebPFrameStorage#AUTO] is not permitted
+    /// @param direct whether to store the pixels in a direct buffer
     /// @param copyArgb whether heap output must copy the source array before conversion
-    /// @throws IllegalArgumentException if dimensions, duration, source length, or storage are invalid
+    /// @throws IllegalArgumentException if dimensions, duration, or source length are invalid
     WebPFrame(
             int width,
             int height,
             int durationMillis,
             int[] argbPixels,
             WebPPixelFormat pixelFormat,
-            WebPFrameStorage frameStorage,
+            boolean direct,
             boolean copyArgb
     ) {
         Objects.requireNonNull(argbPixels, "argbPixels");
         Objects.requireNonNull(pixelFormat, "pixelFormat");
-        Objects.requireNonNull(frameStorage, "frameStorage");
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException("Frame dimensions must be positive: " + width + "x" + height);
         }
@@ -114,17 +110,12 @@ public final class WebPFrame {
                             + argbPixels.length + " != " + pixelCount
             );
         }
-        if (frameStorage == WebPFrameStorage.AUTO) {
-            throw new IllegalArgumentException("Frame storage must be resolved before construction");
-        }
-
         this.width = width;
         this.height = height;
         this.scanlineStride = width;
         this.durationMillis = durationMillis;
         this.pixelFormat = pixelFormat;
-        this.frameStorage = frameStorage;
-        this.pixels = createPixels(argbPixels, pixelFormat, frameStorage, copyArgb);
+        this.pixels = createPixels(argbPixels, pixelFormat, direct, copyArgb);
     }
 
     /// Returns the frame width.
@@ -162,16 +153,6 @@ public final class WebPFrame {
     /// @return the pixel format
     public WebPPixelFormat getPixelFormat() {
         return pixelFormat;
-    }
-
-    /// Returns the resolved storage location used by the pixel buffer.
-    ///
-    /// The result is always [WebPFrameStorage#HEAP] or [WebPFrameStorage#DIRECT], even when the
-    /// decoder was configured with [WebPFrameStorage#AUTO].
-    ///
-    /// @return the resolved frame storage
-    public WebPFrameStorage getFrameStorage() {
-        return frameStorage;
     }
 
     /// Returns the non-premultiplied `ARGB` pixel at the supplied coordinates.
@@ -237,16 +218,16 @@ public final class WebPFrame {
     ///
     /// @param argbPixels the source non-premultiplied pixels
     /// @param pixelFormat the destination representation
-    /// @param frameStorage the resolved destination storage
+    /// @param direct whether to allocate direct destination storage
     /// @param copyArgb whether heap output must copy its source before conversion
     /// @return a read-only, position-zero buffer
     private static @UnmodifiableView IntBuffer createPixels(
             int[] argbPixels,
             WebPPixelFormat pixelFormat,
-            WebPFrameStorage frameStorage,
+            boolean direct,
             boolean copyArgb
     ) {
-        if (frameStorage == WebPFrameStorage.HEAP) {
+        if (!direct) {
             int[] output = copyArgb ? argbPixels.clone() : argbPixels;
             if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
                 for (int index = 0; index < argbPixels.length; index++) {

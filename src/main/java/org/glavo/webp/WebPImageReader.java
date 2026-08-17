@@ -258,12 +258,25 @@ public final class WebPImageReader implements AutoCloseable {
 
     /// Decodes the next frame, if available.
     ///
-    /// Each returned animation frame is already composited to the full source canvas. The frame's
-    /// pixel format and storage are determined by the [WebPDecoder] that created this reader.
+    /// Each returned animation frame is already composited to the full source canvas. Its pixel
+    /// format and buffer location use the defaults of the [WebPDecoder] that created this reader.
     ///
     /// @return the next frame, or `null` when the stream is exhausted
     /// @throws WebPException if decoding fails
     public @Nullable WebPFrame readNextFrame() throws WebPException {
+        return readNextFrame(decoder.isDirect());
+    }
+
+    /// Decodes the next frame with an explicit buffer-location override.
+    ///
+    /// The `direct` argument applies only to the frame returned by this invocation. It does not
+    /// modify the default used by later calls to [#readNextFrame()]. The pixel format remains the
+    /// format configured by the [WebPDecoder] that created this reader.
+    ///
+    /// @param direct `true` to return a direct pixel buffer, or `false` for a heap buffer
+    /// @return the next frame, or `null` when the stream is exhausted
+    /// @throws WebPException if decoding fails
+    public @Nullable WebPFrame readNextFrame(boolean direct) throws WebPException {
         ensureOpen();
         if (nextFrameIndex >= image.frames().size()) {
             return null;
@@ -279,6 +292,7 @@ public final class WebPImageReader implements AutoCloseable {
                     image.sourceHeight(),
                     descriptor.durationMillis(),
                     animationCanvas,
+                    direct,
                     true
             );
         }
@@ -287,6 +301,7 @@ public final class WebPImageReader implements AutoCloseable {
                 descriptor.height(),
                 descriptor.durationMillis(),
                 frameArgb,
+                direct,
                 false
         );
     }

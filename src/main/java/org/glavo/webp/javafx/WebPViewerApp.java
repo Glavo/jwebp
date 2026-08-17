@@ -36,7 +36,6 @@ import javafx.scene.layout.StackPane;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.glavo.webp.WebPDecoder;
-import org.glavo.webp.WebPFrameStorage;
 import org.glavo.webp.WebPImage;
 import org.glavo.webp.WebPPixelFormat;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -60,7 +59,7 @@ public final class WebPViewerApp extends Application {
     /// Decoder optimized for JavaFX's premultiplied `PixelBuffer` representation.
     private static final WebPDecoder DECODER = WebPDecoder.DEFAULT
             .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-            .withFrameStorage(WebPFrameStorage.AUTO);
+            .withDirect(true);
 
     private final ImageView imageView = new ImageView();
     private final Label statusLabel = new Label("Open or drop a WebP file to start.");

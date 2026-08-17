@@ -58,13 +58,13 @@ System.out.println("frames = " + image.getFrames().size());
 System.out.println("pixels = " + image.getFirstFrame().getArgbPixels());
 ```
 
-Use an immutable decoder configuration when a different pixel representation or storage policy is
+Use an immutable decoder configuration when a different pixel representation or buffer location is
 needed:
 
 ```java
 WebPDecoder decoder = WebPDecoder.DEFAULT
         .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-        .withFrameStorage(WebPFrameStorage.AUTO);
+        .withDirect(true);
 
 WebPImage image = decoder.read(Path.of("sample.webp"));
 ```
@@ -84,6 +84,9 @@ try (InputStream input = Files.newInputStream(Path.of("/animated.webp"));
 }
 ```
 
+`readNextFrame(boolean direct)` can override the `WebPDecoder` default buffer location for one frame
+without changing the default used by later calls.
+
 ### JavaFX Integration
 
 JWebP's core part only depends on the `java.base` module, which can work normally on the Android platform.
@@ -94,7 +97,7 @@ which can easily convert `WebPImage` to JavaFX `Image`:
 ```java
 WebPDecoder fxDecoder = WebPDecoder.DEFAULT
         .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-        .withFrameStorage(WebPFrameStorage.AUTO);
+        .withDirect(true);
 
 // Create a JavaFX image from a WebPImage.
 // If it is an animated WebP, it will automatically play the animation.

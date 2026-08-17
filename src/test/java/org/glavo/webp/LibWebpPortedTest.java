@@ -84,7 +84,7 @@ final class LibWebpPortedTest {
 
             WebPDecoder decoder = WebPDecoder.DEFAULT
                     .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-                    .withFrameStorage(WebPFrameStorage.DIRECT);
+                    .withDirect(true);
 
             Image firstFrameImage = new WebPFXImage(
                     decoder.read(new ByteArrayInputStream(bytes)).getFirstFrame()
@@ -114,10 +114,10 @@ final class LibWebpPortedTest {
         for (WebPDecoder decoder : List.of(
                 WebPDecoder.DEFAULT,
                 WebPDecoder.DEFAULT.withPixelFormat(WebPPixelFormat.INT_ARGB_PRE),
-                WebPDecoder.DEFAULT.withFrameStorage(WebPFrameStorage.DIRECT),
+                WebPDecoder.DEFAULT.withDirect(true),
                 WebPDecoder.DEFAULT
                         .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-                        .withFrameStorage(WebPFrameStorage.DIRECT)
+                        .withDirect(true)
         )) {
             WebPImage eager = decoder.read(new ByteArrayInputStream(bytes));
             WebPImage streaming = decoder.read(new ChunkedInputStream(bytes, 5));
@@ -190,7 +190,7 @@ final class LibWebpPortedTest {
     private static void assertOnlyExpectedDecodeFailure(byte[] data) {
         WebPDecoder decoder = WebPDecoder.DEFAULT
                 .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-                .withFrameStorage(WebPFrameStorage.DIRECT);
+                .withDirect(true);
 
         assertOnlyWebPException(() -> WebPImage.read(new ByteArrayInputStream(data)));
         assertOnlyWebPException(() -> decoder.read(new ChunkedInputStream(data, 3)));

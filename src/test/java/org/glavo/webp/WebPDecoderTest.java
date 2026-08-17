@@ -39,19 +39,19 @@ final class WebPDecoderTest {
     void withMethodsCreateImmutableConfigurations() {
         WebPDecoder defaults = WebPDecoder.DEFAULT;
         WebPDecoder premultiplied = defaults.withPixelFormat(WebPPixelFormat.INT_ARGB_PRE);
-        WebPDecoder direct = premultiplied.withFrameStorage(WebPFrameStorage.DIRECT);
+        WebPDecoder direct = premultiplied.withDirect(true);
 
         assertSame(defaults, defaults.withPixelFormat(WebPPixelFormat.INT_ARGB));
-        assertSame(defaults, defaults.withFrameStorage(WebPFrameStorage.HEAP));
+        assertSame(defaults, defaults.withDirect(false));
         assertNotSame(defaults, premultiplied);
         assertNotSame(premultiplied, direct);
 
         assertEquals(WebPPixelFormat.INT_ARGB, defaults.getPixelFormat());
-        assertEquals(WebPFrameStorage.HEAP, defaults.getFrameStorage());
+        assertFalse(defaults.isDirect());
         assertEquals(WebPPixelFormat.INT_ARGB_PRE, premultiplied.getPixelFormat());
-        assertEquals(WebPFrameStorage.HEAP, premultiplied.getFrameStorage());
+        assertFalse(premultiplied.isDirect());
         assertEquals(WebPPixelFormat.INT_ARGB_PRE, direct.getPixelFormat());
-        assertEquals(WebPFrameStorage.DIRECT, direct.getFrameStorage());
+        assertTrue(direct.isDirect());
     }
 
     /// Verifies every explicit format and storage combination without involving codec tolerances.
@@ -65,18 +65,14 @@ final class WebPDecoderTest {
         };
 
         for (WebPPixelFormat pixelFormat : WebPPixelFormat.values()) {
-            for (WebPFrameStorage frameStorage : new WebPFrameStorage[]{
-                    WebPFrameStorage.HEAP,
-                    WebPFrameStorage.DIRECT
-            }) {
+            for (boolean direct : new boolean[]{false, true}) {
                 WebPDecoder decoder = WebPDecoder.DEFAULT
                         .withPixelFormat(pixelFormat)
-                        .withFrameStorage(frameStorage);
+                        .withDirect(direct);
                 WebPFrame frame = decoder.createFrame(2, 2, 17, argb, true);
 
                 assertEquals(pixelFormat, frame.getPixelFormat());
-                assertEquals(frameStorage, frame.getFrameStorage());
-                assertEquals(frameStorage == WebPFrameStorage.DIRECT, frame.getPixels().isDirect());
+                assertEquals(direct, frame.getPixels().isDirect());
                 assertTrue(frame.getPixels().isReadOnly());
                 assertEquals(0, frame.getPixels().position());
                 assertEquals(argb.length, frame.getPixels().remaining());
@@ -100,18 +96,31 @@ final class WebPDecoderTest {
         }
     }
 
-    /// Verifies that automatic storage is resolved only after the frame dimensions are known.
+    /// Verifies that a per-frame override does not modify the reader's default buffer location.
     @Test
-    void automaticStorageUsesResolvedFrameSize() {
-        WebPDecoder decoder = WebPDecoder.DEFAULT.withFrameStorage(WebPFrameStorage.AUTO);
+    void readerCanOverrideDirectForOneFrame() throws Exception {
+        WebPDecoder decoder = WebPDecoder.DEFAULT.withPixelFormat(WebPPixelFormat.INT_ARGB_PRE);
+        WebPImage expected = decoder.read(resource("images/animated-random_lossless.webp"));
 
-        WebPFrame small = decoder.createFrame(1, 1, 0, new int[1], false);
-        WebPFrame large = decoder.createFrame(1024, 1024, 0, new int[1024 * 1024], false);
+        try (WebPImageReader reader = decoder.open(resource("images/animated-random_lossless.webp"))) {
+            WebPFrame first = reader.readNextFrame(true);
+            WebPFrame second = reader.readNextFrame(false);
+            WebPFrame third = reader.readNextFrame();
 
-        assertEquals(WebPFrameStorage.HEAP, small.getFrameStorage());
-        assertEquals(WebPFrameStorage.DIRECT, large.getFrameStorage());
-        assertFalse(small.getPixels().isDirect());
-        assertTrue(large.getPixels().isDirect());
+            assertNotNull(first);
+            assertNotNull(second);
+            assertNotNull(third);
+            assertTrue(first.getPixels().isDirect());
+            assertFalse(second.getPixels().isDirect());
+            assertFalse(third.getPixels().isDirect());
+            assertEquals(WebPPixelFormat.INT_ARGB_PRE, first.getPixelFormat());
+            assertEquals(WebPPixelFormat.INT_ARGB_PRE, second.getPixelFormat());
+            assertEquals(WebPPixelFormat.INT_ARGB_PRE, third.getPixelFormat());
+            assertArrayEquals(expected.getFrames().get(0).getArgbArray(), first.getArgbArray());
+            assertArrayEquals(expected.getFrames().get(1).getArgbArray(), second.getArgbArray());
+            assertArrayEquals(expected.getFrames().get(2).getArgbArray(), third.getArgbArray());
+            assertTrue(reader.isComplete());
+        }
     }
 
     /// Verifies that configured eager and streaming entry points carry output settings to frames.
@@ -119,19 +128,17 @@ final class WebPDecoderTest {
     void configuredEntryPointsProduceConfiguredFrames() throws Exception {
         WebPDecoder decoder = WebPDecoder.DEFAULT
                 .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-                .withFrameStorage(WebPFrameStorage.DIRECT);
+                .withDirect(true);
 
         WebPImage image = decoder.read(resource("images/gallery2-1_webp_a.webp"));
         WebPFrame eagerFrame = image.getFirstFrame();
         assertEquals(WebPPixelFormat.INT_ARGB_PRE, eagerFrame.getPixelFormat());
-        assertEquals(WebPFrameStorage.DIRECT, eagerFrame.getFrameStorage());
         assertTrue(eagerFrame.getPixels().isDirect());
 
         try (WebPImageReader reader = decoder.open(resource("images/gallery2-1_webp_a.webp"))) {
             WebPFrame streamedFrame = reader.readNextFrame();
             assertNotNull(streamedFrame);
             assertEquals(WebPPixelFormat.INT_ARGB_PRE, streamedFrame.getPixelFormat());
-            assertEquals(WebPFrameStorage.DIRECT, streamedFrame.getFrameStorage());
             assertArrayEquals(eagerFrame.getArgbArray(), streamedFrame.getArgbArray());
             assertEquals(1, reader.getFrameCount());
             assertTrue(reader.isComplete());
