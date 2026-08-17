@@ -34,6 +34,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.List;
+import java.util.Objects;
 
 /// JavaFX image adapter for decoded WebP content.
 ///
@@ -44,6 +45,8 @@ import java.util.List;
 ///
 /// Because the superclass is constructed from a `PixelBuffer`, the inherited
 /// [#getPixelWriter()] operation is unsupported.
+///
+/// Use [#of(WebPFrame)] or [#of(WebPImage)] to create an instance.
 @NotNullByDefault
 public final class WebPFXImage extends WritableImage {
 
@@ -71,8 +74,41 @@ public final class WebPFXImage extends WritableImage {
     /// Creates a JavaFX image from one decoded frame.
     ///
     /// @param frame the decoded frame to display
-    public WebPFXImage(WebPFrame frame) {
-        this(createInitialization(frame, false));
+    /// @return the JavaFX image
+    /// @throws NullPointerException if `frame` is `null`
+    public static WebPFXImage of(WebPFrame frame) {
+        Objects.requireNonNull(frame, "frame");
+        return new WebPFXImage(createInitialization(frame, false));
+    }
+
+    /// Creates a JavaFX image from fully decoded WebP content.
+    ///
+    /// The first frame is visible immediately, and animated content starts playing automatically.
+    /// Call [#getAnimation()] to control playback.
+    ///
+    /// @param image the decoded WebP image
+    /// @return the JavaFX image
+    /// @throws NullPointerException if `image` is `null`
+    public static WebPFXImage of(WebPImage image) {
+        return of(image, true);
+    }
+
+    /// Creates a JavaFX image from fully decoded WebP content.
+    ///
+    /// The first frame is visible immediately. Animated content starts playing when `autoPlay` is
+    /// `true`; otherwise its timeline remains stopped until started through [#getAnimation()].
+    ///
+    /// @param image the decoded WebP image
+    /// @param autoPlay whether to start playing the animation automatically
+    /// @return the JavaFX image
+    /// @throws NullPointerException if `image` is `null`
+    public static WebPFXImage of(WebPImage image, boolean autoPlay) {
+        Objects.requireNonNull(image, "image");
+        return new WebPFXImage(
+                image,
+                autoPlay,
+                createInitialization(image.getFirstFrame(), image.isAnimated())
+        );
     }
 
     /// Completes construction of a static image after its pixel buffer has been prepared.
@@ -85,25 +121,6 @@ public final class WebPFXImage extends WritableImage {
         this.animationFrames = List.of();
         this.animated = false;
         this.loopCount = 1;
-    }
-
-    /// Creates a JavaFX image from fully decoded WebP content.
-    ///
-    /// The first frame is visible immediately. Call [#getAnimation()] to control playback.
-    ///
-    /// @param image the decoded WebP image
-    public WebPFXImage(WebPImage image) {
-        this(image, true);
-    }
-
-    /// Creates a JavaFX image from fully decoded WebP content.
-    ///
-    /// The first frame is visible immediately. Call [#getAnimation()] to control playback.
-    ///
-    /// @param image the decoded WebP image
-    /// @param autoPlay whether to start playing the animation automatically
-    public WebPFXImage(WebPImage image, boolean autoPlay) {
-        this(image, autoPlay, createInitialization(image.getFirstFrame(), image.isAnimated()));
     }
 
     /// Completes construction of a decoded image after its pixel buffer has been prepared.

@@ -91,7 +91,7 @@ public class StaticImageBenchmark {
 
     @Benchmark
     public Image jwebpLossyToJavaFX(BenchmarkImages images) throws Exception {
-        return new WebPFXImage(WebPImage.read(new ByteArrayInputStream(images.lossyWebp)), false);
+        return WebPFXImage.of(WebPImage.read(new ByteArrayInputStream(images.lossyWebp)), false);
     }
 
     @Benchmark
@@ -111,7 +111,7 @@ public class StaticImageBenchmark {
 
     @Benchmark
     public Image jwebpLosslessToJavaFX(BenchmarkImages images) throws Exception {
-        return new WebPFXImage(WebPImage.read(new ByteArrayInputStream(images.losslessWebp)), false);
+        return WebPFXImage.of(WebPImage.read(new ByteArrayInputStream(images.losslessWebp)), false);
     }
 
     @Benchmark

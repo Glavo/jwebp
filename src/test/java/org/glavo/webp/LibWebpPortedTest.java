@@ -86,7 +86,7 @@ final class LibWebpPortedTest {
                     .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
                     .withDirect(true);
 
-            Image firstFrameImage = new WebPFXImage(
+            Image firstFrameImage = WebPFXImage.of(
                     decoder.read(new ByteArrayInputStream(bytes)).getFirstFrame()
             );
             assertTrue(firstFrameImage.getWidth() > 0, resource);
@@ -194,7 +194,7 @@ final class LibWebpPortedTest {
 
         assertOnlyWebPException(() -> WebPImage.read(new ByteArrayInputStream(data)));
         assertOnlyWebPException(() -> decoder.read(new ChunkedInputStream(data, 3)));
-        assertOnlyWebPException(() -> new WebPFXImage(
+        assertOnlyWebPException(() -> WebPFXImage.of(
                 decoder.read(new ByteArrayInputStream(data)).getFirstFrame()
         ));
         assertOnlyWebPException(() -> {

@@ -46,6 +46,14 @@ final class WebPFXImageTest {
     private static final int GREEN = 0xFF00FF00;
     private static final int BLUE = 0xFF0000FF;
 
+    /// Verifies that every public factory rejects a null decoded source.
+    @Test
+    void factoryMethodsRejectNullSources() {
+        assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPFrame) null));
+        assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPImage) null));
+        assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPImage) null, false));
+    }
+
     @BeforeAll
     static void initializeJavaFx() throws Exception {
         CompletableFuture<Void> startup = new CompletableFuture<>();
@@ -61,7 +69,7 @@ final class WebPFXImageTest {
     void javaFxImageFromDecodedStaticImageMatchesPixels() throws Exception {
         WebPImage decoded = WebPImage.read(resource("images/regression-tiny.webp"));
 
-        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(decoded));
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(decoded));
 
         assertNull(callOnFxThread(image::getAnimation));
         assertJavaFxImageEquals(image, "reference/regression-tiny.png");
@@ -75,7 +83,7 @@ final class WebPFXImageTest {
         WebPFrame frame = decoder.read(resource("images/regression-tiny.webp")).getFirstFrame();
 
         assertTrue(frame.getPixels().isDirect());
-        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(frame));
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(frame));
 
         assertThrows(UnsupportedOperationException.class, image::getPixelWriter);
         assertJavaFxImageEquals(image, "reference/regression-tiny.png");
@@ -85,7 +93,7 @@ final class WebPFXImageTest {
     void javaFxImageFromDecodedImageStartsPausedOnFirstFrame() throws Exception {
         WebPImage decoded = animatedImage(0, frame(RED, 40), frame(GREEN, 40), frame(BLUE, 40));
 
-        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(decoded));
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(decoded));
         Animation animation = callOnFxThread(() -> {
             Animation value = image.getAnimation();
             assertNotNull(value);
@@ -100,7 +108,7 @@ final class WebPFXImageTest {
     void javaFxImageFromDecodedAnimatedImageMatchesFirstFrame() throws Exception {
         WebPImage decoded = WebPImage.read(resource("images/animated-random_lossless.webp"));
 
-        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(decoded, false));
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(decoded, false));
         Animation animation = callOnFxThread(() -> {
             Animation value = image.getAnimation();
             assertNotNull(value);
@@ -113,7 +121,7 @@ final class WebPFXImageTest {
 
     @Test
     void animatedImageCreatesTimelineLazilyAndReusesIt() throws Exception {
-        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(
                 animatedImage(0, frame(RED, 40), frame(GREEN, 40))
         ));
 
@@ -133,7 +141,7 @@ final class WebPFXImageTest {
 
     @Test
     void timelinePlayPauseAndStopControlAnimation() throws Exception {
-        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(
                 animatedImage(0, frame(RED, 40), frame(GREEN, 40))
         ));
         Animation animation = callOnFxThread(() -> {
@@ -167,7 +175,7 @@ final class WebPFXImageTest {
 
     @Test
     void timelinePlayFromStartRestartsFromFirstFrame() throws Exception {
-        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(
                 animatedImage(0, frame(RED, 40), frame(GREEN, 40), frame(BLUE, 40))
         ));
         Animation animation = callOnFxThread(() -> {
@@ -195,7 +203,7 @@ final class WebPFXImageTest {
 
     @Test
     void timelineRespectsFiniteLoopCount() throws Exception {
-        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(
                 animatedImage(1, frame(RED, 40), frame(GREEN, 40))
         ));
         Animation animation = callOnFxThread(() -> {
@@ -215,7 +223,7 @@ final class WebPFXImageTest {
 
     @Test
     void timelineRateControlsPlaybackSpeed() throws Exception {
-        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(
                 animatedImage(0, frame(RED, 240), frame(GREEN, 240))
         ));
         Animation animation = callOnFxThread(() -> {
@@ -236,7 +244,7 @@ final class WebPFXImageTest {
 
     @Test
     void staticImageDoesNotExposeAnimation() throws Exception {
-        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(frame(RED, 0)));
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(frame(RED, 0)));
         assertNull(callOnFxThread(image::getAnimation));
         assertEquals(RED, callOnFxThread(() -> image.getPixelReader().getArgb(0, 0)));
     }

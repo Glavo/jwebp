@@ -176,7 +176,7 @@ final class WebPImageTest {
     @Test
     void javaFxImageFromFrameProducesImage() throws Exception {
         WebPFrame frame = WebPImage.read(resource("images/gallery2-1_webp_ll.webp")).getFrames().get(0);
-        var image = new WebPFXImage(frame);
+        var image = WebPFXImage.of(frame);
         assertTrue(image.getWidth() > 0);
         assertTrue(image.getHeight() > 0);
     }
@@ -184,7 +184,7 @@ final class WebPImageTest {
     @Test
     void javaFxImageFromFrameMatchesDecodedFrame() throws Exception {
         WebPFrame frame = WebPImage.read(resource("images/gallery2-1_webp_ll.webp")).getFrames().get(0);
-        Image image = new WebPFXImage(frame);
+        Image image = WebPFXImage.of(frame);
         PixelReader reader = image.getPixelReader();
         assertNotNull(reader);
 
@@ -206,7 +206,7 @@ final class WebPImageTest {
     @Test
     void javaFxImageFromFrameRoundTripsArgbPixels() throws Exception {
         WebPFrame frame = WebPImage.read(resource("images/gallery2-1_webp_a.webp")).getFrames().get(0);
-        var image = new WebPFXImage(frame);
+        var image = WebPFXImage.of(frame);
         var reader = image.getPixelReader();
         assertNotNull(reader);
 

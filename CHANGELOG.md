@@ -5,6 +5,7 @@
 ### Breaking Changes
 
 - Remove `WebPImageLoadOptions`, the scale-aware `WebPImage#read` and `WebPImageReader#open` overloads, and the `getSourceWidth()` / `getSourceHeight()` methods; images are now always decoded at their intrinsic canvas size
+- Replace the public `WebPFXImage` constructors with `WebPFXImage#of(...)` factory methods
 - `WebPFXImage#getPixelWriter()` is now unsupported because `WebPFXImage` is backed by a `PixelBuffer`
 
 ### Added

@@ -102,10 +102,10 @@ WebPDecoder fxDecoder = WebPDecoder.DEFAULT
 // Create a JavaFX image from a WebPImage.
 // If it is an animated WebP, it will automatically play the animation.
 // You can control its behavior by passing the autoplay parameter.
-javafx.scene.image.Image image = new WebPFXImage(fxDecoder.read(...));
+javafx.scene.image.Image image = WebPFXImage.of(fxDecoder.read(...));
 
 // Create a JavaFX image from a WebPFrame.
-javafx.scene.image.Image frameImage = new WebPFXImage(fxDecoder.read(...).getFirstFrame());
+javafx.scene.image.Image frameImage = WebPFXImage.of(fxDecoder.read(...).getFirstFrame());
 ```
 
 Static `INT_ARGB_PRE` frames are used directly as the JavaFX `PixelBuffer` backing store.

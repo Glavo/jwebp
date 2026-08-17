@@ -298,7 +298,7 @@ public final class WebPViewerApp extends Application {
     }
 
     private void applyLoadedImage(Path path, WebPImage image, long startNanos) {
-        WebPFXImage fxImage = new WebPFXImage(image);
+        WebPFXImage fxImage = WebPFXImage.of(image);
         long elapsedMillis = elapsedMillis(startNanos);
 
         currentPath = path;
