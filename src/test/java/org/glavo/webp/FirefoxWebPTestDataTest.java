@@ -92,9 +92,9 @@ final class FirefoxWebPTestDataTest {
         assertEquals(0xFFFF0000, blend.getFrames().get(1).getArgb(50, 50));
     }
 
-    /// Verifies stripe preservation when a Firefox fixture is decoded at source and scaled sizes.
+    /// Verifies stripe preservation when a Firefox fixture is decoded.
     @Test
-    void scalesStripedImage() throws Exception {
+    void decodesStripedImage() throws Exception {
         WebPImage source = decode(ROOT + "downscaled.webp");
         assertEquals(100, source.getWidth());
         assertEquals(100, source.getHeight());
@@ -102,24 +102,6 @@ final class FirefoxWebPTestDataTest {
         assertRowsSolidColor(source.getFirstFrame(), 25, 25, 0xFFFF0000, 0);
         assertRowsSolidColor(source.getFirstFrame(), 50, 25, 0xFF00FF00, 0);
         assertRowsSolidColor(source.getFirstFrame(), 75, 25, 0xFFFF0000, 0);
-
-        WebPImageLoadOptions options = WebPImageLoadOptions.builder()
-                .requestedWidth(20)
-                .requestedHeight(20)
-                .preserveRatio(false)
-                .smooth(false)
-                .build();
-        WebPImage scaled;
-        try (InputStream input = openResource(ROOT + "downscaled.webp")) {
-            scaled = WebPImage.read(input, options);
-        }
-
-        assertEquals(20, scaled.getWidth());
-        assertEquals(20, scaled.getHeight());
-        assertRowsSolidColor(scaled.getFirstFrame(), 0, 5, 0xFF00FF00, 0);
-        assertRowsSolidColor(scaled.getFirstFrame(), 5, 5, 0xFFFF0000, 0);
-        assertRowsSolidColor(scaled.getFirstFrame(), 10, 5, 0xFF00FF00, 0);
-        assertRowsSolidColor(scaled.getFirstFrame(), 15, 5, 0xFFFF0000, 0);
     }
 
     /// Verifies raw ICC extraction and the missing-ICCP-chunk feature-bit regression.

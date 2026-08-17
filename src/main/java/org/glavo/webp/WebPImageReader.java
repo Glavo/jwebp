@@ -15,11 +15,6 @@
  */
 package org.glavo.webp;
 
-import org.jetbrains.annotations.NotNullByDefault;
-import org.jetbrains.annotations.Nullable;
-
-import org.glavo.webp.internal.PixelScaler;
-import org.glavo.webp.internal.ScalePlan;
 import org.glavo.webp.internal.codec.ExtendedWebP;
 import org.glavo.webp.internal.codec.ParsedFrameDescriptor;
 import org.glavo.webp.internal.codec.ParsedWebPImage;
@@ -27,6 +22,8 @@ import org.glavo.webp.internal.codec.WebPSequentialParser;
 import org.glavo.webp.internal.io.BufferedInput;
 import org.glavo.webp.internal.lossy.Vp8Decoder;
 import org.glavo.webp.internal.lossless.LosslessDecoder;
+import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -38,69 +35,90 @@ import java.nio.file.Path;
 /// Forward-only reader for WebP content.
 ///
 /// The reader parses the RIFF container sequentially, buffers only the encoded frame payloads
-/// needed for later decode, and decodes frames on demand in presentation order. Scaling is applied
-/// immediately after each frame is decoded or composited so callers do not need to allocate both
-/// source-sized and target-sized frame lists.
+/// needed for later decode, and decodes full-canvas presentation frames on demand. A reader is
+/// stateful and not safe for concurrent use. Create configured readers from [WebPDecoder].
 @NotNullByDefault
 public final class WebPImageReader implements AutoCloseable {
 
+    /// Packed non-premultiplied transparent black used to clear animation canvas regions.
     private static final int TRANSPARENT = 0x00000000;
 
     /// Opens a streaming reader for a generic byte stream.
     ///
     /// The stream is consumed during the open step so the reader can retain only the encoded
-    /// frame payloads that are required for later decode. The supplied stream remains owned by the
-    /// returned reader and is closed when [#close()] is called.
-    ///
-    /// @param source the WebP byte stream
-    /// @param options scaling options that mirror JavaFX `Image` loading parameters
-    /// @return a new streaming reader
-    /// @throws WebPException if the stream cannot be parsed or decoded
-    public static WebPImageReader open(InputStream source, WebPImageLoadOptions options) throws WebPException {
-        try {
-            BufferedInput bufferedInput = new BufferedInput.OfInputStream(source);
-            ParsedWebPImage image = WebPSequentialParser.parse(bufferedInput);
-            ScalePlan scalePlan = ScalePlan.create(image.sourceWidth(), image.sourceHeight(), options);
-            return new WebPImageReader(bufferedInput, image, scalePlan);
-        } catch (IOException ex) {
-            if (ex instanceof WebPException webpException) {
-                throw webpException;
-            }
-            throw new WebPException("Failed to open WebP stream", ex);
-        }
-    }
-
-    /// Opens a streaming reader for a generic byte stream using the default options.
+    /// frame payloads that are required for later decode. Ownership of the supplied stream transfers
+    /// to this operation: the returned reader closes it, or it is closed before an open failure is
+    /// reported.
     ///
     /// @param source the WebP byte stream
     /// @return a new streaming reader
-    /// @throws WebPException if the stream cannot be parsed or decoded
+    /// @throws WebPException if the stream cannot be parsed
+    /// @throws NullPointerException if `source` is `null`
     public static WebPImageReader open(InputStream source) throws WebPException {
-        return open(source, WebPImageLoadOptions.DEFAULT);
+        return WebPDecoder.DEFAULT.open(source);
     }
 
     /// Opens a streaming reader for a file.
     ///
     /// @param path the WebP file path
-    /// @param options scaling options that mirror JavaFX `Image` loading parameters
     /// @return a new streaming reader
-    /// @throws IOException if the file cannot be opened
-    /// @throws WebPException if the file cannot be parsed or decoded
-    public static WebPImageReader open(Path path, WebPImageLoadOptions options) throws IOException, WebPException {
+    /// @throws IOException if the file cannot be opened or read
+    /// @throws WebPException if the file cannot be parsed
+    /// @throws NullPointerException if `path` is `null`
+    public static WebPImageReader open(Path path) throws IOException, WebPException {
+        return WebPDecoder.DEFAULT.open(path);
+    }
+
+    /// Opens a configured reader for a generic byte stream.
+    ///
+    /// The input is closed if parsing fails; otherwise ownership is transferred to the returned
+    /// reader.
+    ///
+    /// @param source the WebP byte stream
+    /// @param decoder the immutable decoder configuration
+    /// @return a new configured reader
+    /// @throws WebPException if the stream cannot be parsed or read
+    static WebPImageReader open(InputStream source, WebPDecoder decoder) throws WebPException {
+        BufferedInput bufferedInput = new BufferedInput.OfInputStream(source);
+        try {
+            ParsedWebPImage image = WebPSequentialParser.parse(bufferedInput);
+            return new WebPImageReader(bufferedInput, image, decoder);
+        } catch (IOException | RuntimeException ex) {
+            closeAfterOpenFailure(bufferedInput, ex);
+            if (ex instanceof WebPException webPException) {
+                throw webPException;
+            }
+            if (ex instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new WebPException("Failed to open WebP stream", ex);
+        }
+    }
+
+    /// Opens a configured reader for a file.
+    ///
+    /// The channel is closed if parsing fails; otherwise ownership is transferred to the returned
+    /// reader.
+    ///
+    /// @param path the WebP file path
+    /// @param decoder the immutable decoder configuration
+    /// @return a new configured reader
+    /// @throws IOException if the file cannot be opened or read
+    /// @throws WebPException if the file cannot be parsed
+    static WebPImageReader open(Path path, WebPDecoder decoder) throws IOException, WebPException {
         SeekableByteChannel channel = Files.newByteChannel(path);
         try {
             BufferedInput bufferedInput = new BufferedInput.OfByteChannel(channel);
             ParsedWebPImage image = WebPSequentialParser.parse(bufferedInput);
-            ScalePlan scalePlan = ScalePlan.create(image.sourceWidth(), image.sourceHeight(), options);
-            return new WebPImageReader(bufferedInput, image, scalePlan);
+            return new WebPImageReader(bufferedInput, image, decoder);
         } catch (IOException | RuntimeException ex) {
             try {
                 channel.close();
             } catch (IOException suppressed) {
                 ex.addSuppressed(suppressed);
             }
-            if (ex instanceof WebPException webpException) {
-                throw webpException;
+            if (ex instanceof WebPException webPException) {
+                throw webPException;
             }
             if (ex instanceof IOException ioException) {
                 throw ioException;
@@ -109,70 +127,71 @@ public final class WebPImageReader implements AutoCloseable {
         }
     }
 
-    /// Opens a streaming reader for a file using the default options.
-    ///
-    /// @param path the WebP file path
-    /// @return a new streaming reader
-    /// @throws IOException if the file cannot be opened
-    /// @throws WebPException if the file cannot be parsed or decoded
-    public static WebPImageReader open(Path path) throws IOException, WebPException {
-        return open(path, WebPImageLoadOptions.DEFAULT);
-    }
-
+    /// Input resource owned and closed by this reader.
     private final AutoCloseable ownedInput;
+
+    /// Parsed container metadata and encoded frame payloads.
     private final ParsedWebPImage image;
-    private final ScalePlan scalePlan;
+
+    /// Immutable output configuration captured when this reader was opened.
+    private final WebPDecoder decoder;
 
     /// Stateful ALPH decoder whose full-frame VP8L workspace is reused across animation frames.
     private final ExtendedWebP.AlphaDecoder alphaDecoder = new ExtendedWebP.AlphaDecoder();
 
     /// VP8 color-plane storage reused across animated frame decodes.
     private final Vp8Decoder.DecodeWorkspace vp8Workspace = new Vp8Decoder.DecodeWorkspace();
+
+    /// Index of the next presentation frame to decode.
     private int nextFrameIndex;
+
+    /// Whether this reader has been closed.
     private boolean closed;
 
+    /// Mutable full-size non-premultiplied animation compositing canvas.
     private int @Nullable [] animationCanvas;
 
     /// Exact-sized scratch pixels reused between compatible animated frame decodes.
     private int @Nullable [] reusableAnimationFrameArgb;
+
+    /// Whether the previous frame region must be cleared before the next composition step.
     private boolean disposeNextFrame = true;
+
+    /// Width of the frame region presented by the previous animation step.
     private int previousFrameWidth;
+
+    /// Height of the frame region presented by the previous animation step.
     private int previousFrameHeight;
+
+    /// Horizontal offset of the previous animation frame region.
     private int previousFrameX;
+
+    /// Vertical offset of the previous animation frame region.
     private int previousFrameY;
 
-    private WebPImageReader(AutoCloseable ownedInput, ParsedWebPImage image, ScalePlan scalePlan) {
+    /// Creates a reader over parsed input and takes ownership of that input.
+    ///
+    /// @param ownedInput the input closed with this reader
+    /// @param image the parsed WebP container
+    /// @param decoder the immutable output configuration
+    private WebPImageReader(AutoCloseable ownedInput, ParsedWebPImage image, WebPDecoder decoder) {
         this.ownedInput = ownedInput;
         this.image = image;
-        this.scalePlan = scalePlan;
+        this.decoder = decoder;
     }
 
-    /// Returns the intrinsic source width.
+    /// Returns the image canvas width.
     ///
-    /// @return the source canvas width in pixels
-    public int getSourceWidth() {
+    /// @return the canvas width in pixels
+    public int getWidth() {
         return image.sourceWidth();
     }
 
-    /// Returns the intrinsic source height.
+    /// Returns the image canvas height.
     ///
-    /// @return the source canvas height in pixels
-    public int getSourceHeight() {
-        return image.sourceHeight();
-    }
-
-    /// Returns the decoded output width after applying load options.
-    ///
-    /// @return the output width in pixels
-    public int getWidth() {
-        return scalePlan.targetWidth();
-    }
-
-    /// Returns the decoded output height after applying load options.
-    ///
-    /// @return the output height in pixels
+    /// @return the canvas height in pixels
     public int getHeight() {
-        return scalePlan.targetHeight();
+        return image.sourceHeight();
     }
 
     /// Returns whether the source image contains transparency.
@@ -239,8 +258,8 @@ public final class WebPImageReader implements AutoCloseable {
 
     /// Decodes the next frame, if available.
     ///
-    /// Each returned frame is already composited to the full canvas for animated images and
-    /// already scaled according to the load options supplied when the reader was opened.
+    /// Each returned animation frame is already composited to the full source canvas. The frame's
+    /// pixel format and storage are determined by the [WebPDecoder] that created this reader.
     ///
     /// @return the next frame, or `null` when the stream is exhausted
     /// @throws WebPException if decoding fails
@@ -252,36 +271,52 @@ public final class WebPImageReader implements AutoCloseable {
 
         ParsedFrameDescriptor descriptor = image.frames().get(nextFrameIndex++);
         int[] frameArgb = decodeFrameArgb(descriptor);
-        int[] output;
-
         if (image.animated()) {
-            output = decodeAnimatedFrame(descriptor, frameArgb);
-        } else {
-            output = PixelScaler.scaleArgb(frameArgb, descriptor.width(), descriptor.height(), scalePlan);
+            compositeAnimatedFrame(descriptor, frameArgb);
+            assert animationCanvas != null;
+            return decoder.createFrame(
+                    image.sourceWidth(),
+                    image.sourceHeight(),
+                    descriptor.durationMillis(),
+                    animationCanvas,
+                    true
+            );
         }
-
-        return new WebPFrame(scalePlan.targetWidth(), scalePlan.targetHeight(), descriptor.durationMillis(), output);
+        return decoder.createFrame(
+                descriptor.width(),
+                descriptor.height(),
+                descriptor.durationMillis(),
+                frameArgb,
+                false
+        );
     }
 
+    /// Closes the owned input resource.
+    ///
+    /// Repeated calls have no effect. Once closed, this reader cannot decode additional frames.
+    ///
+    /// @throws IOException if closing the owned input fails
     @Override
     public void close() throws IOException {
         if (closed) {
             return;
         }
         closed = true;
-        if (ownedInput != null) {
-            try {
-                ownedInput.close();
-            } catch (Exception ex) {
-                if (ex instanceof IOException ioException) {
-                    throw ioException;
-                }
-                throw new IOException("Failed to close the WebP reader input", ex);
+        try {
+            ownedInput.close();
+        } catch (Exception ex) {
+            if (ex instanceof IOException ioException) {
+                throw ioException;
             }
+            throw new IOException("Failed to close the WebP reader input", ex);
         }
     }
 
-    private int[] decodeAnimatedFrame(ParsedFrameDescriptor descriptor, int[] frameArgb) {
+    /// Composites one decoded subframe onto the persistent animation canvas.
+    ///
+    /// @param descriptor the parsed animation-frame descriptor
+    /// @param frameArgb the decoded non-premultiplied subframe pixels
+    private void compositeAnimatedFrame(ParsedFrameDescriptor descriptor, int[] frameArgb) {
         if (animationCanvas == null) {
             animationCanvas = new int[image.sourceWidth() * image.sourceHeight()];
         }
@@ -292,9 +327,9 @@ public final class WebPImageReader implements AutoCloseable {
         }
 
         /*
-         * The public API always exposes already-composited ARGB frames. Lossy, lossless and ALPH
-         * paths are normalized to packed non-premultiplied ARGB before composition so the canvas
-         * can stay in one format end-to-end.
+         * Lossy, lossless and ALPH paths are normalized to packed non-premultiplied ARGB before
+         * composition. The requested public representation is applied only when the immutable
+         * presentation frame is created.
          */
         ExtendedWebP.compositeFrame(
                 animationCanvas,
@@ -318,13 +353,13 @@ public final class WebPImageReader implements AutoCloseable {
         previousFrameX = descriptor.x();
         previousFrameY = descriptor.y();
         disposeNextFrame = descriptor.disposeToBackground();
-
-        if (scalePlan.targetWidth() == image.sourceWidth() && scalePlan.targetHeight() == image.sourceHeight()) {
-            return animationCanvas.clone();
-        }
-        return PixelScaler.scaleArgb(animationCanvas, image.sourceWidth(), image.sourceHeight(), scalePlan);
     }
 
+    /// Decodes one raw frame payload to tightly packed non-premultiplied `ARGB` pixels.
+    ///
+    /// @param descriptor the parsed frame descriptor and encoded payload
+    /// @return the decoded frame-region pixels
+    /// @throws WebPException if VP8, VP8L, or ALPH decoding fails
     private int[] decodeFrameArgb(ParsedFrameDescriptor descriptor) throws WebPException {
         int[] argb = acquireFrameArgb(descriptor.width() * descriptor.height());
         if (descriptor.lossless()) {
@@ -358,9 +393,24 @@ public final class WebPImageReader implements AutoCloseable {
         return reusableAnimationFrameArgb;
     }
 
+    /// Verifies that frame decoding is still permitted.
+    ///
+    /// @throws WebPException if this reader has been closed
     private void ensureOpen() throws WebPException {
         if (closed) {
             throw new WebPException("Reader is already closed");
+        }
+    }
+
+    /// Closes input retained during a failed open and attaches any close failure to the cause.
+    ///
+    /// @param input the input whose ownership was not transferred to a reader
+    /// @param cause the original open failure
+    private static void closeAfterOpenFailure(BufferedInput input, Throwable cause) {
+        try {
+            input.close();
+        } catch (IOException suppressed) {
+            cause.addSuppressed(suppressed);
         }
     }
 }

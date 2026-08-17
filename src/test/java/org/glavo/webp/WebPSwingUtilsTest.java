@@ -55,8 +55,6 @@ final class WebPSwingUtilsTest {
         WebPImage image = new WebPImage(
                 2,
                 1,
-                2,
-                1,
                 true,
                 true,
                 false,
@@ -83,8 +81,6 @@ final class WebPSwingUtilsTest {
         WebPImage image = new WebPImage(
                 1,
                 2,
-                1,
-                2,
                 true,
                 false,
                 false,
@@ -105,8 +101,6 @@ final class WebPSwingUtilsTest {
     @Test
     void reusesLargerCompatibleDestinationImageAndClearsUnusedPixels() {
         WebPImage image = new WebPImage(
-                1,
-                1,
                 1,
                 1,
                 true,
@@ -132,8 +126,6 @@ final class WebPSwingUtilsTest {
     @Test
     void replacesIncompatibleDestinationImage() {
         WebPImage image = new WebPImage(
-                1,
-                1,
                 1,
                 1,
                 true,

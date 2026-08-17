@@ -15,13 +15,9 @@
  */
 package org.glavo.webp.javafx;
 
-import javafx.concurrent.Task;
-import javafx.scene.input.KeyCode;
-import org.glavo.webp.WebPImage;
-import org.jetbrains.annotations.NotNullByDefault;
-import org.jetbrains.annotations.Nullable;
-
+import javafx.animation.Timeline;
 import javafx.application.Application;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Point2D;
 import javafx.scene.Scene;
@@ -31,14 +27,20 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.ToolBar;
+import javafx.scene.image.ImageView;
+import javafx.scene.input.KeyCode;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.TransferMode;
-import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-import javafx.animation.Timeline;
+import org.glavo.webp.WebPDecoder;
+import org.glavo.webp.WebPFrameStorage;
+import org.glavo.webp.WebPImage;
+import org.glavo.webp.WebPPixelFormat;
+import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.UnknownNullability;
 
 import java.io.IOException;
@@ -54,6 +56,11 @@ import java.util.Objects;
 /// [ImageView] according to the frame durations exposed by [WebPImage].
 @NotNullByDefault
 public final class WebPViewerApp extends Application {
+
+    /// Decoder optimized for JavaFX's premultiplied `PixelBuffer` representation.
+    private static final WebPDecoder DECODER = WebPDecoder.DEFAULT
+            .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
+            .withFrameStorage(WebPFrameStorage.AUTO);
 
     private final ImageView imageView = new ImageView();
     private final Label statusLabel = new Label("Open or drop a WebP file to start.");
@@ -216,7 +223,7 @@ public final class WebPViewerApp extends Application {
         Task<WebPImage> task = new Task<>() {
             @Override
             protected WebPImage call() throws Exception {
-                return WebPImage.read(path);
+                return DECODER.read(path);
             }
         };
 
@@ -381,9 +388,9 @@ public final class WebPViewerApp extends Application {
         StringBuilder text = new StringBuilder();
         text.append(path.getFileName())
                 .append(" | ")
-                .append(image.getSourceWidth())
+                .append(image.getWidth())
                 .append("x")
-                .append(image.getSourceHeight());
+                .append(image.getHeight());
 
         if (image.isAnimated()) {
             text.append(" | frames=").append(image.getFrames().size())

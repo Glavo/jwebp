@@ -18,7 +18,6 @@ package org.glavo.webp;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -31,75 +30,59 @@ import java.util.List;
 @NotNullByDefault
 public final class WebPImage {
 
-    /// Reads and fully decodes a WebP stream.
+    /// Reads and fully decodes a WebP stream using [WebPDecoder#DEFAULT].
     ///
-    /// @param input the WebP byte stream
-    /// @param options scaling options that mirror JavaFX `Image` loading parameters
-    /// @return the fully decoded image
-    /// @throws WebPException if parsing or decoding fails
-    public static WebPImage read(InputStream input, WebPImageLoadOptions options) throws WebPException {
-        try (WebPImageReader reader = WebPImageReader.open(input, options)) {
-            return collect(reader);
-        } catch (IOException ex) {
-            if (ex instanceof WebPException webpException) {
-                throw webpException;
-            }
-            throw new WebPException("Failed to decode WebP stream", ex);
-        }
-    }
-
-    /// Reads and fully decodes a WebP stream using the default options.
+    /// The supplied stream is closed before this method returns, including when decoding fails.
     ///
     /// @param input the WebP byte stream
     /// @return the fully decoded image
     /// @throws WebPException if parsing or decoding fails
+    /// @throws NullPointerException if `input` is `null`
     public static WebPImage read(InputStream input) throws WebPException {
-        return read(input, WebPImageLoadOptions.DEFAULT);
+        return WebPDecoder.DEFAULT.read(input);
     }
 
-    /// Reads and fully decodes a WebP file.
-    ///
-    /// @param path the WebP file path
-    /// @param options scaling options that mirror JavaFX `Image` loading parameters
-    /// @return the fully decoded image
-    /// @throws WebPException if the file cannot be parsed or decoded
-    public static WebPImage read(Path path, WebPImageLoadOptions options) throws WebPException {
-        try (WebPImageReader reader = WebPImageReader.open(path, options)) {
-            return collect(reader);
-        } catch (WebPException ex) {
-            throw ex;
-        } catch (IOException ex) {
-            throw new WebPException("Failed to decode WebP file: " + path, ex);
-        }
-    }
-
-    /// Reads and fully decodes a WebP file using the default options.
+    /// Reads and fully decodes a WebP file using [WebPDecoder#DEFAULT].
     ///
     /// @param path the WebP file path
     /// @return the fully decoded image
     /// @throws WebPException if the file cannot be parsed or decoded
+    /// @throws NullPointerException if `path` is `null`
     public static WebPImage read(Path path) throws WebPException {
-        return read(path, WebPImageLoadOptions.DEFAULT);
+        return WebPDecoder.DEFAULT.read(path);
     }
 
-    private final int sourceWidth;
-    private final int sourceHeight;
+    /// Image canvas width in pixels.
     private final int width;
+
+    /// Image canvas height in pixels.
     private final int height;
+
+    /// Whether the source declares or contains transparency.
     private final boolean alpha;
+
+    /// Whether the source container is animated.
     private final boolean animated;
+
+    /// Whether any frame uses lossy VP8 compression.
     private final boolean lossy;
+
+    /// Animation loop count, or zero for indefinite looping.
     private final int loopCount;
+
+    /// Duration of one animation cycle in milliseconds.
     private final long loopDurationMillis;
+
+    /// Metadata extracted from the source container.
     private final WebPMetadata metadata;
+
+    /// Immutable presentation frames in playback order.
     private final List<WebPFrame> frames;
 
     /// Creates a fully decoded WebP image.
     ///
-    /// @param sourceWidth the source canvas width
-    /// @param sourceHeight the source canvas height
-    /// @param width the decoded output width after applying load options
-    /// @param height the decoded output height after applying load options
+    /// @param width the image canvas width
+    /// @param height the image canvas height
     /// @param alpha whether any frame carries transparency
     /// @param animated whether the source contains animation
     /// @param lossy whether any decoded frame uses lossy VP8 compression
@@ -108,8 +91,6 @@ public final class WebPImage {
     /// @param metadata the extracted metadata
     /// @param frames the decoded frames in presentation order
     WebPImage(
-            int sourceWidth,
-            int sourceHeight,
             int width,
             int height,
             boolean alpha,
@@ -122,8 +103,6 @@ public final class WebPImage {
     ) {
         assert !frames.isEmpty();
 
-        this.sourceWidth = sourceWidth;
-        this.sourceHeight = sourceHeight;
         this.width = width;
         this.height = height;
         this.alpha = alpha;
@@ -135,30 +114,16 @@ public final class WebPImage {
         this.frames = List.copyOf(frames);
     }
 
-    /// Returns the source canvas width before scaling.
+    /// Returns the image canvas width.
     ///
-    /// @return the intrinsic canvas width
-    public int getSourceWidth() {
-        return sourceWidth;
-    }
-
-    /// Returns the source canvas height before scaling.
-    ///
-    /// @return the intrinsic canvas height
-    public int getSourceHeight() {
-        return sourceHeight;
-    }
-
-    /// Returns the decoded output width after applying load options.
-    ///
-    /// @return the output width in pixels
+    /// @return the canvas width in pixels
     public int getWidth() {
         return width;
     }
 
-    /// Returns the decoded output height after applying load options.
+    /// Returns the image canvas height.
     ///
-    /// @return the output height in pixels
+    /// @return the canvas height in pixels
     public int getHeight() {
         return height;
     }
@@ -223,7 +188,14 @@ public final class WebPImage {
         return frames.get(0);
     }
 
-    private static WebPImage collect(WebPImageReader reader) throws IOException {
+    /// Collects all remaining frames and metadata from a reader into an eager image.
+    ///
+    /// The reader remains open and positioned at end of input when this method returns.
+    ///
+    /// @param reader the reader to exhaust
+    /// @return the fully decoded image
+    /// @throws WebPException if any frame cannot be decoded
+    static WebPImage collect(WebPImageReader reader) throws WebPException {
         List<WebPFrame> frames;
         if (reader.getFrameCount() == 1) {
             //noinspection DataFlowIssue
@@ -240,8 +212,6 @@ public final class WebPImage {
         }
 
         return new WebPImage(
-                reader.getSourceWidth(),
-                reader.getSourceHeight(),
                 reader.getWidth(),
                 reader.getHeight(),
                 reader.hasAlpha(),

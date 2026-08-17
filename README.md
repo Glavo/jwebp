@@ -17,7 +17,7 @@ and it has been used in [Hello Minecraft! Launcher](https://github.com/HMCL-dev/
 - Only depends on the `java.base` module, no dependency on other modules.
 - Supports lossy and lossless compressed WebP images.
 - Supports animated WebP.
-- Supports image scaling during reading.
+- Supports heap-backed and direct frame buffers in `INT_ARGB` and `INT_ARGB_PRE` formats.
 - Raw ICC, EXIF, and XMP metadata extraction
 - Provides optional JavaFX and Swing helper functionality for easily converting WebP images to JavaFX and Swing images.
 
@@ -58,11 +58,22 @@ System.out.println("frames = " + image.getFrames().size());
 System.out.println("pixels = " + image.getFirstFrame().getArgbPixels());
 ```
 
+Use an immutable decoder configuration when a different pixel representation or storage policy is
+needed:
+
+```java
+WebPDecoder decoder = WebPDecoder.DEFAULT
+        .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
+        .withFrameStorage(WebPFrameStorage.AUTO);
+
+WebPImage image = decoder.read(Path.of("sample.webp"));
+```
+
 Stream frames from an animated WebP:
 
 ```java
 try (InputStream input = Files.newInputStream(Path.of("/animated.webp"));
-     WebPImageReader reader = WebPImageReader.open(input)) {
+     WebPImageReader reader = WebPDecoder.DEFAULT.open(input)) {
     while (true) {
         WebPFrame frame = reader.readNextFrame();
         if (frame == null) {
@@ -81,14 +92,20 @@ However, JWebP also provides optional components for JavaFX, located in the `org
 which can easily convert `WebPImage` to JavaFX `Image`:
 
 ```java
+WebPDecoder fxDecoder = WebPDecoder.DEFAULT
+        .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
+        .withFrameStorage(WebPFrameStorage.AUTO);
+
 // Create a JavaFX image from a WebPImage.
 // If it is an animated WebP, it will automatically play the animation.
 // You can control its behavior by passing the autoplay parameter.
-javafx.scene.image.Image _ = new WebPFXImage(WebPImage.read(...));
+javafx.scene.image.Image image = new WebPFXImage(fxDecoder.read(...));
 
 // Create a JavaFX image from a WebPFrame.
-javafx.scene.image.Image _ = new WebPFXImage(WebPFrame.read(...).getFirstFrame());
+javafx.scene.image.Image frameImage = new WebPFXImage(fxDecoder.read(...).getFirstFrame());
 ```
+
+Static `INT_ARGB_PRE` frames are used directly as the JavaFX `PixelBuffer` backing store.
 
 ### Swing Integration
 

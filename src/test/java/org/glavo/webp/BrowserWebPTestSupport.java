@@ -50,10 +50,8 @@ final class BrowserWebPTestSupport {
         WebPImage eager = WebPImage.read(new ByteArrayInputStream(encoded));
 
         try (WebPImageReader reader = WebPImageReader.open(new ByteArrayInputStream(encoded))) {
-            assertEquals(eager.getSourceWidth(), reader.getSourceWidth(), resourceName + " source width");
-            assertEquals(eager.getSourceHeight(), reader.getSourceHeight(), resourceName + " source height");
-            assertEquals(eager.getWidth(), reader.getWidth(), resourceName + " output width");
-            assertEquals(eager.getHeight(), reader.getHeight(), resourceName + " output height");
+            assertEquals(eager.getWidth(), reader.getWidth(), resourceName + " canvas width");
+            assertEquals(eager.getHeight(), reader.getHeight(), resourceName + " canvas height");
             assertEquals(eager.hasAlpha(), reader.hasAlpha(), resourceName + " alpha flag");
             assertEquals(eager.isAnimated(), reader.isAnimated(), resourceName + " animation flag");
             assertEquals(eager.isLossy(), reader.isLossy(), resourceName + " lossy flag");
@@ -89,10 +87,8 @@ final class BrowserWebPTestSupport {
     /// @param actual the actual image
     /// @param message the assertion context
     static void assertImageEquals(WebPImage expected, WebPImage actual, String message) {
-        assertEquals(expected.getSourceWidth(), actual.getSourceWidth(), message + " source width");
-        assertEquals(expected.getSourceHeight(), actual.getSourceHeight(), message + " source height");
-        assertEquals(expected.getWidth(), actual.getWidth(), message + " output width");
-        assertEquals(expected.getHeight(), actual.getHeight(), message + " output height");
+        assertEquals(expected.getWidth(), actual.getWidth(), message + " canvas width");
+        assertEquals(expected.getHeight(), actual.getHeight(), message + " canvas height");
         assertEquals(expected.hasAlpha(), actual.hasAlpha(), message + " alpha flag");
         assertEquals(expected.isAnimated(), actual.isAnimated(), message + " animation flag");
         assertEquals(expected.isLossy(), actual.isLossy(), message + " lossy flag");

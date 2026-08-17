@@ -29,7 +29,6 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -132,7 +131,7 @@ final class WebPImageTest {
     }
 
     @Test
-    void animatedReaderKeepsPreviouslyReturnedFramesStableWithoutScaling() throws Exception {
+    void animatedReaderKeepsPreviouslyReturnedFramesStable() throws Exception {
         WebPImage eager = WebPImage.read(resource("images/animated-random_lossless.webp"));
 
         try (WebPImageReader reader = WebPImageReader.open(resource("images/animated-random_lossless.webp"))) {
@@ -175,114 +174,16 @@ final class WebPImageTest {
     }
 
     @Test
-    void scalingDimensionsMatchJavaFxImageSemantics() throws Exception {
-        assertScaledDimensions("images/gallery1-1.webp", "reference/gallery1-1.png", 180, 0, true, true);
-        assertScaledDimensions("images/gallery1-1.webp", "reference/gallery1-1.png", 0, 96, true, true);
-        assertScaledDimensions("images/gallery1-1.webp", "reference/gallery1-1.png", 180, 120, true, true);
-        assertScaledDimensions("images/gallery1-1.webp", "reference/gallery1-1.png", 180, 120, false, false);
-    }
-
-    @Test
-    void nearestScaledLosslessStaticFrameMatchesStreamingOutput() throws Exception {
-        WebPImageLoadOptions options = WebPImageLoadOptions.builder()
-                .requestedWidth(37)
-                .requestedHeight(29)
-                .preserveRatio(false)
-                .smooth(false)
-                .build();
-
-        WebPImage eager = WebPImage.read(resource("images/gallery2-1_webp_ll.webp"), options);
-        assertEquals(1, eager.getFrames().size());
-
-        try (WebPImageReader reader = WebPImageReader.open(resource("images/gallery2-1_webp_ll.webp"), options)) {
-            WebPFrame streamed = reader.readNextFrame();
-            assertNotNull(streamed);
-            assertFramePixelEquals(streamed, eager.getFrames().get(0), 0);
-            assertNull(reader.readNextFrame());
-            assertTrue(reader.isComplete());
-        }
-    }
-
-    @Test
-    void streamedAnimatedLosslessScaledFramesMatchEagerOutput() throws Exception {
-        WebPImageLoadOptions options = WebPImageLoadOptions.builder()
-                .requestedWidth(31)
-                .requestedHeight(17)
-                .preserveRatio(false)
-                .smooth(false)
-                .build();
-
-        WebPImage eager = WebPImage.read(resource("images/animated-random_lossless.webp"), options);
-        assertEquals(3, eager.getFrames().size());
-
-        try (WebPImageReader reader = WebPImageReader.open(resource("images/animated-random_lossless.webp"), options)) {
-            assertTrue(reader.isAnimated());
-            assertEquals(31, reader.getWidth());
-            assertEquals(17, reader.getHeight());
-
-            WebPFrame frame1 = reader.readNextFrame();
-            WebPFrame frame2 = reader.readNextFrame();
-            WebPFrame frame3 = reader.readNextFrame();
-
-            assertNotNull(frame1);
-            assertNotNull(frame2);
-            assertNotNull(frame3);
-
-            assertFramePixelEquals(frame1, eager.getFrames().get(0), 0);
-            assertFramePixelEquals(frame2, eager.getFrames().get(1), 0);
-            assertFramePixelEquals(frame3, eager.getFrames().get(2), 0);
-            assertNull(reader.readNextFrame());
-        }
-    }
-
-    @Test
-    void smoothScalingChangesVisiblePixelsComparedToNearest() throws Exception {
-        WebPImageLoadOptions nearest = WebPImageLoadOptions.builder()
-                .requestedWidth(41)
-                .requestedHeight(23)
-                .preserveRatio(false)
-                .smooth(false)
-                .build();
-        WebPImageLoadOptions smooth = WebPImageLoadOptions.builder()
-                .requestedWidth(41)
-                .requestedHeight(23)
-                .preserveRatio(false)
-                .smooth(true)
-                .build();
-
-        int[] nearestPixels = WebPImage.read(resource("images/gallery2-1_webp_ll.webp"), nearest).getFrames().get(0).getArgbArray();
-        int[] smoothPixels = WebPImage.read(resource("images/gallery2-1_webp_ll.webp"), smooth).getFrames().get(0).getArgbArray();
-
-        assertEquals(nearestPixels.length, smoothPixels.length);
-        assertFalse(Arrays.equals(nearestPixels, smoothPixels), "smooth filtering should not match nearest-neighbor output on a non-uniform image");
-        assertVisiblePixelsDiffer(nearestPixels, smoothPixels);
-    }
-
-    @Test
-    void javaFxImageFromFrameProducesWritableImage() throws Exception {
-        WebPImageLoadOptions options = WebPImageLoadOptions.builder()
-                .requestedWidth(96)
-                .requestedHeight(96)
-                .preserveRatio(true)
-                .smooth(true)
-                .build();
-
-        WebPFrame frame = WebPImage.read(resource("images/gallery2-1_webp_ll.webp"), options).getFrames().get(0);
+    void javaFxImageFromFrameProducesImage() throws Exception {
+        WebPFrame frame = WebPImage.read(resource("images/gallery2-1_webp_ll.webp")).getFrames().get(0);
         var image = new WebPFXImage(frame);
         assertTrue(image.getWidth() > 0);
         assertTrue(image.getHeight() > 0);
     }
 
     @Test
-    void javaFxImageFromFrameMatchesScaledDecodedFrame() throws Exception {
-        WebPImageLoadOptions options = WebPImageLoadOptions.builder()
-                .requestedWidth(53)
-                .requestedHeight(27)
-                .preserveRatio(false)
-                .smooth(true)
-                .build();
-
-        WebPFrame frame = WebPImage.read(resource("images/gallery2-1_webp_ll.webp"), options).getFrames().get(0);
+    void javaFxImageFromFrameMatchesDecodedFrame() throws Exception {
+        WebPFrame frame = WebPImage.read(resource("images/gallery2-1_webp_ll.webp")).getFrames().get(0);
         Image image = new WebPFXImage(frame);
         PixelReader reader = image.getPixelReader();
         assertNotNull(reader);
@@ -329,29 +230,6 @@ final class WebPImageTest {
     void rejectsInvalidContainer() {
         byte[] invalid = "not a webp".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         assertThrows(WebPException.class, () -> WebPImage.read(new ByteArrayInputStream(invalid)));
-    }
-
-    private static void assertScaledDimensions(
-            String webpResource,
-            String pngReferenceResource,
-            double requestedWidth,
-            double requestedHeight,
-            boolean preserveRatio,
-            boolean smooth
-    ) throws Exception {
-        WebPImageLoadOptions options = WebPImageLoadOptions.builder()
-                .requestedWidth(requestedWidth)
-                .requestedHeight(requestedHeight)
-                .preserveRatio(preserveRatio)
-                .smooth(smooth)
-                .build();
-
-        WebPImage image = WebPImage.read(resource(webpResource), options);
-        try (InputStream reference = resource(pngReferenceResource)) {
-            Image expected = new Image(reference, requestedWidth, requestedHeight, preserveRatio, smooth);
-            assertEquals(expected.getWidth(), image.getWidth(), 0.0001);
-            assertEquals(expected.getHeight(), image.getHeight(), 0.0001);
-        }
     }
 
     private static void assertFrameEquals(WebPFrame frame, String referenceResource) throws Exception {
@@ -439,17 +317,6 @@ final class WebPImageTest {
 
     private static int[] readPixels(WebPFrame frame) {
         return frame.getArgbArray();
-    }
-
-    private static void assertVisiblePixelsDiffer(int[] expected, int[] actual) {
-        for (int i = 0; i < expected.length; i++) {
-            for (int channel = 0; channel < 4; channel++) {
-                if (visibleChannelValue(expected[i], channel) != visibleChannelValue(actual[i], channel)) {
-                    return;
-                }
-            }
-        }
-        fail("expected at least one visible channel difference");
     }
 
     private static int visibleChannelValue(int argb, int channel) {

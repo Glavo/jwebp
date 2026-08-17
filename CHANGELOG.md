@@ -6,6 +6,13 @@
 
 - New API: `WebPFrame#getArgb(int, int)`
 - New API: `WebPSwingUtils`
+- New immutable `WebPDecoder` API for configuring decoded pixel format and frame storage
+- Heap-backed, direct, and automatically selected frame storage for `INT_ARGB` and `INT_ARGB_PRE` pixels
+
+### Changed
+
+- Decode images at their intrinsic canvas size and remove the JavaFX-style loading scale options
+- Back JavaFX images with `PixelBuffer`, allowing static `INT_ARGB_PRE` frames to be presented without copying; `WebPFXImage#getPixelWriter()` is consequently unsupported
 
 ### Performance
 

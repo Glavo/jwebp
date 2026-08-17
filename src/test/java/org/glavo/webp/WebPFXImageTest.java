@@ -35,6 +35,7 @@ import java.util.concurrent.TimeoutException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Tests for the JavaFX WebP image adapter and its animation controls.
@@ -63,6 +64,20 @@ final class WebPFXImageTest {
         WebPFXImage image = callOnFxThread(() -> new WebPFXImage(decoded));
 
         assertNull(callOnFxThread(image::getAnimation));
+        assertJavaFxImageEquals(image, "reference/regression-tiny.png");
+    }
+
+    @Test
+    void javaFxImageUsesPremultipliedDirectFrameThroughPixelBuffer() throws Exception {
+        WebPDecoder decoder = WebPDecoder.DEFAULT
+                .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
+                .withFrameStorage(WebPFrameStorage.DIRECT);
+        WebPFrame frame = decoder.read(resource("images/regression-tiny.webp")).getFirstFrame();
+
+        assertTrue(frame.getPixels().isDirect());
+        WebPFXImage image = callOnFxThread(() -> new WebPFXImage(frame));
+
+        assertThrows(UnsupportedOperationException.class, image::getPixelWriter);
         assertJavaFxImageEquals(image, "reference/regression-tiny.png");
     }
 
@@ -233,8 +248,6 @@ final class WebPFXImageTest {
         }
 
         return new WebPImage(
-                1,
-                1,
                 1,
                 1,
                 false,

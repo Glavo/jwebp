@@ -17,11 +17,10 @@ package org.glavo.webp.internal;
 
 import org.jetbrains.annotations.NotNullByDefault;
 
-/// Packed non-premultiplied `ARGB` pixel helpers.
+/// Packed `ARGB` pixel helpers.
 ///
-/// The decoder stores public and post-decode pixels as `0xAARRGGBB` integers so the same pixel
-/// buffers can be exposed directly and also written to JavaFX through
-/// `PixelFormat.getIntArgbInstance()`.
+/// Decoder workspaces use non-premultiplied `0xAARRGGBB` integers. Public frame pixels may remain
+/// in that representation or be converted to premultiplied `INT_ARGB_PRE` output.
 @NotNullByDefault
 public final class Argb {
 
@@ -66,6 +65,48 @@ public final class Argb {
         return (argb & 0x00FF_FFFF) | ((alpha & 0xFF) << 24);
     }
 
+    /// Converts a non-premultiplied pixel to premultiplied `ARGB`.
+    ///
+    /// Color channels are rounded to the nearest representable value. A fully transparent input is
+    /// converted to zero because premultiplied pixels cannot preserve hidden color channels.
+    ///
+    /// @param argb the non-premultiplied pixel
+    /// @return the premultiplied pixel
+    public static int premultiply(int argb) {
+        int alpha = alpha(argb);
+        if (alpha == 0xFF) {
+            return argb;
+        }
+        if (alpha == 0) {
+            return 0;
+        }
+
+        int red = (red(argb) * alpha + 0x7F) / 0xFF;
+        int green = (green(argb) * alpha + 0x7F) / 0xFF;
+        int blue = (blue(argb) * alpha + 0x7F) / 0xFF;
+        return pack(alpha, red, green, blue);
+    }
+
+    /// Converts a premultiplied pixel to non-premultiplied `ARGB`.
+    ///
+    /// Conversion cannot recover color information discarded by premultiplication. Fully
+    /// transparent input therefore remains zero.
+    ///
+    /// @param argbPre the premultiplied pixel
+    /// @return the non-premultiplied pixel
+    public static int unpremultiply(int argbPre) {
+        int alpha = alpha(argbPre);
+        if (alpha == 0xFF || alpha == 0) {
+            return argbPre;
+        }
+
+        int halfAlpha = alpha >>> 1;
+        int red = unpremultiplyChannel(red(argbPre), alpha, halfAlpha);
+        int green = unpremultiplyChannel(green(argbPre), alpha, halfAlpha);
+        int blue = unpremultiplyChannel(blue(argbPre), alpha, halfAlpha);
+        return pack(alpha, red, green, blue);
+    }
+
     /// Adds two pixels channel-wise with 8-bit wrapping semantics.
     ///
     /// VP8L inverse transforms operate on channels modulo 256, so the packed representation still
@@ -85,5 +126,15 @@ public final class Argb {
                 (green(left) + green(right)) / 2,
                 (blue(left) + blue(right)) / 2
         );
+    }
+
+    /// Converts one premultiplied color channel to its non-premultiplied value.
+    ///
+    /// @param value the premultiplied channel
+    /// @param alpha the nonzero, non-opaque alpha channel
+    /// @param halfAlpha half of `alpha`, used for rounding
+    /// @return the unpremultiplied channel clamped to 255
+    private static int unpremultiplyChannel(int value, int alpha, int halfAlpha) {
+        return value >= alpha ? 0xFF : (value * 0xFF + halfAlpha) / alpha;
     }
 }

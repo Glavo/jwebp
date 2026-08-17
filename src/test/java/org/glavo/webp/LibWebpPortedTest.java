@@ -82,20 +82,17 @@ final class LibWebpPortedTest {
             WebPImage eager = WebPImage.read(new ByteArrayInputStream(bytes));
             assertFalse(eager.getFrames().isEmpty(), resource);
 
-            WebPImageLoadOptions options = WebPImageLoadOptions.builder()
-                    .requestedWidth(96)
-                    .requestedHeight(96)
-                    .preserveRatio(true)
-                    .smooth(true)
-                    .build();
+            WebPDecoder decoder = WebPDecoder.DEFAULT
+                    .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
+                    .withFrameStorage(WebPFrameStorage.DIRECT);
 
             Image firstFrameImage = new WebPFXImage(
-                    WebPImage.read(new ByteArrayInputStream(bytes), options).getFirstFrame()
+                    decoder.read(new ByteArrayInputStream(bytes)).getFirstFrame()
             );
             assertTrue(firstFrameImage.getWidth() > 0, resource);
             assertTrue(firstFrameImage.getHeight() > 0, resource);
 
-            try (WebPImageReader reader = WebPImageReader.open(new ChunkedInputStream(bytes, 7), options)) {
+            try (WebPImageReader reader = decoder.open(new ChunkedInputStream(bytes, 7))) {
                 List<WebPFrame> frames = new ArrayList<>();
                 while (true) {
                     WebPFrame next = reader.readNextFrame();
@@ -111,22 +108,25 @@ final class LibWebpPortedTest {
     }
 
     @Test
-    void advancedApiStyleScalingIsStableAcrossChunkedInput() throws Exception {
+    void configuredDecodingIsStableAcrossChunkedInput() throws Exception {
         byte[] bytes = readResourceBytes(LIBWEBP_EXAMPLE_WEBP);
 
-        for (WebPImageLoadOptions options : List.of(
-                WebPImageLoadOptions.builder().requestedWidth(96).requestedHeight(0).preserveRatio(true).smooth(true).build(),
-                WebPImageLoadOptions.builder().requestedWidth(0).requestedHeight(80).preserveRatio(true).smooth(false).build(),
-                WebPImageLoadOptions.builder().requestedWidth(96).requestedHeight(80).preserveRatio(true).smooth(true).build(),
-                WebPImageLoadOptions.builder().requestedWidth(96).requestedHeight(80).preserveRatio(false).smooth(false).build()
+        for (WebPDecoder decoder : List.of(
+                WebPDecoder.DEFAULT,
+                WebPDecoder.DEFAULT.withPixelFormat(WebPPixelFormat.INT_ARGB_PRE),
+                WebPDecoder.DEFAULT.withFrameStorage(WebPFrameStorage.DIRECT),
+                WebPDecoder.DEFAULT
+                        .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
+                        .withFrameStorage(WebPFrameStorage.DIRECT)
         )) {
-            WebPImage eager = WebPImage.read(new ByteArrayInputStream(bytes), options);
-            WebPImage streaming = WebPImage.read(new ChunkedInputStream(bytes, 5), options);
+            WebPImage eager = decoder.read(new ByteArrayInputStream(bytes));
+            WebPImage streaming = decoder.read(new ChunkedInputStream(bytes, 5));
 
             assertEquals(eager.getWidth(), streaming.getWidth());
             assertEquals(eager.getHeight(), streaming.getHeight());
             assertEquals(eager.getFrames().size(), streaming.getFrames().size());
-        assertFrameSamplesClose(streaming.getFrames().get(0), readPixels(eager.getFrames().get(0)), 0);
+            assertEquals(decoder.getPixelFormat(), streaming.getFirstFrame().getPixelFormat());
+            assertFrameSamplesClose(streaming.getFrames().get(0), readPixels(eager.getFrames().get(0)), 0);
         }
     }
 
@@ -188,20 +188,17 @@ final class LibWebpPortedTest {
     }
 
     private static void assertOnlyExpectedDecodeFailure(byte[] data) {
-        WebPImageLoadOptions options = WebPImageLoadOptions.builder()
-                .requestedWidth(64)
-                .requestedHeight(64)
-                .preserveRatio(true)
-                .smooth(true)
-                .build();
+        WebPDecoder decoder = WebPDecoder.DEFAULT
+                .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
+                .withFrameStorage(WebPFrameStorage.DIRECT);
 
         assertOnlyWebPException(() -> WebPImage.read(new ByteArrayInputStream(data)));
-        assertOnlyWebPException(() -> WebPImage.read(new ChunkedInputStream(data, 3), options));
+        assertOnlyWebPException(() -> decoder.read(new ChunkedInputStream(data, 3)));
         assertOnlyWebPException(() -> new WebPFXImage(
-                WebPImage.read(new ByteArrayInputStream(data), options).getFirstFrame()
+                decoder.read(new ByteArrayInputStream(data)).getFirstFrame()
         ));
         assertOnlyWebPException(() -> {
-            try (WebPImageReader reader = WebPImageReader.open(new ChunkedInputStream(data, 5), options)) {
+            try (WebPImageReader reader = decoder.open(new ChunkedInputStream(data, 5))) {
                 while (reader.readNextFrame() != null) {
                     // Consume until exhausted or a WebPException is raised.
                 }
