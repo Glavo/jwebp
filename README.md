@@ -3,6 +3,7 @@
 [![codecov](https://codecov.io/gh/Glavo/jwebp/graph/badge.svg?token=CPZ7P35UK3)](https://codecov.io/gh/Glavo/jwebp)
 [![](https://img.shields.io/maven-central/v/org.glavo/webp?label=Maven%20Central)](https://search.maven.org/artifact/org.glavo/webp)
 [![javadoc](https://javadoc.io/badge2/org.glavo/webp/javadoc.svg)](https://javadoc.io/doc/org.glavo/webp)
+[![license](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](https://mozilla.org/MPL/2.0/)
 
 A dependency-free, pure Java WebP decoder library that supports lossless and lossy compressed WebP images, as well as animated WebP.
 
@@ -179,3 +180,10 @@ The test suite includes:
 
 The selected files are cached under `build/downloads` and only enter the test resource set; they
 are not packaged in the library artifacts.
+
+## License
+
+The current JWebP codebase is licensed under the [Mozilla Public License 2.0](./LICENSE).
+Previously published releases remain governed by the license included with each release.
+Third-party code and test materials remain subject to their respective terms in
+[THIRD_PARTY_NOTICES](./THIRD_PARTY_NOTICES).
