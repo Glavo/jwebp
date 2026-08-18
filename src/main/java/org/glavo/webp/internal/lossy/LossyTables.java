@@ -9,12 +9,18 @@ import org.jetbrains.annotations.Unmodifiable;
 final class LossyTables {
 
     static final int[] SEGMENT_ID_TREE = {2, 4, 0, -1, -2, -3};
-    static final int[] KEYFRAME_YMODE_TREE = {-LossyCommon.B_PRED, 2, 4, 6, -LossyCommon.DC_PRED, -LossyCommon.V_PRED, -LossyCommon.H_PRED, -LossyCommon.TM_PRED};
+    static final int[] KEYFRAME_YMODE_TREE = {
+            -LossyCommon.LumaMode.B, 2, 4, 6,
+            -LossyCommon.LumaMode.DC, -LossyCommon.LumaMode.V,
+            -LossyCommon.LumaMode.H, -LossyCommon.LumaMode.TM
+    };
     static final int[] KEYFRAME_YMODE_PROBS = {145, 156, 163, 128};
     static final int[] KEYFRAME_BPRED_MODE_TREE = {
-            -LossyCommon.B_DC_PRED, 2, -LossyCommon.B_TM_PRED, 4, -LossyCommon.B_VE_PRED, 6, 8, 12,
-            -LossyCommon.B_HE_PRED, 10, -LossyCommon.B_RD_PRED, -LossyCommon.B_VR_PRED,
-            -LossyCommon.B_LD_PRED, 14, -LossyCommon.B_VL_PRED, 16, -LossyCommon.B_HD_PRED, -LossyCommon.B_HU_PRED
+            -LossyCommon.IntraMode.DC, 2, -LossyCommon.IntraMode.TM, 4,
+            -LossyCommon.IntraMode.VE, 6, 8, 12,
+            -LossyCommon.IntraMode.HE, 10, -LossyCommon.IntraMode.RD, -LossyCommon.IntraMode.VR,
+            -LossyCommon.IntraMode.LD, 14, -LossyCommon.IntraMode.VL, 16,
+            -LossyCommon.IntraMode.HD, -LossyCommon.IntraMode.HU
     };
     static final int[][][] KEYFRAME_BPRED_MODE_PROBS = {
             {
@@ -138,7 +144,10 @@ final class LossyTables {
                     {112, 19, 12, 61, 195, 128, 48, 4, 24}
             }
     };
-    static final int[] KEYFRAME_UV_MODE_TREE = {-LossyCommon.DC_PRED, 2, -LossyCommon.V_PRED, 4, -LossyCommon.H_PRED, -LossyCommon.TM_PRED};
+    static final int[] KEYFRAME_UV_MODE_TREE = {
+            -LossyCommon.ChromaMode.DC, 2, -LossyCommon.ChromaMode.V, 4,
+            -LossyCommon.ChromaMode.H, -LossyCommon.ChromaMode.TM
+    };
     static final int[] KEYFRAME_UV_MODE_PROBS = {142, 114, 183};
 
     static final int[][][][] COEFF_UPDATE_PROBS = {

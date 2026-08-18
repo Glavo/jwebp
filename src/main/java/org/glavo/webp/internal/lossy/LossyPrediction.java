@@ -65,24 +65,32 @@ final class LossyPrediction {
         }
     }
 
-    static void predict4x4(byte[] ws, int stride, IntraMode[] modes, int[] resdata) {
+    /// Predicts and reconstructs the sixteen 4x4 luma blocks in one macroblock.
+    ///
+    /// @param ws the prediction workspace
+    /// @param stride the workspace row stride
+    /// @param modes the packed intra-prediction modes, with the first block in the low nibble
+    /// @param resdata the residual coefficients for the macroblock
+    static void predict4x4(byte[] ws, int stride, long modes, int[] resdata) {
         for (int sby = 0; sby < 4; sby++) {
             for (int sbx = 0; sbx < 4; sbx++) {
                 int i = sbx + sby * 4;
                 int y0 = sby * 4 + 1;
                 int x0 = sbx * 4 + 1;
+                @IntraMode int mode = LossyCommon.getIntraMode(modes, i);
 
-                switch (modes[i]) {
-                    case TM -> predictTmpred(ws, 4, x0, y0, stride);
-                    case VE -> predictBvepred(ws, x0, y0, stride);
-                    case HE -> predictBhepred(ws, x0, y0, stride);
-                    case DC -> predictBdcpred(ws, x0, y0, stride);
-                    case LD -> predictBldpred(ws, x0, y0, stride);
-                    case RD -> predictBrdpred(ws, x0, y0, stride);
-                    case VR -> predictBvrpred(ws, x0, y0, stride);
-                    case VL -> predictBvlpred(ws, x0, y0, stride);
-                    case HD -> predictBhdpred(ws, x0, y0, stride);
-                    case HU -> predictBhupred(ws, x0, y0, stride);
+                switch (mode) {
+                    case IntraMode.TM -> predictTmpred(ws, 4, x0, y0, stride);
+                    case IntraMode.VE -> predictBvepred(ws, x0, y0, stride);
+                    case IntraMode.HE -> predictBhepred(ws, x0, y0, stride);
+                    case IntraMode.DC -> predictBdcpred(ws, x0, y0, stride);
+                    case IntraMode.LD -> predictBldpred(ws, x0, y0, stride);
+                    case IntraMode.RD -> predictBrdpred(ws, x0, y0, stride);
+                    case IntraMode.VR -> predictBvrpred(ws, x0, y0, stride);
+                    case IntraMode.VL -> predictBvlpred(ws, x0, y0, stride);
+                    case IntraMode.HD -> predictBhdpred(ws, x0, y0, stride);
+                    case IntraMode.HU -> predictBhupred(ws, x0, y0, stride);
+                    default -> throw new AssertionError("Unexpected intra mode: " + mode);
                 }
 
                 addResidue(ws, resdata, i * 16, y0, x0, stride);

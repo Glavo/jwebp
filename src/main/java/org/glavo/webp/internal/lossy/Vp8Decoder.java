@@ -35,7 +35,6 @@ public final class Vp8Decoder {
     private static final int FILTER_INFO_LUMA_MODE_MASK = 0x07;
     private static final int FILTER_INFO_COEFFICIENTS_SKIPPED = 1 << 5;
     private static final int FILTER_INFO_NON_ZERO_DCT = 1 << 6;
-    private static final IntraMode[] INTRA_MODE_BY_CODE = buildIntraModeByCode();
 
     /// Encoded VP8 payload shared by the header and token partitions.
     private byte[] input = ArrayUtils.EMPTY_BYTE_ARRAY;
@@ -518,7 +517,7 @@ public final class Vp8Decoder {
         if (topBpred.length < topBpredLength) {
             topBpred = new byte[topBpredLength];
         }
-        Arrays.fill(topBpred, 0, topBpredLength, IntraMode.DC.code);
+        Arrays.fill(topBpred, 0, topBpredLength, (byte) IntraMode.DC);
         int topComplexityLength = macroblockWidth * 9;
         if (topComplexity.length < topComplexityLength) {
             topComplexity = new byte[topComplexityLength];
@@ -587,6 +586,7 @@ public final class Vp8Decoder {
     /// @param macroblockX the horizontal macroblock index
     /// @param macroBlock the workspace to overwrite
     /// @throws WebPException if the header partition is corrupt
+    @SuppressWarnings("MagicConstant")
     private void readMacroblockHeader(int macroblockX, MacroBlock macroBlock) throws WebPException {
         macroBlock.reset();
         int topBpredOffset = macroblockX * 4;
@@ -597,52 +597,39 @@ public final class Vp8Decoder {
 
         macroBlock.coefficientsSkipped = probSkipFalse >= 0 && headerDecoder.readBool(probSkipFalse);
 
-        int lumaModeCode = headerDecoder.readWithTree(
+        // Static mode trees contain only valid leaves, which are also the only values stored as neighbors.
+        @LumaMode int lumaMode = headerDecoder.readWithTree(
                 LossyTables.KEYFRAME_YMODE_TREE,
                 LossyTables.KEYFRAME_YMODE_PROBS
         );
-        LumaMode lumaMode = LumaMode.fromCode(lumaModeCode);
-        if (lumaMode == null) {
-            throw new WebPException("Invalid VP8 luma prediction mode: " + lumaModeCode);
-        }
         macroBlock.lumaMode = lumaMode;
 
-        IntraMode sharedMode = lumaMode.asIntraMode();
-        if (sharedMode == null) {
-            IntraMode[] bpred = macroBlock.bpred;
+        if (lumaMode == LumaMode.B) {
+            long intraModes = 0L;
             for (int y = 0; y < 4; y++) {
                 for (int x = 0; x < 4; x++) {
-                    IntraMode topMode = INTRA_MODE_BY_CODE[topBpred[topBpredOffset + x] & 0xFF];
-                    IntraMode leftMode = INTRA_MODE_BY_CODE[leftBpred[y] & 0xFF];
-                    int intraCode = headerDecoder.readWithTree(
+                    @IntraMode int topMode = topBpred[topBpredOffset + x] & 0xFF;
+                    @IntraMode int leftMode = leftBpred[y] & 0xFF;
+                    @IntraMode int blockMode = headerDecoder.readWithTree(
                             LossyTables.KEYFRAME_BPRED_MODE_TREE,
-                            LossyTables.KEYFRAME_BPRED_MODE_PROBS[topMode.ordinal()][leftMode.ordinal()]
+                            LossyTables.KEYFRAME_BPRED_MODE_PROBS[topMode][leftMode]
                     );
-                    IntraMode blockMode = IntraMode.fromCode(intraCode);
-                    if (blockMode == null) {
-                        throw new WebPException("Invalid VP8 intra prediction mode: " + intraCode);
-                    }
-                    bpred[x + y * 4] = blockMode;
-                    topBpred[topBpredOffset + x] = blockMode.code;
-                    leftBpred[y] = blockMode.code;
+                    intraModes = LossyCommon.setIntraMode(intraModes, x + y * 4, blockMode);
+                    topBpred[topBpredOffset + x] = (byte) blockMode;
+                    leftBpred[y] = (byte) blockMode;
                 }
             }
-            for (int x = 0; x < 4; x++) {
-                topBpred[topBpredOffset + x] = bpred[12 + x].code;
-            }
+            macroBlock.intraModes = intraModes;
         } else {
-            Arrays.fill(leftBpred, sharedMode.code);
-            Arrays.fill(topBpred, topBpredOffset, topBpredOffset + 4, sharedMode.code);
+            @IntraMode int sharedMode = LossyCommon.toIntraMode(lumaMode);
+            Arrays.fill(leftBpred, (byte) sharedMode);
+            Arrays.fill(topBpred, topBpredOffset, topBpredOffset + 4, (byte) sharedMode);
         }
 
-        int chromaModeCode = headerDecoder.readWithTree(
+        @ChromaMode int chromaMode = headerDecoder.readWithTree(
                 LossyTables.KEYFRAME_UV_MODE_TREE,
                 LossyTables.KEYFRAME_UV_MODE_PROBS
         );
-        ChromaMode chromaMode = ChromaMode.fromCode(chromaModeCode);
-        if (chromaMode == null) {
-            throw new WebPException("Invalid VP8 chroma prediction mode: " + chromaModeCode);
-        }
         macroBlock.chromaMode = chromaMode;
 
         headerDecoder.ensureNotPastEof();
@@ -668,14 +655,23 @@ public final class Vp8Decoder {
         );
 
         switch (macroBlock.lumaMode) {
-            case V -> LossyPrediction.predictVpred(workspace, 16, 1, 1, stride);
-            case H -> LossyPrediction.predictHpred(workspace, 16, 1, 1, stride);
-            case TM -> LossyPrediction.predictTmpred(workspace, 16, 1, 1, stride);
-            case DC -> LossyPrediction.predictDcpred(workspace, 16, stride, macroblockY != 0, macroblockX != 0);
-            case B -> {
-                IntraMode[] bpred = macroBlock.bpred;
-                LossyPrediction.predict4x4(workspace, stride, bpred, residualData);
-            }
+            case LumaMode.V -> LossyPrediction.predictVpred(workspace, 16, 1, 1, stride);
+            case LumaMode.H -> LossyPrediction.predictHpred(workspace, 16, 1, 1, stride);
+            case LumaMode.TM -> LossyPrediction.predictTmpred(workspace, 16, 1, 1, stride);
+            case LumaMode.DC -> LossyPrediction.predictDcpred(
+                    workspace,
+                    16,
+                    stride,
+                    macroblockY != 0,
+                    macroblockX != 0
+            );
+            case LumaMode.B -> LossyPrediction.predict4x4(
+                    workspace,
+                    stride,
+                    macroBlock.intraModes,
+                    residualData
+            );
+            default -> throw new AssertionError("Unexpected luma mode: " + macroBlock.lumaMode);
         }
 
         if (macroBlock.lumaMode != LumaMode.B) {
@@ -720,22 +716,23 @@ public final class Vp8Decoder {
         LossyPrediction.fillBorderChroma(vWorkspace, macroblockX, macroblockY, topBorderV, leftBorderV);
 
         switch (macroBlock.chromaMode) {
-            case DC -> {
+            case ChromaMode.DC -> {
                 LossyPrediction.predictDcpred(uWorkspace, 8, stride, macroblockY != 0, macroblockX != 0);
                 LossyPrediction.predictDcpred(vWorkspace, 8, stride, macroblockY != 0, macroblockX != 0);
             }
-            case V -> {
+            case ChromaMode.V -> {
                 LossyPrediction.predictVpred(uWorkspace, 8, 1, 1, stride);
                 LossyPrediction.predictVpred(vWorkspace, 8, 1, 1, stride);
             }
-            case H -> {
+            case ChromaMode.H -> {
                 LossyPrediction.predictHpred(uWorkspace, 8, 1, 1, stride);
                 LossyPrediction.predictHpred(vWorkspace, 8, 1, 1, stride);
             }
-            case TM -> {
+            case ChromaMode.TM -> {
                 LossyPrediction.predictTmpred(uWorkspace, 8, 1, 1, stride);
                 LossyPrediction.predictTmpred(vWorkspace, 8, 1, 1, stride);
             }
+            default -> throw new AssertionError("Unexpected chroma mode: " + macroBlock.chromaMode);
         }
 
         for (int blockY = 0; blockY < 2; blockY++) {
@@ -763,7 +760,7 @@ public final class Vp8Decoder {
             int[] block,
             int blockOffset,
             int partition,
-            Plane plane,
+            @Plane int plane,
             int complexity,
             short dcq,
             short acq
@@ -772,7 +769,7 @@ public final class Vp8Decoder {
 
         int firstCoeff = plane == Plane.Y_COEFF_1 ? 1 : 0;
         LossyArithmeticDecoder decoder = partitions[partition];
-        int probabilityPlaneOffset = plane.ordinal() * LossyTables.COEFF_PROBABILITY_COUNT_PER_PLANE;
+        int probabilityPlaneOffset = plane * LossyTables.COEFF_PROBABILITY_COUNT_PER_PLANE;
 
         int complexityState = complexity;
         boolean hasCoefficients = false;
@@ -862,7 +859,7 @@ public final class Vp8Decoder {
         int segmentIndex = macroBlock.segmentId;
         int[] blocks = residualDataScratch;
         Arrays.fill(blocks, 0);
-        Plane plane = macroBlock.lumaMode == LumaMode.B ? Plane.Y_COEFF_0 : Plane.Y2;
+        @Plane int plane = macroBlock.lumaMode == LumaMode.B ? Plane.Y_COEFF_0 : Plane.Y2;
         int topComplexityOffset = macroblockX * 9;
 
         if (plane == Plane.Y2) {
@@ -980,7 +977,7 @@ public final class Vp8Decoder {
         int macroblockEdgeLimit = (filterLevel + 2) * 2 + interiorLimit;
         int subblockEdgeLimit = filterLevel * 2 + interiorLimit;
         int lumaModeCode = loopFilterLumaModeCode(macroBlockInfo);
-        boolean doSubblockFiltering = lumaModeCode == LossyCommon.B_PRED
+        boolean doSubblockFiltering = lumaModeCode == LumaMode.B
                 || (!loopFilterCoefficientsSkipped(macroBlockInfo) && loopFilterNonZeroDct(macroBlockInfo));
 
         if (macroblockX > 0) {
@@ -1169,7 +1166,7 @@ public final class Vp8Decoder {
 
         if (loopFilterAdjustmentsEnabled) {
             filterLevel += refDelta[0];
-            if (loopFilterLumaModeCode(macroBlockInfo) == LossyCommon.B_PRED) {
+            if (loopFilterLumaModeCode(macroBlockInfo) == LumaMode.B) {
                 filterLevel += modeDelta[0];
             }
         }
@@ -1180,7 +1177,7 @@ public final class Vp8Decoder {
 
     private static byte packLoopFilterInfo(MacroBlock macroBlock) {
         int info = macroBlock.segmentId & FILTER_INFO_SEGMENT_MASK;
-        info |= (macroBlock.lumaMode.code & FILTER_INFO_LUMA_MODE_MASK) << FILTER_INFO_LUMA_MODE_SHIFT;
+        info |= (macroBlock.lumaMode & FILTER_INFO_LUMA_MODE_MASK) << FILTER_INFO_LUMA_MODE_SHIFT;
         if (macroBlock.coefficientsSkipped) {
             info |= FILTER_INFO_COEFFICIENTS_SKIPPED;
         }
@@ -1274,16 +1271,8 @@ public final class Vp8Decoder {
         return bytes;
     }
 
-    private static IntraMode[] buildIntraModeByCode() {
-        IntraMode[] modes = new IntraMode[10];
-        for (IntraMode mode : IntraMode.values()) {
-            modes[mode.code] = mode;
-        }
-        return modes;
-    }
-
     private void resetLeftState() {
-        Arrays.fill(leftBpred, IntraMode.DC.code);
+        Arrays.fill(leftBpred, (byte) IntraMode.DC);
         Arrays.fill(leftComplexity, (byte) 0);
     }
 
@@ -1351,14 +1340,16 @@ public final class Vp8Decoder {
     /// Reusable prediction and coefficient metadata for one macroblock.
     @NotNullByDefault
     private static final class MacroBlock {
-        /// Per-block luma prediction modes used when [#lumaMode] is [LumaMode#B].
-        final IntraMode[] bpred = new IntraMode[16];
+        /// Packed per-block luma prediction modes used when [#lumaMode] is [LumaMode#B].
+        long intraModes;
 
         /// Luma prediction mode for the current macroblock.
-        LumaMode lumaMode = LumaMode.DC;
+        @LumaMode
+        int lumaMode = LumaMode.DC;
 
         /// Chroma prediction mode for the current macroblock.
-        ChromaMode chromaMode = ChromaMode.DC;
+        @ChromaMode
+        int chromaMode = ChromaMode.DC;
 
         /// Segment containing the current macroblock.
         int segmentId;
