@@ -679,8 +679,16 @@ public final class LosslessDecoder {
         if (planeCode > 120) {
             return planeCode - 120;
         }
-        int[] offset = LosslessConstants.DISTANCE_MAP[planeCode - 1];
-        int distance = offset[0] + offset[1] * xsize;
+        int packed = Byte.toUnsignedInt(LosslessConstants.DISTANCE_MAP[planeCode - 1]);
+        int dx = packed >> 4;
+        int dy = packed & 0xF;
+        if (dx >= 9) {
+            dx -= 16;
+        }
+        if (dy >= 9) {
+            dy -= 16;
+        }
+        int distance = dx + dy * xsize;
         return Math.max(distance, 1);
     }
 
