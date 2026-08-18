@@ -123,11 +123,11 @@ public final class LosslessHuffmanTree {
         int tableBits = Math.min(maxLength, MAX_TABLE_BITS);
         int tableSize = 1 << tableBits;
         char[] primaryTable = new char[tableSize];
-        int[] sortedSymbols = workspace.acquireSortedSymbols(symbolCount);
+        char[] sortedSymbols = workspace.acquireSortedSymbols(symbolCount);
         for (int symbol = 0; symbol < codeLengths.length; symbol++) {
             int length = codeLengths[symbol];
             if (length != 0) {
-                sortedSymbols[offsets[length]++] = symbol;
+                sortedSymbols[offsets[length]++] = (char) symbol;
             }
         }
 
@@ -202,15 +202,15 @@ public final class LosslessHuffmanTree {
         private final int[] offsets = new int[MAX_ALLOWED_CODE_LENGTH + 1];
 
         /// Symbols ordered by code length for the current tree.
-        private int[] sortedSymbols = ArrayUtils.EMPTY_INT_ARRAY;
+        private char[] sortedSymbols = ArrayUtils.EMPTY_CHAR_ARRAY;
 
         /// Returns scratch storage large enough for the requested symbol count.
         ///
         /// @param symbolCount the number of non-zero-length symbols
         /// @return reusable symbol-order storage
-        private int[] acquireSortedSymbols(int symbolCount) {
+        private char[] acquireSortedSymbols(int symbolCount) {
             if (sortedSymbols.length < symbolCount) {
-                sortedSymbols = new int[symbolCount];
+                sortedSymbols = new char[symbolCount];
             }
             return sortedSymbols;
         }
