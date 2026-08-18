@@ -13,7 +13,7 @@ public final class LosslessConstants {
     public static final int CODE_LENGTH_CODES = 19;
 
     /// Canonical traversal order for code-length codes.
-    public static final int[] CODE_LENGTH_CODE_ORDER = {
+    public static final byte @Unmodifiable [] CODE_LENGTH_CODE_ORDER = {
             17, 18, 0, 1, 2, 3, 4, 5, 16, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
     };
 
