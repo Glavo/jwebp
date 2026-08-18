@@ -116,21 +116,22 @@ public final class LosslessTransforms {
             int transformRowStart = blockY * blockXSize;
             for (int blockX = 0; blockX < blockXSize; blockX++) {
                 int transform = transformData[transformRowStart + blockX];
-                int redToBlue = Argb.red(transform);
-                int greenToBlue = Argb.green(transform);
-                int greenToRed = Argb.blue(transform);
+                int redToBlue = (byte) (transform >>> 16);
+                int greenToBlue = (byte) (transform >>> 8);
+                int greenToRed = (byte) transform;
 
                 int xStart = blockX << sizeBits;
                 int xEnd = Math.min(xStart + blockSize, width);
                 for (int y = yStart; y < yEnd; y++) {
-                    int pixelEnd = y * width + xEnd;
-                    for (int pixel = y * width + xStart; pixel < pixelEnd; pixel++) {
+                    int pixelStart = y * width + xStart;
+                    int pixelEnd = pixelStart + (xEnd - xStart);
+                    for (int pixel = pixelStart; pixel < pixelEnd; pixel++) {
                         int value = imageData[pixel];
-                        int green = Argb.green(value);
-                        int red = Argb.red(value) + colorTransformDelta((byte) greenToRed, (byte) green);
-                        int blue = Argb.blue(value)
-                                + colorTransformDelta((byte) greenToBlue, (byte) green)
-                                + colorTransformDelta((byte) redToBlue, (byte) red);
+                        int green = (byte) (value >>> 8);
+                        int red = ((value >>> 16) & 0xFF) + ((greenToRed * green) >> 5);
+                        int blue = (value & 0xFF)
+                                + ((greenToBlue * green) >> 5)
+                                + ((redToBlue * (byte) red) >> 5);
                         imageData[pixel] = (value & 0xFF00_FF00)
                                 | ((red & 0xFF) << 16)
                                 | (blue & 0xFF);
@@ -337,9 +338,5 @@ public final class LosslessTransforms {
 
     private static int clampAddSubtractHalf(int a, int b) {
         return Math.max(0, Math.min(255, a + (a - b) / 2));
-    }
-
-    private static int colorTransformDelta(byte transform, byte color) {
-        return ((int) transform * (int) color) >> 5;
     }
 }
