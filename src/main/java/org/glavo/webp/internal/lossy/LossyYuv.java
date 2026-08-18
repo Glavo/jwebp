@@ -15,19 +15,19 @@ final class LossyYuv {
     private static final int YUV_HALF = 1 << (YUV_FIX - 1);
 
     /// Scaled luma contributions indexed by an unsigned sample.
-    private static final int @Unmodifiable [] Y_COEFFICIENTS = buildCoefficientTable(19077);
+    private static final char @Unmodifiable [] Y_COEFFICIENTS = buildCoefficientTable(19077);
 
     /// Scaled red contributions indexed by an unsigned V sample.
-    private static final int @Unmodifiable [] V_TO_R_COEFFICIENTS = buildCoefficientTable(26149);
+    private static final char @Unmodifiable [] V_TO_R_COEFFICIENTS = buildCoefficientTable(26149);
 
     /// Scaled green contributions indexed by an unsigned U sample.
-    private static final int @Unmodifiable [] U_TO_G_COEFFICIENTS = buildCoefficientTable(6419);
+    private static final char @Unmodifiable [] U_TO_G_COEFFICIENTS = buildCoefficientTable(6419);
 
     /// Scaled green contributions indexed by an unsigned V sample.
-    private static final int @Unmodifiable [] V_TO_G_COEFFICIENTS = buildCoefficientTable(13320);
+    private static final char @Unmodifiable [] V_TO_G_COEFFICIENTS = buildCoefficientTable(13320);
 
     /// Scaled blue contributions indexed by an unsigned U sample.
-    private static final int @Unmodifiable [] U_TO_B_COEFFICIENTS = buildCoefficientTable(33050);
+    private static final char @Unmodifiable [] U_TO_B_COEFFICIENTS = buildCoefficientTable(33050);
 
     private LossyYuv() {
     }
@@ -962,12 +962,15 @@ final class LossyYuv {
 
     /// Builds all scaled contributions for one YUV conversion coefficient.
     ///
+    /// Every contribution is non-negative and fits in an unsigned 16-bit value, so the result is
+    /// stored as `char` and widens to the same unsigned `int` at every use site.
+    ///
     /// @param coefficient the fixed-point conversion coefficient
     /// @return the 256 scaled sample contributions
-    private static int @Unmodifiable [] buildCoefficientTable(int coefficient) {
-        int[] table = new int[256];
+    private static char @Unmodifiable [] buildCoefficientTable(int coefficient) {
+        char[] table = new char[256];
         for (int sample = 0; sample < table.length; sample++) {
-            table[sample] = mulhi(sample, coefficient);
+            table[sample] = (char) mulhi(sample, coefficient);
         }
         return table;
     }
