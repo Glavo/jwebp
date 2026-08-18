@@ -39,13 +39,11 @@ final class LossyPrediction {
     }
 
     static void fillBorderChroma(byte[] block, int mbx, int mby, byte[] top, byte[] left) {
-        int stride = CHROMA_STRIDE;
-
         for (int i = 0; i < 8; i++) {
             block[1 + i] = mby == 0 ? (byte) 127 : top[mbx * 8 + i];
         }
         for (int y = 0; y < 8; y++) {
-            block[(y + 1) * stride] = mbx == 0 ? (byte) 129 : left[y + 1];
+            block[(y + 1) * CHROMA_STRIDE] = mbx == 0 ? (byte) 129 : left[y + 1];
         }
         block[0] = (byte) (mby == 0 ? 127 : (mbx == 0 ? 129 : left[0] & 0xFF));
     }
