@@ -90,14 +90,16 @@ final class LossyArithmeticDecoder {
     ///
     /// @return the decoded flag
     boolean readFlag() {
-        return readBit(128);
+        return readHalfBit();
     }
 
-    /// Reads one equiprobable sign bit.
+    /// Applies one equiprobable sign bit to a non-negative magnitude.
     ///
-    /// @return `true` for a negative value
-    boolean readSign() {
-        return readBit(128);
+    /// @param magnitude the non-negative magnitude
+    /// @return the signed value
+    int readSigned(int magnitude) {
+        int mask = readHalfBitMask();
+        return (magnitude ^ mask) - mask;
     }
 
     /// Reads an unsigned literal in most-significant-bit-first order.
@@ -107,7 +109,7 @@ final class LossyArithmeticDecoder {
     int readLiteral(int bits) {
         int value = 0;
         for (int i = 0; i < bits; i++) {
-            value = (value << 1) | (readBit(128) ? 1 : 0);
+            value = (value << 1) | (readHalfBit() ? 1 : 0);
         }
         return value;
     }
@@ -117,11 +119,11 @@ final class LossyArithmeticDecoder {
     /// @param bits the number of magnitude bits
     /// @return the decoded value, or `0` when the value is absent
     int readOptionalSignedValue(int bits) {
-        if (!readBit(128)) {
+        if (!readHalfBit()) {
             return 0;
         }
         int magnitude = readLiteral(bits);
-        boolean negative = readBit(128);
+        boolean negative = readHalfBit();
         return negative ? -magnitude : magnitude;
     }
 
@@ -192,12 +194,12 @@ final class LossyArithmeticDecoder {
 
         // The normalized range is at most 255, so the product fits in an int.
         int split = 1 + ((range - 1) * probability >> 8);
-        long bigSplit = (long) split << bitCount;
+        int activeValue = (int) (value >>> bitCount);
 
         boolean result;
-        if (Long.compareUnsigned(value, bigSplit) >= 0) {
+        if (activeValue >= split) {
             range -= split;
-            value -= bigSplit;
+            value -= (long) split << bitCount;
             result = true;
         } else {
             range = split;
@@ -209,6 +211,48 @@ final class LossyArithmeticDecoder {
         range <<= shift;
         bitCount -= shift;
         return result;
+    }
+
+    /// Reads one equiprobable bit using its single-step normalization rule.
+    ///
+    /// @return the decoded bit
+    private boolean readHalfBit() {
+        return readHalfBitMask() != 0;
+    }
+
+    /// Reads one equiprobable bit and returns its sign-extension mask.
+    ///
+    /// @return `-1` for a one bit, or `0` for a zero bit
+    private int readHalfBitMask() {
+        if (bitCount < 0) {
+            if (inputLimit - inputPosition >= Integer.BYTES) {
+                byte[] input = this.input;
+                int position = inputPosition;
+                int nextValue = (Byte.toUnsignedInt(input[position]) << 24)
+                        | (Byte.toUnsignedInt(input[position + 1]) << 16)
+                        | (Byte.toUnsignedInt(input[position + 2]) << 8)
+                        | Byte.toUnsignedInt(input[position + 3]);
+                inputPosition = position + Integer.BYTES;
+                value <<= 32;
+                value |= Integer.toUnsignedLong(nextValue);
+                bitCount += 32;
+            } else {
+                loadFromTailBytes();
+                if (pastEof) {
+                    return 0;
+                }
+            }
+        }
+
+        int split = (range + 1) >>> 1;
+        int activeValue = (int) (value >>> bitCount);
+        int mask = (split - 1 - activeValue) >> 31;
+        int nextRange = (split & ~mask) | ((range - split) & mask);
+        int shift = 1 - (nextRange >>> 7);
+        range = nextRange << shift;
+        value -= (long) (split & mask) << bitCount;
+        bitCount -= shift;
+        return mask;
     }
 
     /// Loads one tail byte or the single synthesized VP8 padding byte.

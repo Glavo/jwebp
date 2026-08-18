@@ -8,6 +8,7 @@ import org.glavo.webp.WebPException;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -51,6 +52,34 @@ final class LossyArithmeticDecoderTest {
         assertEquals(185, decoder.readLiteral(8));
         assertEquals(31, decoder.readLiteral(8));
         decoder.ensureNotPastEof();
+    }
+
+    /// Verifies that the specialized equiprobable paths match the general arithmetic decoder.
+    @Test
+    void equiprobablePathsMatchGeneralDecoder() throws Exception {
+        byte[] input = new byte[1024];
+        new Random(0x5EEDB17L).nextBytes(input);
+
+        LossyArithmeticDecoder reference = new LossyArithmeticDecoder();
+        LossyArithmeticDecoder flags = new LossyArithmeticDecoder();
+        reference.init(input, 0, input.length);
+        flags.init(input, 0, input.length);
+        for (int i = 0; i < 4096; i++) {
+            assertEquals(reference.readBool(128), flags.readFlag());
+        }
+        reference.ensureNotPastEof();
+        flags.ensureNotPastEof();
+
+        reference.init(input, 0, input.length);
+        LossyArithmeticDecoder signedValues = new LossyArithmeticDecoder();
+        signedValues.init(input, 0, input.length);
+        for (int i = 0; i < 4096; i++) {
+            int magnitude = i + 1;
+            int expected = reference.readBool(128) ? -magnitude : magnitude;
+            assertEquals(expected, signedValues.readSigned(magnitude));
+        }
+        reference.ensureNotPastEof();
+        signedValues.ensureNotPastEof();
     }
 
     /// Verifies that reading an uninitialized decoder is reported as corrupt input.

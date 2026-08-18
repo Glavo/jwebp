@@ -15,8 +15,11 @@ import java.util.Arrays;
 @NotNullByDefault
 public final class LosslessHuffmanTree {
 
+    /// Maximum code length permitted by the VP8L format.
     private static final int MAX_ALLOWED_CODE_LENGTH = 15;
-    private static final int MAX_TABLE_BITS = 10;
+
+    /// Maximum width of the primary lookup table.
+    private static final int MAX_TABLE_BITS = 9;
 
     private final boolean singleNode;
     private final int symbol;

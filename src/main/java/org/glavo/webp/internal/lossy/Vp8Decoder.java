@@ -806,9 +806,7 @@ public final class Vp8Decoder {
             }
 
             complexityState = absoluteValue == 1 ? 1 : 2;
-            if (decoder.readSign()) {
-                absoluteValue = -absoluteValue;
-            }
+            absoluteValue = decoder.readSigned(absoluteValue);
 
             int zigzag = LossyTables.ZIGZAG[i];
             block[blockOffset + zigzag] = absoluteValue * (zigzag > 0 ? acq : dcq);

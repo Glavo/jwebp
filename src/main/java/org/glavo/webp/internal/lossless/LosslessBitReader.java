@@ -49,15 +49,28 @@ public final class LosslessBitReader {
         this.endPosition = offset + length;
     }
 
-    /// Ensures that up to 56 bits are available in the local buffer.
-    ///
-    /// @throws WebPException if the stream is malformed
-    public void fill() throws WebPException {
-        while (bitCount < 56 && bytePosition < endPosition) {
-            buffer |= ((long) data[bytePosition] & 0xFFL) << bitCount;
-            bitCount += 8;
-            bytePosition++;
+    /// Refills the local buffer until at least 56 bits are available or the input is exhausted.
+    public void fill() {
+        int position = bytePosition;
+        int count = bitCount;
+        long bits = buffer;
+        // Use the largest load that cannot overflow the high end of the bit window.
+        if (count <= 32 && endPosition - position >= Integer.BYTES) {
+            long next = ((long) data[position] & 0xFFL)
+                    | (((long) data[position + 1] & 0xFFL) << 8)
+                    | (((long) data[position + 2] & 0xFFL) << 16)
+                    | (((long) data[position + 3] & 0xFFL) << 24);
+            bits |= next << count;
+            count += Integer.SIZE;
+            position += Integer.BYTES;
         }
+        while (count < 56 && position < endPosition) {
+            bits |= ((long) data[position++] & 0xFFL) << count;
+            count += Byte.SIZE;
+        }
+        buffer = bits;
+        bitCount = count;
+        bytePosition = position;
     }
 
     /// Returns the low `bits` bits of the current buffer without consuming them.
