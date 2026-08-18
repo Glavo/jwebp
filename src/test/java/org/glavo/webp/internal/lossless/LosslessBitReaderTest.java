@@ -7,6 +7,8 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.glavo.webp.WebPException;
 import org.junit.jupiter.api.Test;
 
+import java.util.Random;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -32,5 +34,44 @@ final class LosslessBitReaderTest {
         assertEquals(2, bitReader.readBits(3));
         assertEquals(13, bitReader.readBits(5));
         assertThrows(WebPException.class, () -> bitReader.readBits(4));
+    }
+
+    /// Verifies mixed-width reads across unaligned array ranges and refill boundaries.
+    @Test
+    void readsRandomUnalignedRangesAcrossRefills() throws Exception {
+        Random random = new Random(0x4C4F_4E47_5245_4144L);
+        for (int offset = 0; offset < Long.BYTES; offset++) {
+            for (int length = 1; length <= 64; length++) {
+                byte[] data = new byte[offset + length + Long.BYTES];
+                random.nextBytes(data);
+                LosslessBitReader bitReader = new LosslessBitReader(data, offset, length);
+
+                int bitOffset = 0;
+                int totalBits = length * Byte.SIZE;
+                while (bitOffset < totalBits) {
+                    int width = Math.min(1 + random.nextInt(Integer.SIZE), totalBits - bitOffset);
+                    int expected = readBits(data, offset * Byte.SIZE + bitOffset, width);
+                    assertEquals(expected, bitReader.readBits(width));
+                    bitOffset += width;
+                }
+                assertThrows(WebPException.class, () -> bitReader.readBits(1));
+            }
+        }
+    }
+
+    /// Returns an unsigned bit sequence in least-significant-bit-first order.
+    ///
+    /// @param data the source bytes
+    /// @param bitOffset the source bit offset
+    /// @param width the number of bits to read
+    /// @return the decoded value
+    private static int readBits(byte[] data, int bitOffset, int width) {
+        int value = 0;
+        for (int index = 0; index < width; index++) {
+            int sourceBit = bitOffset + index;
+            int bit = (data[sourceBit / Byte.SIZE] >>> (sourceBit & (Byte.SIZE - 1))) & 1;
+            value |= bit << index;
+        }
+        return value;
     }
 }

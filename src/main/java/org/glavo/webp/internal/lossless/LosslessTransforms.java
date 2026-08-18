@@ -274,9 +274,10 @@ public final class LosslessTransforms {
             int predictTop = colorDistance(left, topLeft);
 
             int predictor = predictLeft < predictTop ? left : top;
-            imageData[i] = Argb.add(imageData[i], predictor);
+            int value = Argb.add(imageData[i], predictor);
+            imageData[i] = value;
             topLeft = top;
-            left = imageData[i];
+            left = value;
         }
     }
 

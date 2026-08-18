@@ -55,8 +55,17 @@ public final class LosslessBitReader {
         int position = bytePosition;
         int count = bitCount;
         long bits = buffer;
-        // Use the largest load that cannot overflow the high end of the bit window.
-        if (count <= 32 && endPosition - position >= Integer.BYTES) {
+        // Consume the largest whole-byte prefix that fits in the high end of the bit window.
+        if (count <= 24 && endPosition - position >= Long.BYTES) {
+            int loadedBytes = (Long.SIZE - count) / Byte.SIZE;
+            long next = ArrayUtils.getLongLE(data, position);
+            if ((count & (Byte.SIZE - 1)) != 0) {
+                next &= (1L << (loadedBytes * Byte.SIZE)) - 1L;
+            }
+            bits |= next << count;
+            count += loadedBytes * Byte.SIZE;
+            position += loadedBytes;
+        } else if (count <= 32 && endPosition - position >= Integer.BYTES) {
             long next = Integer.toUnsignedLong(ArrayUtils.getIntLE(data, position));
             bits |= next << count;
             count += Integer.SIZE;
