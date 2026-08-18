@@ -25,27 +25,15 @@ import java.util.Objects;
 /// The class is not thread-safe.
 @NotNullByDefault
 public sealed abstract class BufferedInput implements Closeable {
-    /// Staging capacity for scalar container fields and chunk headers.
-    private static final int DEFAULT_BUFFER_SIZE = 1024;
+    /// Staging capacity for the widest scalar container field.
+    private static final int DEFAULT_BUFFER_SIZE = Long.BYTES;
 
     protected final ByteBuffer buffer;
     protected boolean closed = false;
 
     /// Creates an input with the default heap-backed staging buffer.
     protected BufferedInput() {
-        this(DEFAULT_BUFFER_SIZE, false);
-    }
-
-    /// Creates an input with a staging buffer of the given size and kind.
-    ///
-    /// @param bufferSize the staging buffer size in bytes; must be positive
-    /// @param direct whether the staging buffer should be a direct `ByteBuffer`
-    protected BufferedInput(int bufferSize, boolean direct) {
-        if (bufferSize <= 0) {
-            throw new IllegalArgumentException("bufferSize <= 0: " + bufferSize);
-        }
-
-        this.buffer = direct ? ByteBuffer.allocateDirect(bufferSize) : ByteBuffer.allocate(bufferSize);
+        this.buffer = ByteBuffer.allocate(DEFAULT_BUFFER_SIZE);
         this.buffer.order(ByteOrder.LITTLE_ENDIAN);
         this.buffer.limit(0);
     }
@@ -404,8 +392,8 @@ public sealed abstract class BufferedInput implements Closeable {
 
     /// `BufferedInput` backed by a `ReadableByteChannel`.
     ///
-    /// The implementation uses a direct buffer so channel reads can write into native memory
-    /// without a temporary heap array.
+    /// Payload bytes are read directly into their retained arrays; only scalar container fields
+    /// pass through the small heap staging buffer.
     public static final class OfByteChannel extends BufferedInput {
         private final ReadableByteChannel channel;
 
@@ -413,7 +401,7 @@ public sealed abstract class BufferedInput implements Closeable {
         ///
         /// @param channel the channel to read from
         public OfByteChannel(ReadableByteChannel channel) {
-            super(DEFAULT_BUFFER_SIZE, true);
+            super();
             this.channel = Objects.requireNonNull(channel, "channel");
         }
 

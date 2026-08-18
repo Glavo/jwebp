@@ -98,7 +98,10 @@ final class LosslessIntBufferTransforms {
                     int blue = Argb.blue(value)
                             + colorTransformDelta((byte) greenToBlue, (byte) green)
                             + colorTransformDelta((byte) redToBlue, (byte) red);
-                    imageData.put(pixel, Argb.pack(Argb.alpha(value), red, green, blue));
+                    imageData.put(
+                            pixel,
+                            (value & 0xFF00_FF00) | ((red & 0xFF) << 16) | (blue & 0xFF)
+                    );
                 }
             }
         }
@@ -111,12 +114,8 @@ final class LosslessIntBufferTransforms {
         for (int index = 0; index < imageData.limit(); index++) {
             int value = imageData.get(index);
             int green = Argb.green(value);
-            imageData.put(index, Argb.pack(
-                    Argb.alpha(value),
-                    Argb.red(value) + green,
-                    green,
-                    Argb.blue(value) + green
-            ));
+            int redBlue = (value & 0x00FF_00FF) + green * 0x0001_0001;
+            imageData.put(index, (value & 0xFF00_FF00) | (redBlue & 0x00FF_00FF));
         }
     }
 

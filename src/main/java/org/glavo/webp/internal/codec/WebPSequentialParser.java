@@ -10,8 +10,8 @@ import org.glavo.webp.internal.io.BufferedInput;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /// Sequential WebP container parser that buffers encoded frame payloads but does not rely on
@@ -123,11 +123,9 @@ public final class WebPSequentialParser {
             throw new WebPException("VP8X chunk is too small");
         }
 
-        BufferedInput.OfByteBuffer header = new BufferedInput.OfByteBuffer(ByteBuffer.wrap(payload));
-        int flags = header.readUnsignedByte();
-        header.skip(3);
-        int canvasWidth = header.readUnsignedInt24LE() + 1;
-        int canvasHeight = header.readUnsignedInt24LE() + 1;
+        int flags = Byte.toUnsignedInt(payload[0]);
+        int canvasWidth = readUnsignedInt24LE(payload, 4) + 1;
+        int canvasHeight = readUnsignedInt24LE(payload, 7) + 1;
 
         boolean animated = (flags & FLAG_ANIMATION) != 0;
         boolean alpha = (flags & FLAG_ALPHA) != 0;
@@ -189,9 +187,8 @@ public final class WebPSequentialParser {
                     if (chunkPayload.length < 6) {
                         throw new WebPException("ANIM chunk is too small");
                     }
-                    BufferedInput.OfByteBuffer reader = new BufferedInput.OfByteBuffer(ByteBuffer.wrap(chunkPayload));
-                    backgroundColorHint = reader.readByteArray(4);
-                    loopCount = reader.readUnsignedShortLE();
+                    backgroundColorHint = Arrays.copyOf(chunkPayload, 4);
+                    loopCount = readUnsignedShortLE(chunkPayload, 4);
                 }
                 case FourCC.ALPH -> {
                     if (alpha) {
@@ -387,29 +384,20 @@ public final class WebPSequentialParser {
             throw new WebPException("VP8 chunk is too small to contain a frame header");
         }
 
-        try {
-            BufferedInput.OfByteBuffer reader = new BufferedInput.OfByteBuffer(ByteBuffer.wrap(payload));
-            int tag = reader.readUnsignedInt24LE();
-            if ((tag & 1) != 0) {
-                throw new WebPException("Only VP8 keyframes are supported");
-            }
-
-            int signature0 = reader.readUnsignedByte();
-            int signature1 = reader.readUnsignedByte();
-            int signature2 = reader.readUnsignedByte();
-            if (signature0 != 0x9D || signature1 != 0x01 || signature2 != 0x2A) {
-                throw new WebPException("Invalid VP8 frame signature");
-            }
-
-            int width = reader.readUnsignedShortLE() & 0x3FFF;
-            int height = reader.readUnsignedShortLE() & 0x3FFF;
-            return new Dimensions(width, height);
-        } catch (IOException ex) {
-            if (ex instanceof WebPException webPException) {
-                throw webPException;
-            }
-            throw new WebPException("Failed to parse VP8 frame dimensions", ex);
+        int tag = readUnsignedInt24LE(payload, 0);
+        if ((tag & 1) != 0) {
+            throw new WebPException("Only VP8 keyframes are supported");
         }
+
+        if (Byte.toUnsignedInt(payload[3]) != 0x9D
+                || Byte.toUnsignedInt(payload[4]) != 0x01
+                || Byte.toUnsignedInt(payload[5]) != 0x2A) {
+            throw new WebPException("Invalid VP8 frame signature");
+        }
+
+        int width = readUnsignedShortLE(payload, 6) & 0x3FFF;
+        int height = readUnsignedShortLE(payload, 8) & 0x3FFF;
+        return new Dimensions(width, height);
     }
 
     /// Parses the VP8L chunk header.
@@ -422,27 +410,54 @@ public final class WebPSequentialParser {
             throw new WebPException("VP8L chunk is too small to contain a frame header");
         }
 
-        try {
-            BufferedInput.OfByteBuffer reader = new BufferedInput.OfByteBuffer(ByteBuffer.wrap(payload));
-            int signature = reader.readUnsignedByte();
-            if (signature != 0x2F) {
-                throw new WebPException("Invalid VP8L signature");
-            }
-            long bits = reader.readUnsignedIntLE();
-            int width = (int) (bits & 0x3FFF) + 1;
-            int height = (int) ((bits >>> 14) & 0x3FFF) + 1;
-            boolean alphaUsed = ((bits >>> 28) & 1) != 0;
-            int version = (int) ((bits >>> 29) & 0x7);
-            if (version != 0) {
-                throw new WebPException("Unsupported VP8L version: " + version);
-            }
-            return new LosslessHeader(width, height, alphaUsed);
-        } catch (IOException ex) {
-            if (ex instanceof WebPException webPException) {
-                throw webPException;
-            }
-            throw new WebPException("Failed to parse VP8L frame header", ex);
+        int signature = Byte.toUnsignedInt(payload[0]);
+        if (signature != 0x2F) {
+            throw new WebPException("Invalid VP8L signature");
         }
+        long bits = readUnsignedIntLE(payload, 1);
+        int width = (int) (bits & 0x3FFF) + 1;
+        int height = (int) ((bits >>> 14) & 0x3FFF) + 1;
+        boolean alphaUsed = ((bits >>> 28) & 1) != 0;
+        int version = (int) ((bits >>> 29) & 0x7);
+        if (version != 0) {
+            throw new WebPException("Unsupported VP8L version: " + version);
+        }
+        return new LosslessHeader(width, height, alphaUsed);
+    }
+
+    /// Reads an unsigned little-endian 16-bit integer from a validated array range.
+    ///
+    /// @param data the source bytes
+    /// @param offset the first source byte
+    /// @return the decoded unsigned value
+    private static int readUnsignedShortLE(byte[] data, int offset) {
+        return Byte.toUnsignedInt(data[offset])
+                | (Byte.toUnsignedInt(data[offset + 1]) << 8);
+    }
+
+    /// Reads an unsigned little-endian 24-bit integer from a validated array range.
+    ///
+    /// @param data the source bytes
+    /// @param offset the first source byte
+    /// @return the decoded unsigned value
+    private static int readUnsignedInt24LE(byte[] data, int offset) {
+        return Byte.toUnsignedInt(data[offset])
+                | (Byte.toUnsignedInt(data[offset + 1]) << 8)
+                | (Byte.toUnsignedInt(data[offset + 2]) << 16);
+    }
+
+    /// Reads an unsigned little-endian 32-bit integer from a validated array range.
+    ///
+    /// @param data the source bytes
+    /// @param offset the first source byte
+    /// @return the decoded unsigned value
+    private static long readUnsignedIntLE(byte[] data, int offset) {
+        return Integer.toUnsignedLong(
+                Byte.toUnsignedInt(data[offset])
+                        | (Byte.toUnsignedInt(data[offset + 1]) << 8)
+                        | (Byte.toUnsignedInt(data[offset + 2]) << 16)
+                        | (data[offset + 3] << 24)
+        );
     }
 
     private static ChunkPayload readChunk(BufferedInput input) throws IOException {

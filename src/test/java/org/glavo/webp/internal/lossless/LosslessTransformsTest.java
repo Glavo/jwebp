@@ -10,12 +10,65 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.Arrays;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 /// Tests VP8L inverse transforms independently of entropy decoding.
 @NotNullByDefault
 final class LosslessTransformsTest {
+
+    /// Verifies packed R/B updates against independent channel arithmetic on heap and direct data.
+    @Test
+    void updatesColorChannelsIndependently() {
+        int[] source = new int[4096];
+        Random random = new Random(0x52_45_44_42_4C_55_45L);
+        for (int index = 0; index < source.length; index++) {
+            source[index] = random.nextInt();
+        }
+
+        int transform = 0x00D3_B17F;
+        int[] expectedColor = source.clone();
+        for (int index = 0; index < expectedColor.length; index++) {
+            int value = expectedColor[index];
+            int green = Argb.green(value);
+            int red = Argb.red(value) + ((byte) Argb.blue(transform) * (byte) green >> 5);
+            int blue = Argb.blue(value)
+                    + ((byte) Argb.green(transform) * (byte) green >> 5)
+                    + ((byte) Argb.red(transform) * (byte) red >> 5);
+            expectedColor[index] = Argb.pack(Argb.alpha(value), red, green, blue);
+        }
+
+        int[] heapColor = source.clone();
+        LosslessTransforms.applyColorTransform(heapColor, source.length, 12, new int[]{transform});
+        assertArrayEquals(expectedColor, heapColor);
+        assertArrayEquals(
+                expectedColor,
+                applyDirectColorTransform(source, transform)
+        );
+
+        int[] expectedSubtractGreen = source.clone();
+        for (int index = 0; index < expectedSubtractGreen.length; index++) {
+            int value = expectedSubtractGreen[index];
+            int green = Argb.green(value);
+            expectedSubtractGreen[index] = Argb.pack(
+                    Argb.alpha(value),
+                    Argb.red(value) + green,
+                    green,
+                    Argb.blue(value) + green
+            );
+        }
+
+        int[] heapSubtractGreen = source.clone();
+        LosslessTransforms.applySubtractGreenTransform(heapSubtractGreen);
+        assertArrayEquals(expectedSubtractGreen, heapSubtractGreen);
+
+        IntBuffer directSubtractGreen = directBuffer(source);
+        LosslessIntBufferTransforms.applySubtractGreenTransform(directSubtractGreen);
+        int[] directSubtractGreenResult = new int[source.length];
+        directSubtractGreen.get(0, directSubtractGreenResult);
+        assertArrayEquals(expectedSubtractGreen, directSubtractGreenResult);
+    }
 
     /// Verifies in-place expansion for every packing width, partial final blocks, and a full table.
     @Test
@@ -116,5 +169,36 @@ final class LosslessTransformsTest {
             }
         }
         return imageData;
+    }
+
+    /// Applies the direct-buffer color transform and returns its pixels.
+    ///
+    /// @param source the source pixels
+    /// @param transform the packed transform multipliers
+    /// @return the transformed pixels
+    private static int[] applyDirectColorTransform(int[] source, int transform) {
+        IntBuffer direct = directBuffer(source);
+        LosslessIntBufferTransforms.applyColorTransform(
+                direct,
+                source.length,
+                12,
+                new int[]{transform}
+        );
+        int[] result = new int[source.length];
+        direct.get(0, result);
+        return result;
+    }
+
+    /// Creates a native-order direct integer buffer containing the supplied pixels.
+    ///
+    /// @param source the source pixels
+    /// @return the position-zero direct buffer
+    private static IntBuffer directBuffer(int[] source) {
+        IntBuffer direct = ByteBuffer.allocateDirect(source.length * Integer.BYTES)
+                .order(ByteOrder.nativeOrder())
+                .asIntBuffer();
+        direct.put(source);
+        direct.clear();
+        return direct;
     }
 }

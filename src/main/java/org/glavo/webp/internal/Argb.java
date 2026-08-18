@@ -107,12 +107,8 @@ public final class Argb {
 
     /// Computes the channel-wise average of two pixels.
     public static int average2(int left, int right) {
-        return pack(
-                (alpha(left) + alpha(right)) / 2,
-                (red(left) + red(right)) / 2,
-                (green(left) + green(right)) / 2,
-                (blue(left) + blue(right)) / 2
-        );
+        // The masked xor cannot carry into an adjacent byte when added to the common bits.
+        return (left & right) + (((left ^ right) >>> 1) & 0x7F7F_7F7F);
     }
 
     /// Converts one premultiplied color channel to its non-premultiplied value.

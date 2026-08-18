@@ -41,4 +41,21 @@ final class ArgbTest {
             assertEquals(expected, Argb.add(left, right));
         }
     }
+
+    /// Verifies that packed averaging matches independent channel arithmetic.
+    @Test
+    void averagesChannelsIndependently() {
+        Random random = new Random(0x41_56_45_52_41_47_45L);
+        for (int iteration = 0; iteration < 100_000; iteration++) {
+            int left = random.nextInt();
+            int right = random.nextInt();
+            int expected = Argb.pack(
+                    (Argb.alpha(left) + Argb.alpha(right)) >>> 1,
+                    (Argb.red(left) + Argb.red(right)) >>> 1,
+                    (Argb.green(left) + Argb.green(right)) >>> 1,
+                    (Argb.blue(left) + Argb.blue(right)) >>> 1
+            );
+            assertEquals(expected, Argb.average2(left, right));
+        }
+    }
 }

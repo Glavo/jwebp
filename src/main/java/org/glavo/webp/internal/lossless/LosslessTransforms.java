@@ -124,7 +124,9 @@ public final class LosslessTransforms {
                     int blue = Argb.blue(value)
                             + colorTransformDelta((byte) greenToBlue, (byte) green)
                             + colorTransformDelta((byte) redToBlue, (byte) red);
-                    imageData[pixel] = Argb.pack(Argb.alpha(value), red, green, blue);
+                    imageData[pixel] = (value & 0xFF00_FF00)
+                            | ((red & 0xFF) << 16)
+                            | (blue & 0xFF);
                 }
             }
         }
@@ -135,12 +137,8 @@ public final class LosslessTransforms {
         for (int index = 0; index < imageData.length; index++) {
             int value = imageData[index];
             int green = Argb.green(value);
-            imageData[index] = Argb.pack(
-                    Argb.alpha(value),
-                    Argb.red(value) + green,
-                    green,
-                    Argb.blue(value) + green
-            );
+            int redBlue = (value & 0x00FF_00FF) + green * 0x0001_0001;
+            imageData[index] = (value & 0xFF00_FF00) | (redBlue & 0x00FF_00FF);
         }
     }
 
