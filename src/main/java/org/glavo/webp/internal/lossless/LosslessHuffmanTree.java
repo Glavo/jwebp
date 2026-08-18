@@ -83,13 +83,16 @@ public final class LosslessHuffmanTree {
         int[] histogram = workspace.histogram;
         Arrays.fill(histogram, 0);
         int symbolCount = 0;
-        for (int length : codeLengths) {
+        int singleSymbol = -1;
+        for (int symbol = 0; symbol < codeLengths.length; symbol++) {
+            int length = codeLengths[symbol];
             if (length < 0 || length > MAX_ALLOWED_CODE_LENGTH) {
                 throw new WebPException("Invalid Huffman code length");
             }
             histogram[length]++;
             if (length != 0) {
                 symbolCount++;
+                singleSymbol = symbol;
             }
         }
 
@@ -97,11 +100,7 @@ public final class LosslessHuffmanTree {
             throw new WebPException("Invalid Huffman code");
         }
         if (symbolCount == 1) {
-            for (int symbol = 0; symbol < codeLengths.length; symbol++) {
-                if (codeLengths[symbol] != 0) {
-                    return single(symbol);
-                }
-            }
+            return single(singleSymbol);
         }
 
         int maxLength = MAX_ALLOWED_CODE_LENGTH;
@@ -110,7 +109,6 @@ public final class LosslessHuffmanTree {
         }
 
         int[] offsets = workspace.offsets;
-        Arrays.fill(offsets, 0);
         int codeSpaceUsed = 0;
         offsets[1] = 0;
         for (int i = 1; i < maxLength; i++) {

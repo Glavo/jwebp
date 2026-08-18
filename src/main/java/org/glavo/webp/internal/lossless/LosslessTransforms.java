@@ -106,27 +106,35 @@ public final class LosslessTransforms {
 
     /// Applies the color transform.
     public static void applyColorTransform(int[] imageData, int width, int sizeBits, int[] transformData) {
+        int height = imageData.length / width;
+        int blockSize = 1 << sizeBits;
         int blockXSize = subsampleSize(width, sizeBits);
-        for (int y = 0; y < imageData.length / width; y++) {
-            int rowTransformStart = (y >> sizeBits) * blockXSize;
-            for (int block = 0; block < blockXSize; block++) {
-                int transform = transformData[rowTransformStart + block];
+        int blockYSize = subsampleSize(height, sizeBits);
+        for (int blockY = 0; blockY < blockYSize; blockY++) {
+            int yStart = blockY << sizeBits;
+            int yEnd = Math.min(yStart + blockSize, height);
+            int transformRowStart = blockY * blockXSize;
+            for (int blockX = 0; blockX < blockXSize; blockX++) {
+                int transform = transformData[transformRowStart + blockX];
                 int redToBlue = Argb.red(transform);
                 int greenToBlue = Argb.green(transform);
                 int greenToRed = Argb.blue(transform);
 
-                int pixelStart = y * width + (block << sizeBits);
-                int pixelEnd = Math.min(y * width + ((block + 1) << sizeBits), (y + 1) * width);
-                for (int pixel = pixelStart; pixel < pixelEnd; pixel++) {
-                    int value = imageData[pixel];
-                    int green = Argb.green(value);
-                    int red = Argb.red(value) + colorTransformDelta((byte) greenToRed, (byte) green);
-                    int blue = Argb.blue(value)
-                            + colorTransformDelta((byte) greenToBlue, (byte) green)
-                            + colorTransformDelta((byte) redToBlue, (byte) red);
-                    imageData[pixel] = (value & 0xFF00_FF00)
-                            | ((red & 0xFF) << 16)
-                            | (blue & 0xFF);
+                int xStart = blockX << sizeBits;
+                int xEnd = Math.min(xStart + blockSize, width);
+                for (int y = yStart; y < yEnd; y++) {
+                    int pixelEnd = y * width + xEnd;
+                    for (int pixel = y * width + xStart; pixel < pixelEnd; pixel++) {
+                        int value = imageData[pixel];
+                        int green = Argb.green(value);
+                        int red = Argb.red(value) + colorTransformDelta((byte) greenToRed, (byte) green);
+                        int blue = Argb.blue(value)
+                                + colorTransformDelta((byte) greenToBlue, (byte) green)
+                                + colorTransformDelta((byte) redToBlue, (byte) red);
+                        imageData[pixel] = (value & 0xFF00_FF00)
+                                | ((red & 0xFF) << 16)
+                                | (blue & 0xFF);
+                    }
                 }
             }
         }

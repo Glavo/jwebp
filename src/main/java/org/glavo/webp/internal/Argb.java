@@ -101,8 +101,8 @@ public final class Argb {
     public static int add(int left, int right) {
         // The unused byte between each selected lane absorbs carries before the final mask.
         int redBlue = (left & 0x00FF_00FF) + (right & 0x00FF_00FF);
-        int alphaGreen = ((left >>> 8) & 0x00FF_00FF) + ((right >>> 8) & 0x00FF_00FF);
-        return (redBlue & 0x00FF_00FF) | ((alphaGreen & 0x00FF_00FF) << 8);
+        int alphaGreen = (left & 0xFF00_FF00) + (right & 0xFF00_FF00);
+        return (redBlue & 0x00FF_00FF) | (alphaGreen & 0xFF00_FF00);
     }
 
     /// Computes the channel-wise average of two pixels.
