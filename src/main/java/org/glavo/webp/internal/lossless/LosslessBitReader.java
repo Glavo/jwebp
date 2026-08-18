@@ -5,6 +5,7 @@ package org.glavo.webp.internal.lossless;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import org.glavo.webp.WebPException;
+import org.glavo.webp.internal.ArrayUtils;
 
 import java.util.Objects;
 
@@ -56,10 +57,7 @@ public final class LosslessBitReader {
         long bits = buffer;
         // Use the largest load that cannot overflow the high end of the bit window.
         if (count <= 32 && endPosition - position >= Integer.BYTES) {
-            long next = ((long) data[position] & 0xFFL)
-                    | (((long) data[position + 1] & 0xFFL) << 8)
-                    | (((long) data[position + 2] & 0xFFL) << 16)
-                    | (((long) data[position + 3] & 0xFFL) << 24);
+            long next = Integer.toUnsignedLong(ArrayUtils.getIntLE(data, position));
             bits |= next << count;
             count += Integer.SIZE;
             position += Integer.BYTES;

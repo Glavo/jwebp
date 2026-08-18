@@ -401,8 +401,7 @@ public final class Vp8Decoder {
             int sizesOffset = readExactly(3 * partitionCount - 3);
             for (int i = 0; i < partitionCount - 1; i++) {
                 int sizeOffset = sizesOffset + i * 3;
-                int partitionSize = Byte.toUnsignedInt(input[sizeOffset])
-                        | (Byte.toUnsignedInt(input[sizeOffset + 1]) << 8)
+                int partitionSize = Short.toUnsignedInt(ArrayUtils.getShortLE(input, sizeOffset))
                         | (Byte.toUnsignedInt(input[sizeOffset + 2]) << 16);
                 int partitionOffset = readExactly(partitionSize);
                 partitions[i].init(input, partitionOffset, partitionSize);
@@ -1327,6 +1326,11 @@ public final class Vp8Decoder {
     /// @return the next unsigned 16-bit value
     /// @throws WebPException if the payload is truncated
     private int readU16LE() throws WebPException {
+        int position = inputPosition;
+        if (inputLimit - position >= Short.BYTES) {
+            inputPosition = position + Short.BYTES;
+            return Short.toUnsignedInt(ArrayUtils.getShortLE(input, position));
+        }
         return readU8() | (readU8() << 8);
     }
 
@@ -1335,6 +1339,12 @@ public final class Vp8Decoder {
     /// @return the next unsigned 24-bit value
     /// @throws WebPException if the payload is truncated
     private int readU24LE() throws WebPException {
+        int position = inputPosition;
+        if (inputLimit - position >= 3) {
+            inputPosition = position + 3;
+            return Short.toUnsignedInt(ArrayUtils.getShortLE(input, position))
+                    | (Byte.toUnsignedInt(input[position + 2]) << 16);
+        }
         return readU8() | (readU8() << 8) | (readU8() << 16);
     }
 

@@ -176,10 +176,7 @@ final class LossyArithmeticDecoder {
             if (inputLimit - inputPosition >= Integer.BYTES) {
                 byte[] input = this.input;
                 int position = inputPosition;
-                int nextValue = (Byte.toUnsignedInt(input[position]) << 24)
-                        | (Byte.toUnsignedInt(input[position + 1]) << 16)
-                        | (Byte.toUnsignedInt(input[position + 2]) << 8)
-                        | Byte.toUnsignedInt(input[position + 3]);
+                int nextValue = ArrayUtils.getIntBE(input, position);
                 inputPosition = position + Integer.BYTES;
                 value <<= 32;
                 value |= Integer.toUnsignedLong(nextValue);
@@ -228,10 +225,7 @@ final class LossyArithmeticDecoder {
             if (inputLimit - inputPosition >= Integer.BYTES) {
                 byte[] input = this.input;
                 int position = inputPosition;
-                int nextValue = (Byte.toUnsignedInt(input[position]) << 24)
-                        | (Byte.toUnsignedInt(input[position + 1]) << 16)
-                        | (Byte.toUnsignedInt(input[position + 2]) << 8)
-                        | Byte.toUnsignedInt(input[position + 3]);
+                int nextValue = ArrayUtils.getIntBE(input, position);
                 inputPosition = position + Integer.BYTES;
                 value <<= 32;
                 value |= Integer.toUnsignedLong(nextValue);

@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import org.glavo.webp.WebPException;
 import org.glavo.webp.WebPMetadata;
+import org.glavo.webp.internal.ArrayUtils;
 import org.glavo.webp.internal.io.BufferedInput;
 import org.jetbrains.annotations.Nullable;
 
@@ -188,7 +189,7 @@ public final class WebPSequentialParser {
                         throw new WebPException("ANIM chunk is too small");
                     }
                     backgroundColorHint = Arrays.copyOf(chunkPayload, 4);
-                    loopCount = readUnsignedShortLE(chunkPayload, 4);
+                    loopCount = Short.toUnsignedInt(ArrayUtils.getShortLE(chunkPayload, 4));
                 }
                 case FourCC.ALPH -> {
                     if (alpha) {
@@ -395,8 +396,8 @@ public final class WebPSequentialParser {
             throw new WebPException("Invalid VP8 frame signature");
         }
 
-        int width = readUnsignedShortLE(payload, 6) & 0x3FFF;
-        int height = readUnsignedShortLE(payload, 8) & 0x3FFF;
+        int width = Short.toUnsignedInt(ArrayUtils.getShortLE(payload, 6)) & 0x3FFF;
+        int height = Short.toUnsignedInt(ArrayUtils.getShortLE(payload, 8)) & 0x3FFF;
         return new Dimensions(width, height);
     }
 
@@ -414,7 +415,7 @@ public final class WebPSequentialParser {
         if (signature != 0x2F) {
             throw new WebPException("Invalid VP8L signature");
         }
-        long bits = readUnsignedIntLE(payload, 1);
+        long bits = Integer.toUnsignedLong(ArrayUtils.getIntLE(payload, 1));
         int width = (int) (bits & 0x3FFF) + 1;
         int height = (int) ((bits >>> 14) & 0x3FFF) + 1;
         boolean alphaUsed = ((bits >>> 28) & 1) != 0;
@@ -425,39 +426,14 @@ public final class WebPSequentialParser {
         return new LosslessHeader(width, height, alphaUsed);
     }
 
-    /// Reads an unsigned little-endian 16-bit integer from a validated array range.
-    ///
-    /// @param data the source bytes
-    /// @param offset the first source byte
-    /// @return the decoded unsigned value
-    private static int readUnsignedShortLE(byte[] data, int offset) {
-        return Byte.toUnsignedInt(data[offset])
-                | (Byte.toUnsignedInt(data[offset + 1]) << 8);
-    }
-
     /// Reads an unsigned little-endian 24-bit integer from a validated array range.
     ///
     /// @param data the source bytes
     /// @param offset the first source byte
     /// @return the decoded unsigned value
     private static int readUnsignedInt24LE(byte[] data, int offset) {
-        return Byte.toUnsignedInt(data[offset])
-                | (Byte.toUnsignedInt(data[offset + 1]) << 8)
+        return Short.toUnsignedInt(ArrayUtils.getShortLE(data, offset))
                 | (Byte.toUnsignedInt(data[offset + 2]) << 16);
-    }
-
-    /// Reads an unsigned little-endian 32-bit integer from a validated array range.
-    ///
-    /// @param data the source bytes
-    /// @param offset the first source byte
-    /// @return the decoded unsigned value
-    private static long readUnsignedIntLE(byte[] data, int offset) {
-        return Integer.toUnsignedLong(
-                Byte.toUnsignedInt(data[offset])
-                        | (Byte.toUnsignedInt(data[offset + 1]) << 8)
-                        | (Byte.toUnsignedInt(data[offset + 2]) << 16)
-                        | (data[offset + 3] << 24)
-        );
     }
 
     private static ChunkPayload readChunk(BufferedInput input) throws IOException {
