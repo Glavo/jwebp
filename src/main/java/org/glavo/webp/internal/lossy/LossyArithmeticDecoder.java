@@ -132,38 +132,28 @@ final class LossyArithmeticDecoder {
     /// @param tree the VP8 branch table, with two entries per internal node
     /// @param probabilities the zero-bit probabilities for the internal nodes
     /// @return the decoded symbol
-    int readWithTree(int[] tree, int[] probabilities) {
+    int readWithTree(byte[] tree, byte[] probabilities) {
         return readWithTree(tree, probabilities, 0);
     }
 
-    /// Reads a symbol from a VP8 tree starting at a selected internal node.
+    /// Reads a symbol from a VP8 tree using a probability range within a flat array.
     ///
     /// Positive branches identify another entry in the VP8 branch table, while non-positive
     /// branches encode a leaf as its negated symbol value.
     ///
     /// @param tree the VP8 branch table, with two entries per internal node
-    /// @param probabilities the zero-bit probabilities for the internal nodes
-    /// @param firstNode the first internal-node index to evaluate
-    /// @return the decoded symbol
-    int readWithTree(int[] tree, int[] probabilities, int firstNode) {
-        return readWithTree(tree, probabilities, 0, firstNode);
-    }
-
-    /// Reads a symbol from a VP8 tree using a probability range within a flat array.
-    ///
-    /// @param tree the VP8 branch table, with two entries per internal node
     /// @param probabilities the array containing zero-bit probabilities
     /// @param probabilityOffset the array index corresponding to tree node zero
-    /// @param firstNode the first internal-node index to evaluate
     /// @return the decoded symbol
-    int readWithTree(int[] tree, int[] probabilities, int probabilityOffset, int firstNode) {
-        int node = firstNode;
+    int readWithTree(byte[] tree, byte[] probabilities, int probabilityOffset) {
+        int node = 0;
         while (true) {
-            int branch = tree[node * 2 + (readBit(probabilities[probabilityOffset + node]) ? 1 : 0)];
+            int probability = probabilities[probabilityOffset + node] & 0xFF;
+            int branch = tree[node * 2 + (readBit(probability) ? 1 : 0)];
             if (branch <= 0) {
                 return -branch;
             }
-            node = branch / 2;
+            node = branch >>> 1;
         }
     }
 

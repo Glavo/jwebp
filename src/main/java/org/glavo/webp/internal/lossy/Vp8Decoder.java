@@ -95,7 +95,8 @@ public final class Vp8Decoder {
             new LossyArithmeticDecoder[LossyCommon.MAX_DCT_PARTITIONS];
     private int numPartitions = 1;
 
-    private final int[] segmentProbs = {255, 255, 255};
+    /// Segment-ID tree probabilities encoded as unsigned bytes.
+    private final byte[] segmentProbs = {(byte) 255, (byte) 255, (byte) 255};
     /// Coefficient probabilities, shared with the immutable defaults until the frame updates one.
     private byte[] tokenProbs = LossyTables.FLAT_COEFF_PROBS;
     /// Mutable coefficient probabilities allocated only for streams that update the defaults.
@@ -173,7 +174,7 @@ public final class Vp8Decoder {
         segmentFeatureValuesAreDeltas = false;
         segmentQuantizerLevels = 0;
         segmentLoopFilterLevels = 0;
-        Arrays.fill(segmentProbs, 255);
+        Arrays.fill(segmentProbs, (byte) 255);
     }
 
     /// Reads the VP8 frame header and initializes partition state.
@@ -522,7 +523,7 @@ public final class Vp8Decoder {
         if (segmentsUpdateMap) {
             for (int i = 0; i < 3; i++) {
                 boolean update = headerDecoder.readFlag();
-                segmentProbs[i] = update ? headerDecoder.readLiteral(8) : 255;
+                segmentProbs[i] = (byte) (update ? headerDecoder.readLiteral(8) : 255);
             }
         }
 
@@ -657,9 +658,12 @@ public final class Vp8Decoder {
                 for (int x = 0; x < 4; x++) {
                     @IntraMode int topMode = topBpred[topBpredOffset + x] & 0xFF;
                     @IntraMode int leftMode = leftBpred[y] & 0xFF;
+                    int probabilityOffset = topMode * LossyTables.BPRED_MODE_ABOVE_STRIDE
+                            + leftMode * LossyTables.BPRED_MODE_PROBABILITY_COUNT;
                     @IntraMode int blockMode = headerDecoder.readWithTree(
                             LossyTables.KEYFRAME_BPRED_MODE_TREE,
-                            LossyTables.KEYFRAME_BPRED_MODE_PROBS[topMode][leftMode]
+                            LossyTables.KEYFRAME_BPRED_MODE_PROBS,
+                            probabilityOffset
                     );
                     intraModes = LossyCommon.setIntraMode(intraModes, x + y * 4, blockMode);
                     topBpred[topBpredOffset + x] = (byte) blockMode;
@@ -1380,10 +1384,18 @@ public final class Vp8Decoder {
         Arrays.fill(leftComplexity, (byte) 0);
     }
 
+    /// Returns the DC dequantization value for a clamped quantizer index.
+    ///
+    /// @param index the potentially out-of-range quantizer index
+    /// @return the DC dequantization value
     private static short dcQuant(int index) {
-        return LossyTables.DC_QUANT[Math.max(0, Math.min(127, index))];
+        return (short) (LossyTables.DC_QUANT[Math.max(0, Math.min(127, index))] & 0xFF);
     }
 
+    /// Returns the AC dequantization value for a clamped quantizer index.
+    ///
+    /// @param index the potentially out-of-range quantizer index
+    /// @return the AC dequantization value
     private static short acQuant(int index) {
         return LossyTables.AC_QUANT[Math.max(0, Math.min(127, index))];
     }
