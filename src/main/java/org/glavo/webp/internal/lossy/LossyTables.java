@@ -150,7 +150,11 @@ final class LossyTables {
     };
     static final int[] KEYFRAME_UV_MODE_PROBS = {142, 114, 183};
 
-    static final int[][][][] COEFF_UPDATE_PROBS = {
+    /// Creates the nested specification table for coefficient-probability updates.
+    ///
+    /// @return the plane, band, context, and token probability table
+    private static short[][][][] createCoeffUpdateProbabilities() {
+        return new short[][][][] {
             {
                     {
                             {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
@@ -319,9 +323,14 @@ final class LossyTables {
                             {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255}
                     }
             }
-    };
+        };
+    }
 
-    static final int[][][][] COEFF_PROBS = {
+    /// Creates the nested specification table for default coefficient probabilities.
+    ///
+    /// @return the plane, band, context, and token probability table
+    private static short[][][][] createCoeffProbabilities() {
+        return new short[][][][] {
             {
                     {
                             {128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128},
@@ -490,13 +499,15 @@ final class LossyTables {
                             {238, 1, 255, 128, 128, 128, 128, 128, 128, 128, 128}
                     }
             }
-    };
+        };
+    }
 
     /// Coefficient-update probabilities in plane, band, context, and token order.
-    static final int @Unmodifiable [] FLAT_COEFF_UPDATE_PROBS = flattenCoeffTable(COEFF_UPDATE_PROBS);
+    static final short @Unmodifiable [] FLAT_COEFF_UPDATE_PROBS =
+            flattenCoeffTable(createCoeffUpdateProbabilities());
 
     /// Default coefficient probabilities in plane, band, context, and token order.
-    static final int @Unmodifiable [] FLAT_COEFF_PROBS = flattenCoeffTable(COEFF_PROBS);
+    static final short @Unmodifiable [] FLAT_COEFF_PROBS = flattenCoeffTable(createCoeffProbabilities());
 
     /// Number of coefficient bands in each VP8 plane probability table.
     static final int COEFF_BAND_COUNT = 8;
@@ -512,7 +523,7 @@ final class LossyTables {
             COEFF_BAND_COUNT * COEFF_CONTEXT_COUNT * COEFF_TOKEN_PROBABILITY_COUNT;
 
     /// Extra-bit probabilities for coefficient categories 3 through 6.
-    static final int @Unmodifiable [] LARGE_DCT_CATEGORY_PROBABILITIES = {
+    static final short @Unmodifiable [] LARGE_DCT_CATEGORY_PROBABILITIES = {
             173, 148, 140, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             176, 155, 140, 135, 0, 0, 0, 0, 0, 0, 0, 0,
             180, 157, 141, 134, 130, 0, 0, 0, 0, 0, 0, 0,
@@ -557,21 +568,21 @@ final class LossyTables {
     ///
     /// @param table the plane, band, context, and token probability table
     /// @return the flattened probabilities
-    private static int[] flattenCoeffTable(int[][][][] table) {
+    private static short[] flattenCoeffTable(short[][][][] table) {
         int length = 0;
-        for (int[][][] plane : table) {
-            for (int[][] band : plane) {
-                for (int[] context : band) {
+        for (short[][][] plane : table) {
+            for (short[][] band : plane) {
+                for (short[] context : band) {
                     length += context.length;
                 }
             }
         }
 
-        int[] flattened = new int[length];
+        short[] flattened = new short[length];
         int offset = 0;
-        for (int[][][] plane : table) {
-            for (int[][] band : plane) {
-                for (int[] context : band) {
+        for (short[][][] plane : table) {
+            for (short[][] band : plane) {
+                for (short[] context : band) {
                     System.arraycopy(context, 0, flattened, offset, context.length);
                     offset += context.length;
                 }

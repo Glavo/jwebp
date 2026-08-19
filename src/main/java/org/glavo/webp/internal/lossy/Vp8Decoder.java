@@ -5,6 +5,7 @@ package org.glavo.webp.internal.lossy;
 import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import org.glavo.webp.WebPException;
 import org.glavo.webp.internal.lossy.LossyCommon.ChromaMode;
@@ -28,7 +29,6 @@ import java.util.Objects;
 @NotNullByDefault
 public final class Vp8Decoder {
 
-    private static final int[] CHROMA_GROUP_STARTS = {5, 7};
     private static final int FILTER_INFO_SEGMENT_MASK = 0x03;
     private static final int FILTER_INFO_LUMA_MODE_SHIFT = 2;
     private static final int FILTER_INFO_LUMA_MODE_MASK = 0x07;
@@ -49,6 +49,12 @@ public final class Vp8Decoder {
     private static final int SEGMENT_UV_DC = 4;
     /// Offset of the chroma AC quantizer within one segment.
     private static final int SEGMENT_UV_AC = 5;
+
+    /// Number of transformed residual values stored for one macroblock.
+    private static final int RESIDUAL_DATA_LENGTH = 24 * 16;
+
+    /// Shared zero residuals used by macroblocks that skip coefficient decoding.
+    private static final int @Unmodifiable [] ZERO_RESIDUAL_DATA = new int[RESIDUAL_DATA_LENGTH];
 
     /// Encoded VP8 payload shared by the header and token partitions.
     private byte[] input = ArrayUtils.EMPTY_BYTE_ARRAY;
@@ -91,9 +97,9 @@ public final class Vp8Decoder {
 
     private final int[] segmentProbs = {255, 255, 255};
     /// Coefficient probabilities, shared with the immutable defaults until the frame updates one.
-    private int[] tokenProbs = LossyTables.FLAT_COEFF_PROBS;
+    private short[] tokenProbs = LossyTables.FLAT_COEFF_PROBS;
     /// Mutable coefficient probabilities allocated only for streams that update the defaults.
-    private int @Nullable [] mutableTokenProbs;
+    private short @Nullable [] mutableTokenProbs;
 
     /// Probability of a false skip-coefficients flag, or `-1` when the flag is absent.
     private int probSkipFalse = -1;
@@ -108,9 +114,8 @@ public final class Vp8Decoder {
     private byte[] leftBorderU = ArrayUtils.EMPTY_BYTE_ARRAY;
     private byte[] topBorderV = ArrayUtils.EMPTY_BYTE_ARRAY;
     private byte[] leftBorderV = ArrayUtils.EMPTY_BYTE_ARRAY;
-    private final int[] residualDataScratch = new int[384];
+    private final int[] residualDataScratch = new int[RESIDUAL_DATA_LENGTH];
     private final int[] y2BlockScratch = new int[16];
-    private final int[] zeroResidualData = new int[384];
     private final byte[] lumaWorkspace = new byte[LossyPrediction.LUMA_BLOCK_SIZE];
     private final byte[] uWorkspace = new byte[LossyPrediction.CHROMA_BLOCK_SIZE];
     private final byte[] vWorkspace = new byte[LossyPrediction.CHROMA_BLOCK_SIZE];
@@ -373,7 +378,7 @@ public final class Vp8Decoder {
     }
 
     private void updateTokenProbabilities() throws WebPException {
-        int[] updateProbabilities = LossyTables.FLAT_COEFF_UPDATE_PROBS;
+        short[] updateProbabilities = LossyTables.FLAT_COEFF_UPDATE_PROBS;
         for (int probabilityIndex = 0; probabilityIndex < updateProbabilities.length; probabilityIndex++) {
             if (headerDecoder.readBool(updateProbabilities[probabilityIndex])) {
                 int updated = headerDecoder.readLiteral(8);
@@ -391,7 +396,7 @@ public final class Vp8Decoder {
                     }
                     tokenProbs = mutableTokenProbs;
                 }
-                tokenProbs[probabilityIndex] = updated;
+                tokenProbs[probabilityIndex] = (short) updated;
             }
         }
         headerDecoder.ensureNotPastEof();
@@ -822,7 +827,7 @@ public final class Vp8Decoder {
 
         int firstCoeff = plane == Plane.Y_COEFF_1 ? 1 : 0;
         int probabilityPlaneOffset = plane * LossyTables.COEFF_PROBABILITY_COUNT_PER_PLANE;
-        int[] probabilities = tokenProbs;
+        short[] probabilities = tokenProbs;
 
         int complexityState = complexity;
         boolean hasCoefficients = false;
@@ -875,7 +880,7 @@ public final class Vp8Decoder {
     /// @return a coefficient magnitude in the range `2` through `2114`
     private int readLargeCoefficientValue(
             LossyArithmeticDecoder decoder,
-            int[] probabilities,
+            short[] probabilities,
             int probabilityOffset
     ) {
         if (!decoder.readBool(probabilities[probabilityOffset + 3])) {
@@ -899,7 +904,7 @@ public final class Vp8Decoder {
         int category = (highCategoryBit << 1) | lowCategoryBit;
         int categoryOffset = category * LossyTables.LARGE_DCT_CATEGORY_STRIDE;
         int extra = 0;
-        int[] categoryProbabilities = LossyTables.LARGE_DCT_CATEGORY_PROBABILITIES;
+        short[] categoryProbabilities = LossyTables.LARGE_DCT_CATEGORY_PROBABILITIES;
         for (int index = categoryOffset; categoryProbabilities[index] != 0; index++) {
             extra = extra + extra + (decoder.readBool(categoryProbabilities[index]) ? 1 : 0);
         }
@@ -988,7 +993,7 @@ public final class Vp8Decoder {
             leftComplexity[blockY + 1] = (byte) leftValue;
         }
 
-        for (int groupStart : CHROMA_GROUP_STARTS) {
+        for (int groupStart = 5; groupStart <= 7; groupStart += 2) {
             for (int blockY = 0; blockY < 2; blockY++) {
                 int leftValue = leftComplexity[blockY + groupStart];
                 for (int blockX = 0; blockX < 2; blockX++) {
@@ -1325,7 +1330,7 @@ public final class Vp8Decoder {
                         leftComplexity[i] = 0;
                         topComplexity[topComplexityOffset + i] = 0;
                     }
-                    blocks = zeroResidualData;
+                    blocks = ZERO_RESIDUAL_DATA;
                 }
 
                 intraPredictLuma(macroblockX, macroblockY, macroBlock, blocks);
