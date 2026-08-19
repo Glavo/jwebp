@@ -38,9 +38,9 @@ public final class LosslessDecoder {
     private final LosslessHuffmanTree.BuildWorkspace huffmanBuildWorkspace =
             new LosslessHuffmanTree.BuildWorkspace();
     /// Code lengths for the code-length alphabet.
-    private final int[] codeLengthCodeLengths = new int[LosslessConstants.CODE_LENGTH_CODES];
+    private final byte[] codeLengthCodeLengths = new byte[LosslessConstants.CODE_LENGTH_CODES];
     /// Growable code-length storage reused across alphabets.
-    private int[] codeLengths = ArrayUtils.EMPTY_INT_ARRAY;
+    private byte[] codeLengths = ArrayUtils.EMPTY_BYTE_ARRAY;
     private int transformOrderSize;
     private int width;
     private int height;
@@ -430,17 +430,21 @@ public final class LosslessDecoder {
             return LosslessHuffmanTree.pair(zeroSymbol, oneSymbol);
         }
 
-        Arrays.fill(codeLengthCodeLengths, 0);
+        Arrays.fill(codeLengthCodeLengths, (byte) 0);
         int numCodeLengths = 4 + bitReader.readBits(4);
         for (int i = 0; i < numCodeLengths; i++) {
-            codeLengthCodeLengths[LosslessConstants.CODE_LENGTH_CODE_ORDER[i]] = bitReader.readBits(3);
+            codeLengthCodeLengths[LosslessConstants.CODE_LENGTH_CODE_ORDER[i]] = (byte) bitReader.readBits(3);
         }
-        int[] codeLengths = readHuffmanCodeLengths(codeLengthCodeLengths, alphabetSize);
-        return LosslessHuffmanTree.implicit(codeLengths, huffmanBuildWorkspace);
+        byte[] codeLengths = readHuffmanCodeLengths(codeLengthCodeLengths, alphabetSize);
+        return LosslessHuffmanTree.implicit(codeLengths, alphabetSize, huffmanBuildWorkspace);
     }
 
-    private int[] readHuffmanCodeLengths(int[] codeLengthCodeLengths, int numSymbols) throws WebPException {
-        LosslessHuffmanTree table = LosslessHuffmanTree.implicit(codeLengthCodeLengths, huffmanBuildWorkspace);
+    private byte[] readHuffmanCodeLengths(byte[] codeLengthCodeLengths, int numSymbols) throws WebPException {
+        LosslessHuffmanTree table = LosslessHuffmanTree.implicit(
+                codeLengthCodeLengths,
+                codeLengthCodeLengths.length,
+                huffmanBuildWorkspace
+        );
         int maxSymbol;
         if (bitReader.readBits(1) == 1) {
             int lengthBits = 2 + 2 * bitReader.readBits(3);
@@ -454,9 +458,9 @@ public final class LosslessDecoder {
         }
 
         if (codeLengths.length < numSymbols) {
-            codeLengths = new int[numSymbols];
+            codeLengths = new byte[numSymbols];
         } else {
-            Arrays.fill(codeLengths, 0);
+            Arrays.fill(codeLengths, 0, numSymbols, (byte) 0);
         }
         int previousCodeLength = 8;
         int symbol = 0;
@@ -469,7 +473,7 @@ public final class LosslessDecoder {
             bitReader.fill();
             int codeLength = table.readSymbol(bitReader);
             if (codeLength < 16) {
-                codeLengths[symbol++] = codeLength;
+                codeLengths[symbol++] = (byte) codeLength;
                 if (codeLength != 0) {
                     previousCodeLength = codeLength;
                 }
@@ -498,7 +502,7 @@ public final class LosslessDecoder {
 
                 int value = usePrevious ? previousCodeLength : 0;
                 while (repeat-- > 0) {
-                    codeLengths[symbol++] = value;
+                    codeLengths[symbol++] = (byte) value;
                 }
             }
         }

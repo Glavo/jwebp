@@ -17,9 +17,9 @@ final class LosslessHuffmanTreeTest {
     @Test
     void reusesBuildWorkspaceAcrossTreeDepths() throws WebPException {
         LosslessHuffmanTree.BuildWorkspace workspace = new LosslessHuffmanTree.BuildWorkspace();
-        LosslessHuffmanTree.implicit(new int[]{1, 2, 3, 3}, workspace);
+        LosslessHuffmanTree.implicit(new byte[]{1, 2, 3, 3}, 4, workspace);
 
-        LosslessHuffmanTree tree = LosslessHuffmanTree.implicit(new int[]{2, 2, 2, 2}, workspace);
+        LosslessHuffmanTree tree = LosslessHuffmanTree.implicit(new byte[]{2, 2, 2, 2}, 4, workspace);
         LosslessBitReader reader = new LosslessBitReader(new byte[]{(byte) 0b1101_1000});
         reader.fill();
 
@@ -32,15 +32,32 @@ final class LosslessHuffmanTreeTest {
     /// Verifies that a lone nonzero code length retains its original symbol index.
     @Test
     void tracksSingleSymbolDuringHistogramConstruction() throws WebPException {
-        int[] codeLengths = new int[280];
+        byte[] codeLengths = new byte[280];
         codeLengths[279] = 1;
 
         LosslessHuffmanTree tree = LosslessHuffmanTree.implicit(
                 codeLengths,
+                codeLengths.length,
                 new LosslessHuffmanTree.BuildWorkspace()
         );
 
         assertTrue(tree.isSingleNode());
         assertEquals(279, tree.readSymbol(new LosslessBitReader(new byte[0])));
+    }
+
+    /// Verifies that stale entries beyond the active alphabet are not inspected.
+    @Test
+    void ignoresUnusedCodeLengthStorage() throws WebPException {
+        byte[] codeLengths = {1, 1, Byte.MAX_VALUE};
+
+        LosslessHuffmanTree tree = LosslessHuffmanTree.implicit(
+                codeLengths,
+                2,
+                new LosslessHuffmanTree.BuildWorkspace()
+        );
+        LosslessBitReader reader = new LosslessBitReader(new byte[]{0});
+        reader.fill();
+
+        assertEquals(0, tree.readSymbol(reader));
     }
 }

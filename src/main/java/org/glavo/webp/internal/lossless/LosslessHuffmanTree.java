@@ -67,15 +67,17 @@ public final class LosslessHuffmanTree {
     /// Builds a canonical Huffman tree while reusing temporary construction arrays.
     ///
     /// @param codeLengths the code lengths indexed by symbol
+    /// @param alphabetSize the number of entries to read from {@code codeLengths}; must be positive and no greater
+    ///                     than the array length
     /// @param workspace the mutable construction workspace
     /// @return the resulting tree
     /// @throws WebPException if the code lengths do not form a valid canonical tree
-    static LosslessHuffmanTree implicit(int[] codeLengths, BuildWorkspace workspace) throws WebPException {
+    static LosslessHuffmanTree implicit(byte[] codeLengths, int alphabetSize, BuildWorkspace workspace) throws WebPException {
         int[] histogram = workspace.histogram;
         Arrays.fill(histogram, 0);
         int symbolCount = 0;
         int singleSymbol = -1;
-        for (int symbol = 0; symbol < codeLengths.length; symbol++) {
+        for (int symbol = 0; symbol < alphabetSize; symbol++) {
             int length = codeLengths[symbol];
             if (length < 0 || length > MAX_ALLOWED_CODE_LENGTH) {
                 throw new WebPException("Invalid Huffman code length");
@@ -115,7 +117,7 @@ public final class LosslessHuffmanTree {
         int tableSize = 1 << tableBits;
         char[] primaryTable = new char[tableSize];
         char[] sortedSymbols = workspace.acquireSortedSymbols(symbolCount);
-        for (int symbol = 0; symbol < codeLengths.length; symbol++) {
+        for (int symbol = 0; symbol < alphabetSize; symbol++) {
             int length = codeLengths[symbol];
             if (length != 0) {
                 sortedSymbols[offsets[length]++] = (char) symbol;
