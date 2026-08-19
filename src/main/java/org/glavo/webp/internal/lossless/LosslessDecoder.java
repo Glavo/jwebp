@@ -150,24 +150,24 @@ public final class LosslessDecoder {
         for (int i = transformOrderSize - 1; i >= 0; i--) {
             LosslessTransforms.Transform transform = transforms[transformOrder[i]];
             switch (transform.kind) {
-                case LosslessTransforms.PREDICTOR -> LosslessIntBufferTransforms.applyPredictorTransform(
+                case LosslessTransforms.PREDICTOR -> LosslessTransforms.applyPredictorTransform(
                         output,
                         currentWidth,
                         this.height,
                         transform.sizeBits,
                         transform.blockData
                 );
-                case LosslessTransforms.COLOR -> LosslessIntBufferTransforms.applyColorTransform(
+                case LosslessTransforms.COLOR -> LosslessTransforms.applyColorTransform(
                         output,
                         currentWidth,
                         transform.sizeBits,
                         transform.blockData
                 );
                 case LosslessTransforms.SUBTRACT_GREEN ->
-                        LosslessIntBufferTransforms.applySubtractGreenTransform(output);
+                        LosslessTransforms.applySubtractGreenTransform(output);
                 case LosslessTransforms.COLOR_INDEXING -> {
                     currentWidth = this.width;
-                    LosslessIntBufferTransforms.applyColorIndexingTransform(
+                    LosslessTransforms.applyColorIndexingTransform(
                             output,
                             currentWidth,
                             this.height,

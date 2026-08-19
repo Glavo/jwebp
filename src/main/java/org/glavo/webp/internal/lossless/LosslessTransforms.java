@@ -8,7 +8,12 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import org.glavo.webp.internal.Argb;
 
+import java.nio.IntBuffer;
+
 /// Reverse transforms for VP8L decoded pixels.
+///
+/// Array and integer-buffer overloads keep storage access specialized while sharing transform
+/// metadata and storage-independent pixel calculations.
 @NotNullByDefault
 public final class LosslessTransforms {
 
@@ -88,6 +93,151 @@ public final class LosslessTransforms {
     /// @return the metadata plane size
     public static int subsampleSize(int size, int bits) {
         return (size + (1 << bits) - 1) >> bits;
+    }
+
+    /// Applies the predictor transform to an integer buffer in place.
+    ///
+    /// @param imageData the position-zero image buffer
+    /// @param width the current image width
+    /// @param height the image height
+    /// @param sizeBits the predictor-block size exponent
+    /// @param predictorData the predictor metadata plane
+    static void applyPredictorTransform(
+            IntBuffer imageData,
+            int width,
+            int height,
+            int sizeBits,
+            byte @Unmodifiable [] predictorData
+    ) {
+        int blockXSize = subsampleSize(width, sizeBits);
+        imageData.put(0, Argb.add(imageData.get(0), 0xFF00_0000));
+        applyPredictorTransform1(imageData, 1, width, width);
+
+        for (int y = 1; y < height; y++) {
+            int rowStart = y * width;
+            imageData.put(rowStart, Argb.add(imageData.get(rowStart), imageData.get(rowStart - width)));
+            int predictorRowStart = (y >> sizeBits) * blockXSize;
+            for (int blockX = 0; blockX < blockXSize; blockX++) {
+                int predictor = predictorData[predictorRowStart + blockX];
+                int startIndex = rowStart + Math.max(blockX << sizeBits, 1);
+                int endIndex = rowStart + Math.min((blockX + 1) << sizeBits, width);
+
+                switch (predictor) {
+                    case 0 -> applyPredictorTransform0(imageData, startIndex, endIndex);
+                    case 1 -> applyPredictorTransform1(imageData, startIndex, endIndex, width);
+                    case 2 -> applyPredictorTransform2(imageData, startIndex, endIndex, width);
+                    case 3 -> applyPredictorTransform3(imageData, startIndex, endIndex, width);
+                    case 4 -> applyPredictorTransform4(imageData, startIndex, endIndex, width);
+                    case 5 -> applyPredictorTransform5(imageData, startIndex, endIndex, width);
+                    case 6 -> applyPredictorTransform6(imageData, startIndex, endIndex, width);
+                    case 7 -> applyPredictorTransform7(imageData, startIndex, endIndex, width);
+                    case 8 -> applyPredictorTransform8(imageData, startIndex, endIndex, width);
+                    case 9 -> applyPredictorTransform9(imageData, startIndex, endIndex, width);
+                    case 10 -> applyPredictorTransform10(imageData, startIndex, endIndex, width);
+                    case 11 -> applyPredictorTransform11(imageData, startIndex, endIndex, width);
+                    case 12 -> applyPredictorTransform12(imageData, startIndex, endIndex, width);
+                    case 13 -> applyPredictorTransform13(imageData, startIndex, endIndex, width);
+                    default -> {
+                    }
+                }
+            }
+        }
+    }
+
+    /// Applies the color transform to an integer buffer in place.
+    ///
+    /// @param imageData the position-zero image buffer
+    /// @param width the current image width
+    /// @param sizeBits the transform-block size exponent
+    /// @param transformData the color-transform metadata plane
+    static void applyColorTransform(
+            IntBuffer imageData,
+            int width,
+            int sizeBits,
+            byte @Unmodifiable [] transformData
+    ) {
+        int blockXSize = subsampleSize(width, sizeBits);
+        for (int y = 0; y < imageData.limit() / width; y++) {
+            int rowTransformStart = (y >> sizeBits) * blockXSize;
+            for (int block = 0; block < blockXSize; block++) {
+                int transformOffset = (rowTransformStart + block) * 3;
+                byte redToBlue = transformData[transformOffset];
+                byte greenToBlue = transformData[transformOffset + 1];
+                byte greenToRed = transformData[transformOffset + 2];
+
+                int pixelStart = y * width + (block << sizeBits);
+                int pixelEnd = Math.min(y * width + ((block + 1) << sizeBits), (y + 1) * width);
+                for (int pixel = pixelStart; pixel < pixelEnd; pixel++) {
+                    int value = imageData.get(pixel);
+                    int green = Argb.green(value);
+                    int red = Argb.red(value) + colorTransformDelta(greenToRed, (byte) green);
+                    int blue = Argb.blue(value)
+                            + colorTransformDelta(greenToBlue, (byte) green)
+                            + colorTransformDelta(redToBlue, (byte) red);
+                    imageData.put(
+                            pixel,
+                            (value & 0xFF00_FF00) | ((red & 0xFF) << 16) | (blue & 0xFF)
+                    );
+                }
+            }
+        }
+    }
+
+    /// Applies the subtract-green transform to an integer buffer in place.
+    ///
+    /// @param imageData the position-zero image buffer
+    static void applySubtractGreenTransform(IntBuffer imageData) {
+        for (int index = 0; index < imageData.limit(); index++) {
+            int value = imageData.get(index);
+            int green = Argb.green(value);
+            int redBlue = (value & 0x00FF_00FF) + green * 0x0001_0001;
+            imageData.put(index, (value & 0xFF00_FF00) | (redBlue & 0x00FF_00FF));
+        }
+    }
+
+    /// Applies the color-indexing transform to an integer buffer in place.
+    ///
+    /// @param imageData the position-zero image buffer
+    /// @param width the expanded image width
+    /// @param height the image height
+    /// @param tableSize the number of color-table entries
+    /// @param tableData the color table
+    static void applyColorIndexingTransform(
+            IntBuffer imageData,
+            int width,
+            int height,
+            int tableSize,
+            int[] tableData
+    ) {
+        if (tableSize > 16) {
+            int[] table = new int[256];
+            System.arraycopy(tableData, 0, table, 0, tableSize);
+            for (int index = 0; index < imageData.limit(); index++) {
+                imageData.put(index, table[Argb.green(imageData.get(index))]);
+            }
+            return;
+        }
+
+        int bits = tableSize <= 2 ? 3 : (tableSize <= 4 ? 2 : 1);
+        int pixelsPerPackedByte = 1 << bits;
+        int bitsPerEntry = 8 / pixelsPerPackedByte;
+        int mask = (1 << bitsPerEntry) - 1;
+        int packedImageWidth = (width + pixelsPerPackedByte - 1) / pixelsPerPackedByte;
+
+        for (int y = height - 1; y >= 0; y--) {
+            int packedOffset = y * packedImageWidth;
+            int outOffset = y * width;
+            // Expanding right-to-left keeps every unread packed entry to the left of each write.
+            for (int block = packedImageWidth - 1; block >= 0; block--) {
+                int packed = Argb.green(imageData.get(packedOffset + block));
+                int blockPixelCount = Math.min(pixelsPerPackedByte, width - block * pixelsPerPackedByte);
+                for (int pixel = 0; pixel < blockPixelCount; pixel++) {
+                    int x = block * pixelsPerPackedByte + pixel;
+                    int tableIndex = (packed >> (pixel * bitsPerEntry)) & mask;
+                    imageData.put(outOffset + x, tableIndex < tableSize ? tableData[tableIndex] : 0);
+                }
+            }
+        }
     }
 
     /// Applies the predictor transform.
@@ -222,6 +372,158 @@ public final class LosslessTransforms {
         }
     }
 
+    /// Applies constant-black prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform0(IntBuffer imageData, int start, int end) {
+        for (int index = start; index < end; index++) {
+            imageData.put(index, Argb.add(imageData.get(index), 0xFF00_0000));
+        }
+    }
+
+    /// Applies left-pixel prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform1(IntBuffer imageData, int start, int end, int width) {
+        for (int index = start; index < end; index++) {
+            imageData.put(index, Argb.add(imageData.get(index), imageData.get(index - 1)));
+        }
+    }
+
+    /// Applies top-pixel prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform2(IntBuffer imageData, int start, int end, int width) {
+        for (int index = start; index < end; index++) {
+            imageData.put(index, Argb.add(imageData.get(index), imageData.get(index - width)));
+        }
+    }
+
+    /// Applies top-right-pixel prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform3(IntBuffer imageData, int start, int end, int width) {
+        for (int index = start; index < end; index++) {
+            imageData.put(index, Argb.add(imageData.get(index), imageData.get(index - width + 1)));
+        }
+    }
+
+    /// Applies top-left-pixel prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform4(IntBuffer imageData, int start, int end, int width) {
+        for (int index = start; index < end; index++) {
+            imageData.put(index, Argb.add(imageData.get(index), imageData.get(index - width - 1)));
+        }
+    }
+
+    /// Applies averaged left/top-left/top/top-right prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform5(IntBuffer imageData, int start, int end, int width) {
+        int previous = imageData.get(start - 1);
+        for (int index = start; index < end; index++) {
+            int topRight = imageData.get(index - width + 1);
+            int top = imageData.get(index - width);
+            previous = Argb.add(imageData.get(index), Argb.average2(Argb.average2(previous, topRight), top));
+            imageData.put(index, previous);
+        }
+    }
+
+    /// Applies averaged left/top-left prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform6(IntBuffer imageData, int start, int end, int width) {
+        for (int index = start; index < end; index++) {
+            imageData.put(
+                    index,
+                    Argb.add(
+                            imageData.get(index),
+                            Argb.average2(imageData.get(index - 1), imageData.get(index - width - 1))
+                    )
+            );
+        }
+    }
+
+    /// Applies averaged left/top prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform7(IntBuffer imageData, int start, int end, int width) {
+        int previous = imageData.get(start - 1);
+        for (int index = start; index < end; index++) {
+            int top = imageData.get(index - width);
+            previous = Argb.add(imageData.get(index), Argb.average2(previous, top));
+            imageData.put(index, previous);
+        }
+    }
+
+    /// Applies averaged top-left/top prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform8(IntBuffer imageData, int start, int end, int width) {
+        for (int index = start; index < end; index++) {
+            imageData.put(
+                    index,
+                    Argb.add(
+                            imageData.get(index),
+                            Argb.average2(imageData.get(index - width - 1), imageData.get(index - width))
+                    )
+            );
+        }
+    }
+
+    /// Applies averaged top/top-right prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform9(IntBuffer imageData, int start, int end, int width) {
+        for (int index = start; index < end; index++) {
+            imageData.put(
+                    index,
+                    Argb.add(
+                            imageData.get(index),
+                            Argb.average2(imageData.get(index - width), imageData.get(index - width + 1))
+                    )
+            );
+        }
+    }
+
+    /// Applies the four-neighbor average predictor to an integer-buffer pixel range.
+    private static void applyPredictorTransform10(IntBuffer imageData, int start, int end, int width) {
+        int previous = imageData.get(start - 1);
+        for (int index = start; index < end; index++) {
+            int topLeft = imageData.get(index - width - 1);
+            int top = imageData.get(index - width);
+            int topRight = imageData.get(index - width + 1);
+            previous = Argb.add(
+                    imageData.get(index),
+                    Argb.average2(Argb.average2(previous, topLeft), Argb.average2(top, topRight))
+            );
+            imageData.put(index, previous);
+        }
+    }
+
+    /// Applies the select-left-or-top predictor to an integer-buffer pixel range.
+    private static void applyPredictorTransform11(IntBuffer imageData, int start, int end, int width) {
+        int left = imageData.get(start - 1);
+        int topLeft = imageData.get(start - width - 1);
+        for (int index = start; index < end; index++) {
+            int top = imageData.get(index - width);
+            int predictLeft = colorDistance(top, topLeft);
+            int predictTop = colorDistance(left, topLeft);
+            int predictor = predictLeft < predictTop ? left : top;
+            int value = Argb.add(imageData.get(index), predictor);
+            imageData.put(index, value);
+            topLeft = top;
+            left = value;
+        }
+    }
+
+    /// Applies clamped add-subtract prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform12(IntBuffer imageData, int start, int end, int width) {
+        int previous = imageData.get(start - 1);
+        for (int index = start; index < end; index++) {
+            int topLeft = imageData.get(index - width - 1);
+            int top = imageData.get(index - width);
+            previous = Argb.add(imageData.get(index), clampAddSubtractFullPixel(previous, top, topLeft));
+            imageData.put(index, previous);
+        }
+    }
+
+    /// Applies half-gradient prediction to an integer-buffer pixel range.
+    private static void applyPredictorTransform13(IntBuffer imageData, int start, int end, int width) {
+        int previous = imageData.get(start - 1);
+        for (int index = start; index < end; index++) {
+            int topLeft = imageData.get(index - width - 1);
+            int top = imageData.get(index - width);
+            previous = Argb.add(
+                    imageData.get(index),
+                    clampAddSubtractHalfPixel(Argb.average2(previous, top), topLeft)
+            );
+            imageData.put(index, previous);
+        }
+    }
+
+    /// Applies constant-black prediction to an array pixel range.
     private static void applyPredictorTransform0(int[] imageData, int start, int end) {
         for (int i = start; i < end; i++) {
             imageData[i] = Argb.add(imageData[i], 0xFF00_0000);
@@ -372,5 +674,10 @@ public final class LosslessTransforms {
 
     private static int clampAddSubtractHalf(int a, int b) {
         return Math.max(0, Math.min(255, a + (a - b) / 2));
+    }
+
+    /// Returns one signed color-transform contribution.
+    private static int colorTransformDelta(byte transform, byte color) {
+        return ((int) transform * (int) color) >> 5;
     }
 }

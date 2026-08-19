@@ -69,7 +69,7 @@ final class LosslessTransformsTest {
         assertArrayEquals(expectedSubtractGreen, heapSubtractGreen);
 
         IntBuffer directSubtractGreen = directBuffer(source);
-        LosslessIntBufferTransforms.applySubtractGreenTransform(directSubtractGreen);
+        LosslessTransforms.applySubtractGreenTransform(directSubtractGreen);
         int[] directSubtractGreenResult = new int[source.length];
         directSubtractGreen.get(0, directSubtractGreenResult);
         assertArrayEquals(expectedSubtractGreen, directSubtractGreenResult);
@@ -127,7 +127,7 @@ final class LosslessTransformsTest {
                     mask
             ));
             direct.clear();
-            LosslessIntBufferTransforms.applyColorIndexingTransform(
+            LosslessTransforms.applyColorIndexingTransform(
                     direct,
                     width,
                     height,
@@ -183,7 +183,7 @@ final class LosslessTransformsTest {
     /// @return the transformed pixels
     private static int[] applyDirectColorTransform(int[] source, int transform) {
         IntBuffer direct = directBuffer(source);
-        LosslessIntBufferTransforms.applyColorTransform(
+        LosslessTransforms.applyColorTransform(
                 direct,
                 source.length,
                 12,
