@@ -4,6 +4,7 @@ package org.glavo.webp.internal.lossless;
 
 import org.glavo.webp.internal.Argb;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.IntBuffer;
 
@@ -31,7 +32,7 @@ final class LosslessIntBufferTransforms {
             int width,
             int height,
             int sizeBits,
-            int[] predictorData
+            byte @Unmodifiable [] predictorData
     ) {
         int blockXSize = LosslessTransforms.subsampleSize(width, sizeBits);
         imageData.put(0, Argb.add(imageData.get(0), 0xFF00_0000));
@@ -42,7 +43,7 @@ final class LosslessIntBufferTransforms {
             imageData.put(rowStart, Argb.add(imageData.get(rowStart), imageData.get(rowStart - width)));
             int predictorRowStart = (y >> sizeBits) * blockXSize;
             for (int blockX = 0; blockX < blockXSize; blockX++) {
-                int predictor = Argb.green(predictorData[predictorRowStart + blockX]);
+                int predictor = predictorData[predictorRowStart + blockX];
                 int startIndex = rowStart + Math.max(blockX << sizeBits, 1);
                 int endIndex = rowStart + Math.min((blockX + 1) << sizeBits, width);
 
@@ -78,16 +79,16 @@ final class LosslessIntBufferTransforms {
             IntBuffer imageData,
             int width,
             int sizeBits,
-            int[] transformData
+            byte @Unmodifiable [] transformData
     ) {
         int blockXSize = LosslessTransforms.subsampleSize(width, sizeBits);
         for (int y = 0; y < imageData.limit() / width; y++) {
             int rowTransformStart = (y >> sizeBits) * blockXSize;
             for (int block = 0; block < blockXSize; block++) {
-                int transform = transformData[rowTransformStart + block];
-                int redToBlue = Argb.red(transform);
-                int greenToBlue = Argb.green(transform);
-                int greenToRed = Argb.blue(transform);
+                int transformOffset = (rowTransformStart + block) * 3;
+                byte redToBlue = transformData[transformOffset];
+                byte greenToBlue = transformData[transformOffset + 1];
+                byte greenToRed = transformData[transformOffset + 2];
 
                 int pixelStart = y * width + (block << sizeBits);
                 int pixelEnd = Math.min(y * width + ((block + 1) << sizeBits), (y + 1) * width);

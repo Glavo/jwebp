@@ -71,19 +71,36 @@ public final class LosslessDecoder {
     /// @param buffer the `ARGB` destination buffer
     /// @throws WebPException if the bitstream is malformed or inconsistent
     public void decodeFrame(int width, int height, boolean implicitDimensions, int[] buffer) throws WebPException {
-        int transformedWidth = prepareFrame(width, height, implicitDimensions);
+        int transformedWidth = prepareFrame(width, height, implicitDimensions, IntBuffer.wrap(buffer));
         decodeImageStream(transformedWidth, this.height, true, buffer);
 
         int currentWidth = transformedWidth;
         for (int i = transformOrderSize - 1; i >= 0; i--) {
             LosslessTransforms.Transform transform = transforms[transformOrder[i]];
             switch (transform.kind) {
-                case LosslessTransforms.PREDICTOR -> LosslessTransforms.applyPredictorTransform(buffer, currentWidth, this.height, transform.sizeBits, transform.data);
-                case LosslessTransforms.COLOR -> LosslessTransforms.applyColorTransform(buffer, currentWidth, transform.sizeBits, transform.data);
+                case LosslessTransforms.PREDICTOR -> LosslessTransforms.applyPredictorTransform(
+                        buffer,
+                        currentWidth,
+                        this.height,
+                        transform.sizeBits,
+                        transform.blockData
+                );
+                case LosslessTransforms.COLOR -> LosslessTransforms.applyColorTransform(
+                        buffer,
+                        currentWidth,
+                        transform.sizeBits,
+                        transform.blockData
+                );
                 case LosslessTransforms.SUBTRACT_GREEN -> LosslessTransforms.applySubtractGreenTransform(buffer);
                 case LosslessTransforms.COLOR_INDEXING -> {
                     currentWidth = this.width;
-                    LosslessTransforms.applyColorIndexingTransform(buffer, currentWidth, this.height, transform.tableSize, transform.data);
+                    LosslessTransforms.applyColorIndexingTransform(
+                            buffer,
+                            currentWidth,
+                            this.height,
+                            transform.tableSize,
+                            transform.colorTable
+                    );
                 }
                 default -> throw new WebPException("Unknown VP8L transform kind");
             }
@@ -126,7 +143,7 @@ public final class LosslessDecoder {
         }
 
         IntBuffer output = buffer.slice();
-        int transformedWidth = prepareFrame(width, height, implicitDimensions);
+        int transformedWidth = prepareFrame(width, height, implicitDimensions, output);
         decodeImageStream(transformedWidth, this.height, true, output);
 
         int currentWidth = transformedWidth;
@@ -138,13 +155,13 @@ public final class LosslessDecoder {
                         currentWidth,
                         this.height,
                         transform.sizeBits,
-                        transform.data
+                        transform.blockData
                 );
                 case LosslessTransforms.COLOR -> LosslessIntBufferTransforms.applyColorTransform(
                         output,
                         currentWidth,
                         transform.sizeBits,
-                        transform.data
+                        transform.blockData
                 );
                 case LosslessTransforms.SUBTRACT_GREEN ->
                         LosslessIntBufferTransforms.applySubtractGreenTransform(output);
@@ -155,7 +172,7 @@ public final class LosslessDecoder {
                             currentWidth,
                             this.height,
                             transform.tableSize,
-                            transform.data
+                            transform.colorTable
                     );
                 }
                 default -> throw new WebPException("Unknown VP8L transform kind");
@@ -168,9 +185,15 @@ public final class LosslessDecoder {
     /// @param width the expected frame width
     /// @param height the expected frame height
     /// @param implicitDimensions whether dimensions are supplied by an enclosing ALPH chunk
+    /// @param scratch destination storage that may be reused while decoding metadata images
     /// @return the transformed image width used by entropy decoding
     /// @throws WebPException if the bitstream is malformed or inconsistent
-    private int prepareFrame(int width, int height, boolean implicitDimensions) throws WebPException {
+    private int prepareFrame(
+            int width,
+            int height,
+            boolean implicitDimensions,
+            IntBuffer scratch
+    ) throws WebPException {
         resetState();
 
         if (implicitDimensions) {
@@ -195,7 +218,7 @@ public final class LosslessDecoder {
             }
         }
 
-        return readTransforms();
+        return readTransforms(scratch);
     }
 
     /// Clears state retained while decoding a previous frame.
@@ -209,7 +232,7 @@ public final class LosslessDecoder {
     private void decodeImageStream(int xsize, int ysize, boolean readMeta, int[] data) throws WebPException {
         int colorCacheBits = readColorCacheBits();
         ColorCache colorCache = colorCacheBits == 0 ? null : new ColorCache(colorCacheBits);
-        HuffmanInfo huffmanInfo = readHuffmanCodes(readMeta, xsize, ysize, colorCache);
+        HuffmanInfo huffmanInfo = readHuffmanCodes(readMeta, xsize, ysize, colorCache, IntBuffer.wrap(data));
         decodeImageData(xsize, ysize, huffmanInfo, data);
     }
 
@@ -228,11 +251,16 @@ public final class LosslessDecoder {
     ) throws WebPException {
         int colorCacheBits = readColorCacheBits();
         ColorCache colorCache = colorCacheBits == 0 ? null : new ColorCache(colorCacheBits);
-        HuffmanInfo huffmanInfo = readHuffmanCodes(readMeta, xsize, ysize, colorCache);
+        HuffmanInfo huffmanInfo = readHuffmanCodes(readMeta, xsize, ysize, colorCache, data);
         decodeImageData(xsize, ysize, huffmanInfo, data);
     }
 
-    private int readTransforms() throws WebPException {
+    /// Reads transform descriptions and retains their compact metadata.
+    ///
+    /// @param scratch destination storage that may be reused while decoding metadata images
+    /// @return the transformed image width used by the main entropy stream
+    /// @throws WebPException if a transform description or metadata image is malformed
+    private int readTransforms(IntBuffer scratch) throws WebPException {
         int xsize = width;
         while (bitReader.readBits(1) == 1) {
             int transformTypeValue = bitReader.readBits(2);
@@ -247,23 +275,33 @@ public final class LosslessDecoder {
                     int sizeBits = bitReader.readBits(3) + 2;
                     int blockXSize = LosslessTransforms.subsampleSize(xsize, sizeBits);
                     int blockYSize = LosslessTransforms.subsampleSize(height, sizeBits);
-                    int[] predictorData = new int[blockXSize * blockYSize];
-                    decodeImageStream(blockXSize, blockYSize, false, predictorData);
+                    IntBuffer decoded = decodeMetadataImage(blockXSize, blockYSize, scratch);
+                    byte[] predictorData = new byte[decoded.limit()];
+                    for (int i = 0; i < predictorData.length; i++) {
+                        predictorData[i] = (byte) Argb.green(decoded.get(i));
+                    }
                     transform = LosslessTransforms.Transform.predictor(sizeBits, predictorData);
                 }
                 case LosslessTransforms.COLOR -> {
                     int sizeBits = bitReader.readBits(3) + 2;
                     int blockXSize = LosslessTransforms.subsampleSize(xsize, sizeBits);
                     int blockYSize = LosslessTransforms.subsampleSize(height, sizeBits);
-                    int[] transformData = new int[blockXSize * blockYSize];
-                    decodeImageStream(blockXSize, blockYSize, false, transformData);
+                    IntBuffer decoded = decodeMetadataImage(blockXSize, blockYSize, scratch);
+                    byte[] transformData = new byte[decoded.limit() * 3];
+                    for (int i = 0, offset = 0; i < decoded.limit(); i++) {
+                        int value = decoded.get(i);
+                        transformData[offset++] = (byte) Argb.red(value);
+                        transformData[offset++] = (byte) Argb.green(value);
+                        transformData[offset++] = (byte) Argb.blue(value);
+                    }
                     transform = LosslessTransforms.Transform.color(sizeBits, transformData);
                 }
                 case LosslessTransforms.SUBTRACT_GREEN -> transform = LosslessTransforms.Transform.subtractGreen();
                 case LosslessTransforms.COLOR_INDEXING -> {
                     int colorTableSize = bitReader.readBits(8) + 1;
                     int[] colorMap = new int[colorTableSize];
-                    decodeImageStream(colorTableSize, 1, false, colorMap);
+                    IntBuffer decoded = decodeMetadataImage(colorTableSize, 1, scratch);
+                    decoded.get(0, colorMap);
 
                     int bits;
                     if (colorTableSize <= 2) {
@@ -286,32 +324,72 @@ public final class LosslessDecoder {
         return xsize;
     }
 
+    /// Decodes a transform or entropy metadata image into reusable destination storage.
+    ///
+    /// The returned position-zero buffer contains exactly `xsize * ysize` decoded pixels. The
+    /// supplied scratch buffer is used when large enough; otherwise a heap buffer is allocated.
+    ///
+    /// @param xsize the metadata image width
+    /// @param ysize the metadata image height
+    /// @param scratch reusable destination storage
+    /// @return the decoded position-zero metadata pixels
+    /// @throws WebPException if the metadata image is malformed
+    private IntBuffer decodeMetadataImage(int xsize, int ysize, IntBuffer scratch) throws WebPException {
+        int pixelCount = xsize * ysize;
+        IntBuffer decoded;
+        if (pixelCount <= scratch.capacity()) {
+            decoded = scratch.duplicate();
+            decoded.clear();
+            decoded.limit(pixelCount);
+        } else {
+            decoded = IntBuffer.allocate(pixelCount);
+        }
+        decodeImageStream(xsize, ysize, false, decoded);
+        return decoded;
+    }
+
     private void adjustColorMap(int[] colorMap) {
         for (int i = 1; i < colorMap.length; i++) {
             colorMap[i] = Argb.add(colorMap[i], colorMap[i - 1]);
         }
     }
 
-    private HuffmanInfo readHuffmanCodes(boolean readMeta, int xsize, int ysize, @Nullable ColorCache colorCache) throws WebPException {
+    /// Reads the Huffman groups and their optional compact entropy-group image.
+    ///
+    /// @param readMeta whether an entropy-group image may precede the Huffman groups
+    /// @param xsize the current image width
+    /// @param ysize the current image height
+    /// @param colorCache the current color cache, or `null` when disabled
+    /// @param scratch destination storage that may be reused for the entropy-group image
+    /// @return the decoded Huffman metadata
+    /// @throws WebPException if the Huffman metadata is malformed
+    private HuffmanInfo readHuffmanCodes(
+            boolean readMeta,
+            int xsize,
+            int ysize,
+            @Nullable ColorCache colorCache,
+            IntBuffer scratch
+    ) throws WebPException {
         int numHuffGroups = 1;
         int huffmanBits = 0;
         int huffmanXSize = 1;
         int huffmanYSize = 1;
-        int[] entropyImage = ArrayUtils.EMPTY_INT_ARRAY;
+        char[] entropyImage = ArrayUtils.EMPTY_CHAR_ARRAY;
 
         if (readMeta && bitReader.readBits(1) == 1) {
             huffmanBits = bitReader.readBits(3) + 2;
             huffmanXSize = LosslessTransforms.subsampleSize(xsize, huffmanBits);
             huffmanYSize = LosslessTransforms.subsampleSize(ysize, huffmanBits);
 
-            entropyImage = new int[huffmanXSize * huffmanYSize];
-            decodeImageStream(huffmanXSize, huffmanYSize, false, entropyImage);
+            IntBuffer decoded = decodeMetadataImage(huffmanXSize, huffmanYSize, scratch);
+            entropyImage = new char[decoded.limit()];
             for (int i = 0; i < entropyImage.length; i++) {
-                int metaHuffCode = (Argb.red(entropyImage[i]) << 8) | Argb.green(entropyImage[i]);
+                int value = decoded.get(i);
+                int metaHuffCode = (Argb.red(value) << 8) | Argb.green(value);
                 if (metaHuffCode >= numHuffGroups) {
                     numHuffGroups = metaHuffCode + 1;
                 }
-                entropyImage[i] = metaHuffCode;
+                entropyImage[i] = (char) metaHuffCode;
             }
         }
 
@@ -693,13 +771,13 @@ public final class LosslessDecoder {
     private static final class HuffmanInfo {
         final int xsize;
         final @Nullable ColorCache colorCache;
-        final int[] image;
+        final char @Unmodifiable [] image;
         final int bits;
         final int mask;
         /// Huffman trees indexed first by entropy group and then by channel.
         final LosslessHuffmanTree @Unmodifiable [] @Unmodifiable [] huffmanCodeGroups;
 
-        private HuffmanInfo(int xsize, @Nullable ColorCache colorCache, int[] image, int bits, int mask,
+        private HuffmanInfo(int xsize, @Nullable ColorCache colorCache, char @Unmodifiable [] image, int bits, int mask,
                             LosslessHuffmanTree @Unmodifiable [] @Unmodifiable [] huffmanCodeGroups) {
             this.xsize = xsize;
             this.colorCache = colorCache;

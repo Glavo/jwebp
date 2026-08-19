@@ -4,6 +4,7 @@ package org.glavo.webp.internal.lossless;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import org.glavo.webp.internal.Argb;
 
@@ -29,32 +30,54 @@ public final class LosslessTransforms {
     /// Encoded reverse-transform description.
     @NotNullByDefault
     public static final class Transform {
+        /// Transform kind.
         final int kind;
+
+        /// Transform block-size exponent.
         final int sizeBits;
-        final int @Nullable [] data;
+
+        /// Predictor modes or packed color multipliers, depending on [#kind].
+        final byte @Nullable @Unmodifiable [] blockData;
+
+        /// Number of entries in [#colorTable].
         final int tableSize;
 
-        private Transform(int kind, int sizeBits, int @Nullable [] data, int tableSize) {
+        /// Color-indexing table, or `null` for other transform kinds.
+        final int @Nullable @Unmodifiable [] colorTable;
+
+        /// Creates a transform description.
+        private Transform(
+                int kind,
+                int sizeBits,
+                byte @Nullable @Unmodifiable [] blockData,
+                int tableSize,
+                int @Nullable @Unmodifiable [] colorTable
+        ) {
             this.kind = kind;
             this.sizeBits = sizeBits;
-            this.data = data;
+            this.blockData = blockData;
             this.tableSize = tableSize;
+            this.colorTable = colorTable;
         }
 
-        public static Transform predictor(int sizeBits, int[] data) {
-            return new Transform(PREDICTOR, sizeBits, data, 0);
+        /// Creates a predictor-transform description.
+        public static Transform predictor(int sizeBits, byte @Unmodifiable [] data) {
+            return new Transform(PREDICTOR, sizeBits, data, 0, null);
         }
 
-        public static Transform color(int sizeBits, int[] data) {
-            return new Transform(COLOR, sizeBits, data, 0);
+        /// Creates a color-transform description.
+        public static Transform color(int sizeBits, byte @Unmodifiable [] data) {
+            return new Transform(COLOR, sizeBits, data, 0, null);
         }
 
+        /// Creates a subtract-green-transform description.
         public static Transform subtractGreen() {
-            return new Transform(SUBTRACT_GREEN, 0, null, 0);
+            return new Transform(SUBTRACT_GREEN, 0, null, 0, null);
         }
 
-        public static Transform colorIndexing(int tableSize, int[] data) {
-            return new Transform(COLOR_INDEXING, 0, data, tableSize);
+        /// Creates a color-indexing-transform description.
+        public static Transform colorIndexing(int tableSize, int @Unmodifiable [] data) {
+            return new Transform(COLOR_INDEXING, 0, null, tableSize, data);
         }
     }
 
@@ -68,7 +91,13 @@ public final class LosslessTransforms {
     }
 
     /// Applies the predictor transform.
-    public static void applyPredictorTransform(int[] imageData, int width, int height, int sizeBits, int[] predictorData) {
+    public static void applyPredictorTransform(
+            int[] imageData,
+            int width,
+            int height,
+            int sizeBits,
+            byte @Unmodifiable [] predictorData
+    ) {
         int blockXSize = subsampleSize(width, sizeBits);
         imageData[0] = Argb.add(imageData[0], 0xFF00_0000);
         applyPredictorTransform1(imageData, 1, width, width);
@@ -78,7 +107,7 @@ public final class LosslessTransforms {
             imageData[rowStart] = Argb.add(imageData[rowStart], imageData[rowStart - width]);
             int predictorRowStart = (y >> sizeBits) * blockXSize;
             for (int blockX = 0; blockX < blockXSize; blockX++) {
-                int predictor = Argb.green(predictorData[predictorRowStart + blockX]);
+                int predictor = predictorData[predictorRowStart + blockX];
                 int startIndex = rowStart + Math.max(blockX << sizeBits, 1);
                 int endIndex = rowStart + Math.min((blockX + 1) << sizeBits, width);
 
@@ -105,7 +134,12 @@ public final class LosslessTransforms {
     }
 
     /// Applies the color transform.
-    public static void applyColorTransform(int[] imageData, int width, int sizeBits, int[] transformData) {
+    public static void applyColorTransform(
+            int[] imageData,
+            int width,
+            int sizeBits,
+            byte @Unmodifiable [] transformData
+    ) {
         int height = imageData.length / width;
         int blockSize = 1 << sizeBits;
         int blockXSize = subsampleSize(width, sizeBits);
@@ -115,10 +149,10 @@ public final class LosslessTransforms {
             int yEnd = Math.min(yStart + blockSize, height);
             int transformRowStart = blockY * blockXSize;
             for (int blockX = 0; blockX < blockXSize; blockX++) {
-                int transform = transformData[transformRowStart + blockX];
-                int redToBlue = (byte) (transform >>> 16);
-                int greenToBlue = (byte) (transform >>> 8);
-                int greenToRed = (byte) transform;
+                int transformOffset = (transformRowStart + blockX) * 3;
+                int redToBlue = transformData[transformOffset];
+                int greenToBlue = transformData[transformOffset + 1];
+                int greenToRed = transformData[transformOffset + 2];
 
                 int xStart = blockX << sizeBits;
                 int xEnd = Math.min(xStart + blockSize, width);

@@ -40,7 +40,12 @@ final class LosslessTransformsTest {
         }
 
         int[] heapColor = source.clone();
-        LosslessTransforms.applyColorTransform(heapColor, source.length, 12, new int[]{transform});
+        LosslessTransforms.applyColorTransform(
+                heapColor,
+                source.length,
+                12,
+                compactColorTransform(transform)
+        );
         assertArrayEquals(expectedColor, heapColor);
         assertArrayEquals(
                 expectedColor,
@@ -182,11 +187,23 @@ final class LosslessTransformsTest {
                 direct,
                 source.length,
                 12,
-                new int[]{transform}
+                compactColorTransform(transform)
         );
         int[] result = new int[source.length];
         direct.get(0, result);
         return result;
+    }
+
+    /// Compacts one packed transform pixel into its three signed multipliers.
+    ///
+    /// @param transform the packed transform pixel
+    /// @return the red-to-blue, green-to-blue and green-to-red multipliers
+    private static byte[] compactColorTransform(int transform) {
+        return new byte[]{
+                (byte) Argb.red(transform),
+                (byte) Argb.green(transform),
+                (byte) Argb.blue(transform)
+        };
     }
 
     /// Creates a native-order direct integer buffer containing the supplied pixels.
