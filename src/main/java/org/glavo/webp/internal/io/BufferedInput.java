@@ -28,6 +28,9 @@ public sealed abstract class BufferedInput implements Closeable {
     /// Staging capacity for the widest scalar container field.
     private static final int DEFAULT_BUFFER_SIZE = Long.BYTES;
 
+    /// Largest payload allocated at its declared size before any payload bytes are observed.
+    private static final int MAX_PREALLOCATED_PAYLOAD_SIZE = 16 * 1024 * 1024;
+
     protected final ByteBuffer buffer;
     protected boolean closed = false;
 
@@ -299,6 +302,10 @@ public sealed abstract class BufferedInput implements Closeable {
         /// @throws IOException if the source is truncated, closed, or unreadable
         @Override
         public byte[] readByteArray(int len) throws IOException {
+            if (len > MAX_PREALLOCATED_PAYLOAD_SIZE) {
+                return readLargeByteArray(len);
+            }
+
             byte[] result = allocateByteArray(len);
             if (result.length == 0) {
                 return result;
@@ -322,6 +329,35 @@ public sealed abstract class BufferedInput implements Closeable {
                     offset += read;
                 }
             }
+            return result;
+        }
+
+        /// Reads a large declared payload without allocating its full size before reaching it.
+        ///
+        /// This prevents a short stream with a forged chunk length from forcing an allocation of
+        /// that length. A complete large payload is still returned as one exact-sized array.
+        ///
+        /// @param len the declared payload length
+        /// @return the complete payload
+        /// @throws IOException if the source is truncated, closed, or unreadable
+        private byte[] readLargeByteArray(int len) throws IOException {
+            ensureOpen();
+
+            int prefixLength = Math.min(buffer.remaining(), len);
+            byte[] prefix = new byte[prefixLength];
+            buffer.get(prefix);
+
+            byte[] suffix = input.readNBytes(len - prefixLength);
+            if (suffix.length != len - prefixLength) {
+                throw unexpectedEndOfInput();
+            }
+            if (prefixLength == 0) {
+                return suffix;
+            }
+
+            byte[] result = new byte[len];
+            System.arraycopy(prefix, 0, result, 0, prefixLength);
+            System.arraycopy(suffix, 0, result, prefixLength, suffix.length);
             return result;
         }
 
@@ -412,12 +448,20 @@ public sealed abstract class BufferedInput implements Closeable {
         /// @throws IOException if the source is truncated, closed, or unreadable
         @Override
         public byte[] readByteArray(int len) throws IOException {
-            byte[] result = allocateByteArray(len);
-            if (result.length == 0) {
-                return result;
+            if (len == 0) {
+                return allocateByteArray(0);
             }
 
             ensureOpen();
+            if (channel instanceof SeekableByteChannel seekableChannel) {
+                long available = seekableChannel.size() - seekableChannel.position();
+                long required = (long) len - Math.min(buffer.remaining(), len);
+                if (available < 0 || required > available) {
+                    throw unexpectedEndOfInput();
+                }
+            }
+
+            byte[] result = allocateByteArray(len);
             int offset = Math.min(buffer.remaining(), len);
             buffer.get(result, 0, offset);
             ByteBuffer destination = ByteBuffer.wrap(result, offset, len - offset);

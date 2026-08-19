@@ -54,7 +54,7 @@ public final class WebPSequentialParser {
             throw new WebPException("Invalid RIFF size for WebP container");
         }
 
-        ChunkPayload first = readChunk(input);
+        ChunkPayload first = readChunk(input, remainingBytes);
         remainingBytes -= 8L + first.paddedSize();
 
         return switch (first.type()) {
@@ -198,6 +198,12 @@ public final class WebPSequentialParser {
                 }
                 case FourCC.VP8 -> {
                     Dimensions dimensions = parseVp8Dimensions(chunkPayload);
+                    validateStaticFrameDimensions(
+                            dimensions.width(),
+                            dimensions.height(),
+                            canvasWidth,
+                            canvasHeight
+                    );
                     frames.add(new ParsedFrameDescriptor(
                             0,
                             0,
@@ -215,6 +221,12 @@ public final class WebPSequentialParser {
                 }
                 case FourCC.VP8L -> {
                     LosslessHeader losslessHeader = parseVp8LHeader(chunkPayload);
+                    validateStaticFrameDimensions(
+                            losslessHeader.width(),
+                            losslessHeader.height(),
+                            canvasWidth,
+                            canvasHeight
+                    );
                     frames.add(new ParsedFrameDescriptor(
                             0,
                             0,
@@ -436,9 +448,41 @@ public final class WebPSequentialParser {
                 | (Byte.toUnsignedInt(data[offset + 2]) << 16);
     }
 
-    private static ChunkPayload readChunk(BufferedInput input) throws IOException {
+    /// Verifies that a top-level static frame has the dimensions declared by `VP8X`.
+    ///
+    /// @param frameWidth the width declared by the VP8 or VP8L payload
+    /// @param frameHeight the height declared by the VP8 or VP8L payload
+    /// @param canvasWidth the width declared by VP8X
+    /// @param canvasHeight the height declared by VP8X
+    /// @throws WebPException if the dimensions differ
+    private static void validateStaticFrameDimensions(
+            int frameWidth,
+            int frameHeight,
+            int canvasWidth,
+            int canvasHeight
+    ) throws WebPException {
+        if (frameWidth != canvasWidth || frameHeight != canvasHeight) {
+            throw new WebPException("Static frame dimensions do not match the VP8X canvas");
+        }
+    }
+
+    /// Reads the first RIFF chunk after validating its declared size against the container.
+    ///
+    /// @param input the container input positioned at the chunk header
+    /// @param availableBytes the bytes remaining in the RIFF payload, including the chunk header
+    /// @return the validated and buffered chunk
+    /// @throws IOException if the chunk is truncated, too large, or unreadable
+    private static ChunkPayload readChunk(BufferedInput input, long availableBytes) throws IOException {
+        if (availableBytes < 8) {
+            throw new WebPException("Truncated WebP chunk header");
+        }
+
         int fourCc = input.readFourCC();
         long size = input.readUnsignedIntLE();
+        long paddedSize = paddedSize(size);
+        if (paddedSize > availableBytes - 8) {
+            throw new WebPException("WebP chunk extends beyond the RIFF container");
+        }
         if (size > Integer.MAX_VALUE) {
             throw new WebPException("Chunk is too large to buffer in memory: " + size);
         }

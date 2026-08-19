@@ -264,6 +264,36 @@ val firefoxWebPTestDataFiles = listOf(
     "image/test/reftest/webp/icc-bit-no-icc-chunk.webp",
 )
 
+// https://github.com/golang/image/tree/master/testdata
+val goImageWebPTestDataCommit = "3ebddc7c54bd879f8d84d11db82892726f5192fd"
+val goImageWebPTestDataZip =
+    layout.buildDirectory.file("downloads/go-image-webp-test-data-$goImageWebPTestDataCommit.zip")
+val goImageWebPTestDataFiles = listOf(
+    "blue-purple-pink-large.lossless.webp",
+    "blue-purple-pink-large.png",
+    "blue-purple-pink.lossless.webp",
+    "blue-purple-pink.lossy.webp",
+    "blue-purple-pink.png",
+    "gopher-doc.1bpp.lossless.webp",
+    "gopher-doc.1bpp.png",
+    "gopher-doc.2bpp.lossless.webp",
+    "gopher-doc.2bpp.png",
+    "gopher-doc.4bpp.lossless.webp",
+    "gopher-doc.4bpp.png",
+    "gopher-doc.8bpp.lossless.webp",
+    "gopher-doc.8bpp.png",
+    "gopher-doc.skip-hgroup.lossless.webp",
+    "gopher-doc.with-alpha.lossless.webp",
+    "gopher-doc.with-alpha.png",
+    "tux.lossless.webp",
+    "tux.png",
+    "yellow_rose.lossless.webp",
+    "yellow_rose.png",
+)
+val goImageWebPTestDataTree = zipTree(goImageWebPTestDataZip).matching {
+    include(*goImageWebPTestDataFiles.map { "**/testdata/$it" }.toTypedArray())
+}
+
 fun registerTestDataDownloads(
     taskNamePrefix: String,
     repository: String,
@@ -317,8 +347,23 @@ val downloadFirefoxWebPTestData by tasks.registering {
     dependsOn(firefoxWebPTestDataDownloads)
 }
 
+val downloadGoImageWebPTestData by tasks.registering(Download::class) {
+    group = "verification"
+    description = "Downloads the curated Go image WebP test data from a pinned commit"
+    src("https://github.com/golang/image/archive/$goImageWebPTestDataCommit.zip")
+    dest(goImageWebPTestDataZip)
+    overwrite(false)
+    retries(3)
+    tempAndMove(true)
+}
+
 tasks.processTestResources {
-    dependsOn(downloadWebPTestData, downloadChromiumWebPTestData, downloadFirefoxWebPTestData)
+    dependsOn(
+        downloadWebPTestData,
+        downloadChromiumWebPTestData,
+        downloadFirefoxWebPTestData,
+        downloadGoImageWebPTestData,
+    )
 
     into("libwebp-test-data") {
         from(zipTree(webpTestDataZip)) {
@@ -340,6 +385,13 @@ tasks.processTestResources {
 
     into("firefox-webp-test-data") {
         from(firefoxWebPTestDataDirectory)
+    }
+
+    from(goImageWebPTestDataTree) {
+        eachFile {
+            relativePath = RelativePath(true, "go-image-webp-test-data", relativePath.lastName)
+        }
+        includeEmptyDirs = false
     }
 }
 

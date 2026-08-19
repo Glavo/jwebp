@@ -31,6 +31,8 @@
 
 - Ignore `ALPH` chunks when the `VP8X` alpha feature bit is absent
 - Reject invalid WebP containers containing a non-leading `VP8X` chunk
+- Reject static extended WebP containers whose VP8 or VP8L dimensions differ from the `VP8X` canvas
+- Avoid large eager allocations when a truncated input stream declares an oversized chunk payload
 
 ## 0.2.0 (2026-04-19)
 

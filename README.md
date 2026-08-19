@@ -169,17 +169,20 @@ The test suite includes:
 - tests ported from `image-rs`
 - tests ported from `libwebp`
 - tests backed by the downloaded `libwebp-test-data` corpus
-- regression and conformance fixtures downloaded from pinned Chromium and Firefox commits
+- regression and conformance fixtures downloaded from pinned Chromium, Firefox, and Go image
+  commits
 
-`processTestResources` depends on two explicit Gradle download tasks:
+The browser and Go image fixture sets are supplied by three explicit Gradle download tasks:
 
 - `downloadChromiumWebPTestData` selects fixtures from Chromium commit
   [`8f4baaae073181e7e0fea1807f8db6ad720dbcb7`](https://github.com/chromium/chromium/tree/8f4baaae073181e7e0fea1807f8db6ad720dbcb7/third_party/blink/web_tests/images/resources)
 - `downloadFirefoxWebPTestData` selects fixtures from Firefox commit
   [`4272397b835a480b1be6cee142d0fa39e166dbc6`](https://github.com/mozilla-firefox/firefox/tree/4272397b835a480b1be6cee142d0fa39e166dbc6/image/test)
+- `downloadGoImageWebPTestData` selects fixtures from Go image commit
+  [`3ebddc7c54bd879f8d84d11db82892726f5192fd`](https://github.com/golang/image/tree/3ebddc7c54bd879f8d84d11db82892726f5192fd/testdata)
 
-The selected files are cached under `build/downloads` and only enter the test resource set; they
-are not packaged in the library artifacts.
+The selected files and archives are cached under `build/downloads` and only enter the test
+resource set; they are not packaged in the library artifacts.
 
 ## License
 
