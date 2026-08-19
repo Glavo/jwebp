@@ -20,8 +20,8 @@ public final class LosslessConstants {
     /// Back-reference distance map defined by the VP8L format.
     ///
     /// Each byte packs one horizontal-offset (`dx`) and one vertical-offset (`dy`) into its high
-    /// and low nibbles. Values in `-7`..`8` are mapped to the nibbles `0`..`15` by
-    /// `v >= 0 ? v : 16 + v`, so the nibbles `9`..`15` stand for `-7`..`-1`.
+    /// and low nibbles. Horizontal values in `-7`..`8` are mapped to the high nibble by
+    /// `v >= 0 ? v : 16 + v`, while vertical values in `0`..`7` occupy the low three bits.
     public static final byte @Unmodifiable [] DISTANCE_MAP = {
             (byte) 0x01, // (0, 1)
             (byte) 0x10, // (1, 0)

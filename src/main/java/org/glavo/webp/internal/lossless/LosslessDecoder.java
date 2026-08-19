@@ -681,12 +681,9 @@ public final class LosslessDecoder {
         }
         int packed = LosslessConstants.DISTANCE_MAP[planeCode - 1];
         int dx = (packed >>> 4) & 0xF;
-        int dy = packed & 0xF;
+        int dy = packed & 0x7;
         if (dx >= 9) {
             dx -= 16;
-        }
-        if (dy >= 9) {
-            dy -= 16;
         }
         int distance = dx + dy * xsize;
         return Math.max(distance, 1);
