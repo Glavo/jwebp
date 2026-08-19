@@ -6,11 +6,46 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 /// Ports of [lossy/transform.rs](https://github.com/image-rs/image-webp/blob/f4d80bd965df2c81e65b6f43c1f70e0750bd4b0f/src/lossy/transform.rs) tests.
 @NotNullByDefault
 final class LossyTransformTest {
+
+    /// Verifies that offset transforms match zero-offset transforms without modifying adjacent values.
+    @Test
+    void transformsBlockAtOffset() {
+        int[] coefficients = {
+                38, 6, 210, 107,
+                42, 125, 185, 151,
+                241, 224, 125, 233,
+                227, 8, 57, 96
+        };
+
+        int[] expectedIdct = coefficients.clone();
+        LossyTransform.idct4x4(expectedIdct);
+        int[] offsetIdct = new int[20];
+        Arrays.fill(offsetIdct, -1);
+        System.arraycopy(coefficients, 0, offsetIdct, 2, coefficients.length);
+        LossyTransform.idct4x4(offsetIdct, 2);
+        assertArrayEquals(expectedIdct, Arrays.copyOfRange(offsetIdct, 2, 18));
+        assertArrayEquals(new int[]{-1, -1, -1, -1}, new int[]{
+                offsetIdct[0], offsetIdct[1], offsetIdct[18], offsetIdct[19]
+        });
+
+        int[] expectedIwht = coefficients.clone();
+        LossyTransform.iwht4x4(expectedIwht);
+        int[] offsetIwht = new int[20];
+        Arrays.fill(offsetIwht, -1);
+        System.arraycopy(coefficients, 0, offsetIwht, 2, coefficients.length);
+        LossyTransform.iwht4x4(offsetIwht, 2);
+        assertArrayEquals(expectedIwht, Arrays.copyOfRange(offsetIwht, 2, 18));
+        assertArrayEquals(new int[]{-1, -1, -1, -1}, new int[]{
+                offsetIwht[0], offsetIwht[1], offsetIwht[18], offsetIwht[19]
+        });
+    }
 
     @Test
     void dctInverseRoundTripsOriginalBlock() {

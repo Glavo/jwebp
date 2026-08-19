@@ -8,39 +8,54 @@ import org.jetbrains.annotations.NotNullByDefault;
 @NotNullByDefault
 final class LossyTransform {
 
+    /// First fixed-point inverse-DCT multiplier.
     private static final long CONST1 = 20091;
+
+    /// Second fixed-point inverse-DCT multiplier.
     private static final long CONST2 = 35468;
 
+    /// Prevents instantiation.
     private LossyTransform() {
     }
 
+    /// Applies the inverse discrete cosine transform to the first 4-by-4 block.
+    ///
+    /// @param block the mutable coefficient block
     static void idct4x4(int[] block) {
         idct4x4(block, 0);
     }
 
+    /// Applies the inverse discrete cosine transform to one 4-by-4 block.
+    ///
+    /// @param block the array containing the mutable coefficient block
+    /// @param offset the index of the first of 16 consecutive coefficients
     static void idct4x4(int[] block, int offset) {
-        assert block.length >= 16;
+        assert offset >= 0 && offset <= block.length - 16;
 
-        for (int i = 0; i < 4; i++) {
-            long a1 = block[offset + i] + (long) block[offset + 8 + i];
-            long b1 = block[offset + i] - (long) block[offset + 8 + i];
+        for (int column = offset, end = offset + 4; column < end; column++) {
+            long x0 = block[column];
+            long x1 = block[column + 4];
+            long x2 = block[column + 8];
+            long x3 = block[column + 12];
 
-            long t1 = (block[offset + 4 + i] * CONST2) >> 16;
-            long t2 = block[offset + 12 + i] + ((block[offset + 12 + i] * CONST1) >> 16);
+            long a1 = x0 + x2;
+            long b1 = x0 - x2;
+
+            long t1 = (x1 * CONST2) >> 16;
+            long t2 = x3 + ((x3 * CONST1) >> 16);
             long c1 = t1 - t2;
 
-            t1 = block[offset + 4 + i] + ((block[offset + 4 + i] * CONST1) >> 16);
-            t2 = (block[offset + 12 + i] * CONST2) >> 16;
+            t1 = x1 + ((x1 * CONST1) >> 16);
+            t2 = (x3 * CONST2) >> 16;
             long d1 = t1 + t2;
 
-            block[offset + i] = (int) (a1 + d1);
-            block[offset + 4 + i] = (int) (b1 + c1);
-            block[offset + 12 + i] = (int) (a1 - d1);
-            block[offset + 8 + i] = (int) (b1 - c1);
+            block[column] = (int) (a1 + d1);
+            block[column + 4] = (int) (b1 + c1);
+            block[column + 12] = (int) (a1 - d1);
+            block[column + 8] = (int) (b1 - c1);
         }
 
-        for (int i = 0; i < 4; i++) {
-            int row = offset + 4 * i;
+        for (int row = offset, end = offset + 16; row < end; row += 4) {
             long a1 = block[row] + (long) block[row + 2];
             long b1 = block[row] - (long) block[row + 2];
 
@@ -59,26 +74,38 @@ final class LossyTransform {
         }
     }
 
+    /// Applies the inverse Walsh-Hadamard transform to the first 4-by-4 block.
+    ///
+    /// @param block the mutable coefficient block
     static void iwht4x4(int[] block) {
         iwht4x4(block, 0);
     }
 
+    /// Applies the inverse Walsh-Hadamard transform to one 4-by-4 block.
+    ///
+    /// @param block the array containing the mutable coefficient block
+    /// @param offset the index of the first of 16 consecutive coefficients
     static void iwht4x4(int[] block, int offset) {
-        assert block.length >= 16;
+        assert offset >= 0 && offset <= block.length - 16;
 
-        for (int i = 0; i < 4; i++) {
-            int a1 = block[offset + i] + block[offset + 12 + i];
-            int b1 = block[offset + 4 + i] + block[offset + 8 + i];
-            int c1 = block[offset + 4 + i] - block[offset + 8 + i];
-            int d1 = block[offset + i] - block[offset + 12 + i];
+        for (int column = offset, end = offset + 4; column < end; column++) {
+            int x0 = block[column];
+            int x1 = block[column + 4];
+            int x2 = block[column + 8];
+            int x3 = block[column + 12];
 
-            block[offset + i] = a1 + b1;
-            block[offset + 4 + i] = c1 + d1;
-            block[offset + 8 + i] = a1 - b1;
-            block[offset + 12 + i] = d1 - c1;
+            int a1 = x0 + x3;
+            int b1 = x1 + x2;
+            int c1 = x1 - x2;
+            int d1 = x0 - x3;
+
+            block[column] = a1 + b1;
+            block[column + 4] = c1 + d1;
+            block[column + 8] = a1 - b1;
+            block[column + 12] = d1 - c1;
         }
 
-        for (int row = offset; row < offset + 16; row += 4) {
+        for (int row = offset, end = offset + 16; row < end; row += 4) {
             int a1 = block[row] + block[row + 3];
             int b1 = block[row + 1] + block[row + 2];
             int c1 = block[row + 1] - block[row + 2];
