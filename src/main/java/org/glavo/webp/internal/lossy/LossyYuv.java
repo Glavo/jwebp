@@ -11,9 +11,6 @@ import java.nio.IntBuffer;
 @NotNullByDefault
 final class LossyYuv {
 
-    private static final int YUV_FIX = 16;
-    private static final int YUV_HALF = 1 << (YUV_FIX - 1);
-
     /// Scaled luma contributions indexed by an unsigned sample.
     private static final char @Unmodifiable [] Y_COEFFICIENTS = buildCoefficientTable(19077);
 
@@ -975,44 +972,6 @@ final class LossyYuv {
         return table;
     }
 
-    static byte[][] convertImageYuv(byte[] imageData, int width, int height, int bytesPerPixel) {
-        int mbWidth = (width + 15) / 16;
-        int mbHeight = (height + 15) / 16;
-        int ySize = 16 * mbWidth * 16 * mbHeight;
-        int lumaWidth = 16 * mbWidth;
-        int chromaWidth = 8 * mbWidth;
-        int chromaSize = 8 * mbWidth * 8 * mbHeight;
-        byte[] yBytes = new byte[ySize];
-        byte[] uBytes = new byte[chromaSize];
-        byte[] vBytes = new byte[chromaSize];
-
-        for (int row = 0; row + 1 < height; row += 2) {
-            int imageRowOffset1 = row * width * bytesPerPixel;
-            int imageRowOffset2 = (row + 1) * width * bytesPerPixel;
-            int yRowOffset1 = row * lumaWidth;
-            int yRowOffset2 = (row + 1) * lumaWidth;
-            int chromaRowOffset = (row / 2) * chromaWidth;
-
-            for (int col = 0; col + 1 < width; col += 2) {
-                int p1 = imageRowOffset1 + col * bytesPerPixel;
-                int p2 = p1 + bytesPerPixel;
-                int p3 = imageRowOffset2 + col * bytesPerPixel;
-                int p4 = p3 + bytesPerPixel;
-
-                yBytes[yRowOffset1 + col] = rgbToY(imageData, p1);
-                yBytes[yRowOffset1 + col + 1] = rgbToY(imageData, p2);
-                yBytes[yRowOffset2 + col] = rgbToY(imageData, p3);
-                yBytes[yRowOffset2 + col + 1] = rgbToY(imageData, p4);
-
-                int chromaIndex = chromaRowOffset + col / 2;
-                uBytes[chromaIndex] = rgbToUAvg(imageData, p1, p2, p3, p4);
-                vBytes[chromaIndex] = rgbToVAvg(imageData, p1, p2, p3, p4);
-            }
-        }
-
-        return new byte[][]{yBytes, uBytes, vBytes};
-    }
-
     private static int mulhi(int value, int coeff) {
         return (value * coeff) >> 8;
     }
@@ -1091,40 +1050,4 @@ final class LossyYuv {
         return 0xFF00_0000 | (red << 16) | (green << 8) | blue;
     }
 
-    private static byte rgbToY(byte[] rgb, int offset) {
-        int luma = 16839 * (rgb[offset] & 0xFF)
-                + 33059 * (rgb[offset + 1] & 0xFF)
-                + 6420 * (rgb[offset + 2] & 0xFF);
-        return (byte) ((luma + YUV_HALF + (16 << YUV_FIX)) >> YUV_FIX);
-    }
-
-    private static byte rgbToUAvg(byte[] rgb, int p1, int p2, int p3, int p4) {
-        int u1 = rgbToURaw(rgb, p1);
-        int u2 = rgbToURaw(rgb, p2);
-        int u3 = rgbToURaw(rgb, p3);
-        int u4 = rgbToURaw(rgb, p4);
-        return (byte) ((u1 + u2 + u3 + u4) >> (YUV_FIX + 2));
-    }
-
-    private static byte rgbToVAvg(byte[] rgb, int p1, int p2, int p3, int p4) {
-        int v1 = rgbToVRaw(rgb, p1);
-        int v2 = rgbToVRaw(rgb, p2);
-        int v3 = rgbToVRaw(rgb, p3);
-        int v4 = rgbToVRaw(rgb, p4);
-        return (byte) ((v1 + v2 + v3 + v4) >> (YUV_FIX + 2));
-    }
-
-    private static int rgbToURaw(byte[] rgb, int offset) {
-        return -9719 * (rgb[offset] & 0xFF)
-                - 19081 * (rgb[offset + 1] & 0xFF)
-                + 28800 * (rgb[offset + 2] & 0xFF)
-                + (128 << YUV_FIX);
-    }
-
-    private static int rgbToVRaw(byte[] rgb, int offset) {
-        return 28800 * (rgb[offset] & 0xFF)
-                - 24116 * (rgb[offset + 1] & 0xFF)
-                - 4684 * (rgb[offset + 2] & 0xFF)
-                + (128 << YUV_FIX);
-    }
 }
