@@ -64,15 +64,6 @@ public final class LosslessHuffmanTree {
         );
     }
 
-    /// Builds a canonical Huffman tree from code lengths.
-    ///
-    /// @param codeLengths the code lengths indexed by symbol
-    /// @return the resulting tree
-    /// @throws WebPException if the code lengths do not form a valid canonical tree
-    public static LosslessHuffmanTree implicit(int[] codeLengths) throws WebPException {
-        return implicit(codeLengths, new BuildWorkspace());
-    }
-
     /// Builds a canonical Huffman tree while reusing temporary construction arrays.
     ///
     /// @param codeLengths the code lengths indexed by symbol
