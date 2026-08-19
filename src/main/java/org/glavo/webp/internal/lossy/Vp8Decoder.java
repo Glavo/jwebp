@@ -97,9 +97,9 @@ public final class Vp8Decoder {
 
     private final int[] segmentProbs = {255, 255, 255};
     /// Coefficient probabilities, shared with the immutable defaults until the frame updates one.
-    private short[] tokenProbs = LossyTables.FLAT_COEFF_PROBS;
+    private byte[] tokenProbs = LossyTables.FLAT_COEFF_PROBS;
     /// Mutable coefficient probabilities allocated only for streams that update the defaults.
-    private short @Nullable [] mutableTokenProbs;
+    private byte @Nullable [] mutableTokenProbs;
 
     /// Probability of a false skip-coefficients flag, or `-1` when the flag is absent.
     private int probSkipFalse = -1;
@@ -378,9 +378,9 @@ public final class Vp8Decoder {
     }
 
     private void updateTokenProbabilities() throws WebPException {
-        short[] updateProbabilities = LossyTables.FLAT_COEFF_UPDATE_PROBS;
+        byte[] updateProbabilities = LossyTables.FLAT_COEFF_UPDATE_PROBS;
         for (int probabilityIndex = 0; probabilityIndex < updateProbabilities.length; probabilityIndex++) {
-            if (headerDecoder.readBool(updateProbabilities[probabilityIndex])) {
+            if (headerDecoder.readBool(updateProbabilities[probabilityIndex] & 0xFF)) {
                 int updated = headerDecoder.readLiteral(8);
                 if (tokenProbs == LossyTables.FLAT_COEFF_PROBS) {
                     if (mutableTokenProbs == null) {
@@ -396,7 +396,7 @@ public final class Vp8Decoder {
                     }
                     tokenProbs = mutableTokenProbs;
                 }
-                tokenProbs[probabilityIndex] = (short) updated;
+                tokenProbs[probabilityIndex] = (byte) updated;
             }
         }
         headerDecoder.ensureNotPastEof();
@@ -827,7 +827,7 @@ public final class Vp8Decoder {
 
         int firstCoeff = plane == Plane.Y_COEFF_1 ? 1 : 0;
         int probabilityPlaneOffset = plane * LossyTables.COEFF_PROBABILITY_COUNT_PER_PLANE;
-        short[] probabilities = tokenProbs;
+        byte[] probabilities = tokenProbs;
 
         int complexityState = complexity;
         boolean hasCoefficients = false;
@@ -837,11 +837,11 @@ public final class Vp8Decoder {
                     + LossyTables.COEFF_BAND_PROBABILITY_OFFSETS[i]
                     + complexityState * LossyTables.COEFF_TOKEN_PROBABILITY_COUNT;
 
-            if (!decoder.readBool(probabilities[probabilityOffset])) {
+            if (!decoder.readBool(probabilities[probabilityOffset] & 0xFF)) {
                 break;
             }
 
-            while (!decoder.readBool(probabilities[probabilityOffset + 1])) {
+            while (!decoder.readBool(probabilities[probabilityOffset + 1] & 0xFF)) {
                 hasCoefficients = true;
                 complexityState = 0;
                 if (++i == 16) {
@@ -853,7 +853,7 @@ public final class Vp8Decoder {
             }
 
             int absoluteValue;
-            if (!decoder.readBool(probabilities[probabilityOffset + 2])) {
+            if (!decoder.readBool(probabilities[probabilityOffset + 2] & 0xFF)) {
                 absoluteValue = 1;
             } else {
                 absoluteValue = readLargeCoefficientValue(decoder, probabilities, probabilityOffset);
@@ -880,18 +880,18 @@ public final class Vp8Decoder {
     /// @return a coefficient magnitude in the range `2` through `2114`
     private int readLargeCoefficientValue(
             LossyArithmeticDecoder decoder,
-            short[] probabilities,
+            byte[] probabilities,
             int probabilityOffset
     ) {
-        if (!decoder.readBool(probabilities[probabilityOffset + 3])) {
-            if (!decoder.readBool(probabilities[probabilityOffset + 4])) {
+        if (!decoder.readBool(probabilities[probabilityOffset + 3] & 0xFF)) {
+            if (!decoder.readBool(probabilities[probabilityOffset + 4] & 0xFF)) {
                 return 2;
             }
-            return 3 + (decoder.readBool(probabilities[probabilityOffset + 5]) ? 1 : 0);
+            return 3 + (decoder.readBool(probabilities[probabilityOffset + 5] & 0xFF) ? 1 : 0);
         }
 
-        if (!decoder.readBool(probabilities[probabilityOffset + 6])) {
-            if (!decoder.readBool(probabilities[probabilityOffset + 7])) {
+        if (!decoder.readBool(probabilities[probabilityOffset + 6] & 0xFF)) {
+            if (!decoder.readBool(probabilities[probabilityOffset + 7] & 0xFF)) {
                 return 5 + (decoder.readBool(159) ? 1 : 0);
             }
             return 7
@@ -899,14 +899,14 @@ public final class Vp8Decoder {
                     + (decoder.readBool(145) ? 1 : 0);
         }
 
-        int highCategoryBit = decoder.readBool(probabilities[probabilityOffset + 8]) ? 1 : 0;
-        int lowCategoryBit = decoder.readBool(probabilities[probabilityOffset + 9 + highCategoryBit]) ? 1 : 0;
+        int highCategoryBit = decoder.readBool(probabilities[probabilityOffset + 8] & 0xFF) ? 1 : 0;
+        int lowCategoryBit = decoder.readBool(probabilities[probabilityOffset + 9 + highCategoryBit] & 0xFF) ? 1 : 0;
         int category = (highCategoryBit << 1) | lowCategoryBit;
         int categoryOffset = category * LossyTables.LARGE_DCT_CATEGORY_STRIDE;
         int extra = 0;
-        short[] categoryProbabilities = LossyTables.LARGE_DCT_CATEGORY_PROBABILITIES;
+        byte[] categoryProbabilities = LossyTables.LARGE_DCT_CATEGORY_PROBABILITIES;
         for (int index = categoryOffset; categoryProbabilities[index] != 0; index++) {
-            extra = extra + extra + (decoder.readBool(categoryProbabilities[index]) ? 1 : 0);
+            extra = extra + extra + (decoder.readBool(categoryProbabilities[index] & 0xFF) ? 1 : 0);
         }
         return LossyTables.LARGE_DCT_CATEGORY_BASE[category] + extra;
     }
