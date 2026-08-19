@@ -84,16 +84,9 @@ public final class Vp8Decoder {
     /// Loop-filter delta for `B_PRED` macroblocks.
     private byte bPredFilterDelta;
 
-    private final LossyArithmeticDecoder[] partitions = {
-            new LossyArithmeticDecoder(),
-            new LossyArithmeticDecoder(),
-            new LossyArithmeticDecoder(),
-            new LossyArithmeticDecoder(),
-            new LossyArithmeticDecoder(),
-            new LossyArithmeticDecoder(),
-            new LossyArithmeticDecoder(),
-            new LossyArithmeticDecoder()
-    };
+    /// Coefficient-partition decoders, created only for partition indexes used by a frame.
+    private final @Nullable LossyArithmeticDecoder[] partitions =
+            new LossyArithmeticDecoder[LossyCommon.MAX_DCT_PARTITIONS];
     private int numPartitions = 1;
 
     private final int[] segmentProbs = {255, 255, 255};
@@ -404,6 +397,10 @@ public final class Vp8Decoder {
         headerDecoder.ensureNotPastEof();
     }
 
+    /// Initializes the coefficient partitions declared by the current frame header.
+    ///
+    /// @param partitionCount the number of partitions; must be `1`, `2`, `4`, or `8`
+    /// @throws WebPException if a partition is empty or extends past the encoded input
     private void initPartitions(int partitionCount) throws WebPException {
         if (partitionCount > 1) {
             int sizesOffset = readExactly(3 * partitionCount - 3);
@@ -412,12 +409,33 @@ public final class Vp8Decoder {
                 int partitionSize = ArrayUtils.getUnsignedShortLE(input, sizeOffset)
                         | (Byte.toUnsignedInt(input[sizeOffset + 2]) << 16);
                 int partitionOffset = readExactly(partitionSize);
-                partitions[i].init(input, partitionOffset, partitionSize);
+                acquirePartition(i).init(input, partitionOffset, partitionSize);
             }
         }
         int finalPartitionSize = inputLimit - inputPosition;
         int finalPartitionOffset = readExactly(finalPartitionSize);
-        partitions[partitionCount - 1].init(input, finalPartitionOffset, finalPartitionSize);
+        acquirePartition(partitionCount - 1).init(input, finalPartitionOffset, finalPartitionSize);
+    }
+
+    /// Returns a retained coefficient decoder, creating it when first requested.
+    ///
+    /// @param index the partition index, from `0` through `7`
+    /// @return the decoder for `index`
+    private LossyArithmeticDecoder acquirePartition(int index) {
+        LossyArithmeticDecoder decoder = partitions[index];
+        if (decoder == null) {
+            decoder = new LossyArithmeticDecoder();
+            partitions[index] = decoder;
+        }
+        return decoder;
+    }
+
+    /// Returns an initialized coefficient decoder for the current frame.
+    ///
+    /// @param index the active partition index
+    /// @return the initialized decoder
+    private LossyArithmeticDecoder activePartition(int index) {
+        return Objects.requireNonNull(partitions[index], "Uninitialized VP8 coefficient partition");
     }
 
     private void readQuantizationIndices() throws WebPException {
@@ -780,10 +798,21 @@ public final class Vp8Decoder {
         }
     }
 
+    /// Decodes and dequantizes one coefficient block from the active token partition.
+    ///
+    /// @param block the destination containing consecutive 16-coefficient blocks
+    /// @param blockOffset the destination offset of the block to populate
+    /// @param decoder the active coefficient-partition decoder
+    /// @param plane the coefficient probability plane
+    /// @param complexity the neighboring nonzero context, from `0` through `2`
+    /// @param dcq the DC dequantization factor
+    /// @param acq the AC dequantization factor
+    /// @return whether coefficient tokens occurred before the end-of-block token
+    /// @throws WebPException if the coefficient partition is truncated
     private boolean readCoefficients(
             int[] block,
             int blockOffset,
-            int partition,
+            LossyArithmeticDecoder decoder,
             @Plane int plane,
             int complexity,
             short dcq,
@@ -792,8 +821,8 @@ public final class Vp8Decoder {
         assert complexity <= 2;
 
         int firstCoeff = plane == Plane.Y_COEFF_1 ? 1 : 0;
-        LossyArithmeticDecoder decoder = partitions[partition];
         int probabilityPlaneOffset = plane * LossyTables.COEFF_PROBABILITY_COUNT_PER_PLANE;
+        int[] probabilities = tokenProbs;
 
         int complexityState = complexity;
         boolean hasCoefficients = false;
@@ -803,11 +832,11 @@ public final class Vp8Decoder {
                     + LossyTables.COEFF_BAND_PROBABILITY_OFFSETS[i]
                     + complexityState * LossyTables.COEFF_TOKEN_PROBABILITY_COUNT;
 
-            if (!decoder.readBool(tokenProbs[probabilityOffset])) {
+            if (!decoder.readBool(probabilities[probabilityOffset])) {
                 break;
             }
 
-            while (!decoder.readBool(tokenProbs[probabilityOffset + 1])) {
+            while (!decoder.readBool(probabilities[probabilityOffset + 1])) {
                 hasCoefficients = true;
                 complexityState = 0;
                 if (++i == 16) {
@@ -819,10 +848,10 @@ public final class Vp8Decoder {
             }
 
             int absoluteValue;
-            if (!decoder.readBool(tokenProbs[probabilityOffset + 2])) {
+            if (!decoder.readBool(probabilities[probabilityOffset + 2])) {
                 absoluteValue = 1;
             } else {
-                absoluteValue = readLargeCoefficientValue(decoder, probabilityOffset);
+                absoluteValue = readLargeCoefficientValue(decoder, probabilities, probabilityOffset);
             }
 
             complexityState = absoluteValue == 1 ? 1 : 2;
@@ -841,10 +870,14 @@ public final class Vp8Decoder {
     /// Reads a coefficient magnitude greater than one from the token probability branches.
     ///
     /// @param decoder the active coefficient-partition decoder
+    /// @param probabilities the coefficient token probabilities
     /// @param probabilityOffset the first token probability for the current coefficient
     /// @return a coefficient magnitude in the range `2` through `2114`
-    private int readLargeCoefficientValue(LossyArithmeticDecoder decoder, int probabilityOffset) {
-        int[] probabilities = tokenProbs;
+    private int readLargeCoefficientValue(
+            LossyArithmeticDecoder decoder,
+            int[] probabilities,
+            int probabilityOffset
+    ) {
         if (!decoder.readBool(probabilities[probabilityOffset + 3])) {
             if (!decoder.readBool(probabilities[probabilityOffset + 4])) {
                 return 2;
@@ -873,13 +906,21 @@ public final class Vp8Decoder {
         return LossyTables.LARGE_DCT_CATEGORY_BASE[category] + extra;
     }
 
-    /*
-     * Residual decoding follows the VP8 block order used by the reference implementation:
-     * optional Y2 first, then 16 luma 4x4 blocks, then two 2x2 chroma groups. Complexity context
-     * is propagated through the cached top/left macroblock state so coefficient probabilities can
-     * adapt across block boundaries.
-     */
-    private int[] readResidualData(MacroBlock macroBlock, int macroblockX, int partition) throws WebPException {
+    /// Decodes and transforms the residual blocks for one macroblock.
+    ///
+    /// Residuals are read in VP8 block order: optional Y2, sixteen luma blocks, then the two
+    /// four-block chroma groups. The returned array is reused by subsequent calls.
+    ///
+    /// @param macroBlock the macroblock whose segment and coefficient state is updated
+    /// @param macroblockX the horizontal macroblock index
+    /// @param partition the active coefficient-partition decoder
+    /// @return the reused transformed-residual array, valid until the next call
+    /// @throws WebPException if the coefficient partition is truncated
+    private int[] readResidualData(
+            MacroBlock macroBlock,
+            int macroblockX,
+            LossyArithmeticDecoder partition
+    ) throws WebPException {
         int segmentIndex = macroBlock.segmentId;
         int quantizerOffset = segmentIndex * SEGMENT_QUANTIZER_STRIDE;
         short[] quantizers = segmentQuantizers;
@@ -1266,7 +1307,7 @@ public final class Vp8Decoder {
         int macroblockIndex = 0;
 
         for (int macroblockY = 0; macroblockY < macroblockHeight; macroblockY++) {
-            int partition = macroblockY % numPartitions;
+            LossyArithmeticDecoder partition = activePartition(macroblockY & (numPartitions - 1));
             resetLeftState();
 
             for (int macroblockX = 0; macroblockX < macroblockWidth; macroblockX++) {

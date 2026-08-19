@@ -241,7 +241,7 @@ final class LossyArithmeticDecoder {
         int split = (range + 1) >>> 1;
         int activeValue = (int) (value >>> bitCount);
         int mask = (split - 1 - activeValue) >> 31;
-        int nextRange = (split & ~mask) | ((range - split) & mask);
+        int nextRange = split + ((range - (split << 1)) & mask);
         int shift = 1 - (nextRange >>> 7);
         range = nextRange << shift;
         value -= (long) (split & mask) << bitCount;

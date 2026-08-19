@@ -21,6 +21,9 @@ final class LossyCommon {
     /// Number of independently configurable VP8 segments.
     static final int MAX_SEGMENTS = 4;
 
+    /// Maximum number of VP8 coefficient partitions.
+    static final int MAX_DCT_PARTITIONS = 8;
+
     /// Number of VP8 DCT coefficient tokens.
     static final int NUM_DCT_TOKENS = 12;
 
