@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
 
 /// Shared VP8 lossy constants and compact mode representations.
 ///
-/// This class intentionally starts with the mode and segment definitions that are required by
+/// This class intentionally starts with the mode definitions and dimensions that are required by
 /// the prediction and reconstruction helpers. Additional probability tables are added alongside the
 /// main VP8 decoder port, where they are actually consumed.
 @NotNullByDefault
@@ -175,38 +175,4 @@ final class LossyCommon {
         return (int) ((modes >>> (index << 2)) & PACKED_INTRA_MODE_MASK);
     }
 
-    /// Mutable quantization and filtering parameters for one VP8 segment.
-    @NotNullByDefault
-    static final class Segment {
-        /// Luma DC quantizer.
-        short ydc;
-
-        /// Luma AC quantizer.
-        short yac;
-
-        /// Y2 DC quantizer.
-        short y2dc;
-
-        /// Y2 AC quantizer.
-        short y2ac;
-
-        /// Chroma DC quantizer.
-        short uvdc;
-
-        /// Chroma AC quantizer.
-        short uvac;
-
-        /// Whether segment feature values are deltas from frame-wide values.
-        boolean deltaValues;
-
-        /// Quantizer level encoded for this segment.
-        byte quantizerLevel;
-
-        /// Loop-filter level encoded for this segment.
-        byte loopFilterLevel;
-
-        /// Creates a segment initialized with zero-valued parameters.
-        Segment() {
-        }
-    }
 }

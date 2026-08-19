@@ -11,7 +11,6 @@ import org.glavo.webp.internal.lossy.LossyCommon.ChromaMode;
 import org.glavo.webp.internal.lossy.LossyCommon.IntraMode;
 import org.glavo.webp.internal.lossy.LossyCommon.LumaMode;
 import org.glavo.webp.internal.lossy.LossyCommon.Plane;
-import org.glavo.webp.internal.lossy.LossyCommon.Segment;
 
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
@@ -36,6 +35,21 @@ public final class Vp8Decoder {
     private static final int FILTER_INFO_COEFFICIENTS_SKIPPED = 1 << 5;
     private static final int FILTER_INFO_NON_ZERO_DCT = 1 << 6;
 
+    /// Number of derived quantizers stored for each VP8 segment.
+    private static final int SEGMENT_QUANTIZER_STRIDE = 6;
+    /// Offset of the luma DC quantizer within one segment.
+    private static final int SEGMENT_Y_DC = 0;
+    /// Offset of the luma AC quantizer within one segment.
+    private static final int SEGMENT_Y_AC = 1;
+    /// Offset of the Y2 DC quantizer within one segment.
+    private static final int SEGMENT_Y2_DC = 2;
+    /// Offset of the Y2 AC quantizer within one segment.
+    private static final int SEGMENT_Y2_AC = 3;
+    /// Offset of the chroma DC quantizer within one segment.
+    private static final int SEGMENT_UV_DC = 4;
+    /// Offset of the chroma AC quantizer within one segment.
+    private static final int SEGMENT_UV_AC = 5;
+
     /// Encoded VP8 payload shared by the header and token partitions.
     private byte[] input = ArrayUtils.EMPTY_BYTE_ARRAY;
 
@@ -53,7 +67,14 @@ public final class Vp8Decoder {
 
     private boolean segmentsEnabled;
     private boolean segmentsUpdateMap;
-    private final Segment[] segments = new Segment[LossyCommon.MAX_SEGMENTS];
+    /// Whether encoded segment feature levels are deltas from frame-wide values.
+    private boolean segmentFeatureValuesAreDeltas;
+    /// Signed quantizer levels for all four segments, packed as four bytes.
+    private int segmentQuantizerLevels;
+    /// Signed loop-filter levels for all four segments, packed as four bytes.
+    private int segmentLoopFilterLevels;
+    /// Derived quantizers stored in segment-major order.
+    private final short[] segmentQuantizers = new short[LossyCommon.MAX_SEGMENTS * SEGMENT_QUANTIZER_STRIDE];
 
     private boolean loopFilterAdjustmentsEnabled;
 
@@ -108,14 +129,6 @@ public final class Vp8Decoder {
     /// The decoder is stateful and must not be used concurrently. Retained work arrays grow to fit
     /// the largest frame decoded by this instance.
     public Vp8Decoder() {
-        initializeSegments();
-    }
-
-    /// Creates mutable segment records retained for the lifetime of this decoder.
-    private void initializeSegments() {
-        for (int i = 0; i < segments.length; i++) {
-            segments[i] = new Segment();
-        }
     }
 
     /// Selects an encoded buffer range and resets per-frame state.
@@ -159,18 +172,10 @@ public final class Vp8Decoder {
         tokenProbs = LossyTables.FLAT_COEFF_PROBS;
         intraFrameFilterDelta = 0;
         bPredFilterDelta = 0;
+        segmentFeatureValuesAreDeltas = false;
+        segmentQuantizerLevels = 0;
+        segmentLoopFilterLevels = 0;
         Arrays.fill(segmentProbs, 255);
-        for (Segment segment : segments) {
-            segment.ydc = 0;
-            segment.yac = 0;
-            segment.y2dc = 0;
-            segment.y2ac = 0;
-            segment.uvdc = 0;
-            segment.uvac = 0;
-            segment.deltaValues = false;
-            segment.quantizerLevel = 0;
-            segment.loopFilterLevel = 0;
-        }
     }
 
     /// Reads the VP8 frame header and initializes partition state.
@@ -424,24 +429,23 @@ public final class Vp8Decoder {
         int uvacDelta = headerDecoder.readOptionalSignedValue(4);
 
         int segmentCount = segmentsEnabled ? LossyCommon.MAX_SEGMENTS : 1;
+        short[] quantizers = segmentQuantizers;
         for (int i = 0; i < segmentCount; i++) {
+            int quantizerLevel = segmentLevel(segmentQuantizerLevels, i);
             int base = segmentsEnabled
-                    ? (segments[i].deltaValues ? segments[i].quantizerLevel + yacAbs : segments[i].quantizerLevel)
+                    ? (segmentFeatureValuesAreDeltas ? quantizerLevel + yacAbs : quantizerLevel)
                     : yacAbs;
+            int offset = i * SEGMENT_QUANTIZER_STRIDE;
 
-            segments[i].ydc = dcQuant(base + ydcDelta);
-            segments[i].yac = acQuant(base);
-            segments[i].y2dc = (short) (dcQuant(base + y2dcDelta) * 2);
-            segments[i].y2ac = (short) ((acQuant(base + y2acDelta) * 155) / 100);
-            segments[i].uvdc = dcQuant(base + uvdcDelta);
-            segments[i].uvac = acQuant(base + uvacDelta);
-
-            if (segments[i].y2ac < 8) {
-                segments[i].y2ac = 8;
-            }
-            if (segments[i].uvdc > 132) {
-                segments[i].uvdc = 132;
-            }
+            quantizers[offset + SEGMENT_Y_DC] = dcQuant(base + ydcDelta);
+            quantizers[offset + SEGMENT_Y_AC] = acQuant(base);
+            quantizers[offset + SEGMENT_Y2_DC] = (short) (dcQuant(base + y2dcDelta) * 2);
+            quantizers[offset + SEGMENT_Y2_AC] = (short) Math.max(
+                    8,
+                    (acQuant(base + y2acDelta) * 155) / 100
+            );
+            quantizers[offset + SEGMENT_UV_DC] = (short) Math.min(132, dcQuant(base + uvdcDelta));
+            quantizers[offset + SEGMENT_UV_AC] = acQuant(base + uvacDelta);
         }
 
         headerDecoder.ensureNotPastEof();
@@ -469,15 +473,27 @@ public final class Vp8Decoder {
 
         if (updateSegmentFeatureData) {
             boolean segmentFeatureMode = headerDecoder.readFlag();
-            for (Segment segment : segments) {
-                segment.deltaValues = !segmentFeatureMode;
+            segmentFeatureValuesAreDeltas = !segmentFeatureMode;
+
+            int quantizerLevels = 0;
+            for (int i = 0; i < LossyCommon.MAX_SEGMENTS; i++) {
+                quantizerLevels = setSegmentLevel(
+                        quantizerLevels,
+                        i,
+                        headerDecoder.readOptionalSignedValue(7)
+                );
             }
-            for (Segment segment : segments) {
-                segment.quantizerLevel = (byte) headerDecoder.readOptionalSignedValue(7);
+            segmentQuantizerLevels = quantizerLevels;
+
+            int loopFilterLevels = 0;
+            for (int i = 0; i < LossyCommon.MAX_SEGMENTS; i++) {
+                loopFilterLevels = setSegmentLevel(
+                        loopFilterLevels,
+                        i,
+                        headerDecoder.readOptionalSignedValue(6)
+                );
             }
-            for (Segment segment : segments) {
-                segment.loopFilterLevel = (byte) headerDecoder.readOptionalSignedValue(6);
-            }
+            segmentLoopFilterLevels = loopFilterLevels;
         }
 
         if (segmentsUpdateMap) {
@@ -865,6 +881,14 @@ public final class Vp8Decoder {
      */
     private int[] readResidualData(MacroBlock macroBlock, int macroblockX, int partition) throws WebPException {
         int segmentIndex = macroBlock.segmentId;
+        int quantizerOffset = segmentIndex * SEGMENT_QUANTIZER_STRIDE;
+        short[] quantizers = segmentQuantizers;
+        short ydc = quantizers[quantizerOffset + SEGMENT_Y_DC];
+        short yac = quantizers[quantizerOffset + SEGMENT_Y_AC];
+        short y2dc = quantizers[quantizerOffset + SEGMENT_Y2_DC];
+        short y2ac = quantizers[quantizerOffset + SEGMENT_Y2_AC];
+        short uvdc = quantizers[quantizerOffset + SEGMENT_UV_DC];
+        short uvac = quantizers[quantizerOffset + SEGMENT_UV_AC];
         int[] blocks = residualDataScratch;
         Arrays.fill(blocks, 0);
         @Plane int plane = macroBlock.lumaMode == LumaMode.B ? Plane.Y_COEFF_0 : Plane.Y2;
@@ -880,8 +904,8 @@ public final class Vp8Decoder {
                     partition,
                     plane,
                     complexity,
-                    segments[segmentIndex].y2dc,
-                    segments[segmentIndex].y2ac
+                    y2dc,
+                    y2ac
             );
 
             leftComplexity[0] = present ? (byte) 1 : 0;
@@ -908,8 +932,8 @@ public final class Vp8Decoder {
                         partition,
                         plane,
                         complexity,
-                        segments[segmentIndex].ydc,
-                        segments[segmentIndex].yac
+                        ydc,
+                        yac
                 );
 
                 if (blocks[blockOffset] != 0 || present) {
@@ -937,8 +961,8 @@ public final class Vp8Decoder {
                             partition,
                             Plane.CHROMA,
                             complexity,
-                            segments[segmentIndex].uvdc,
-                            segments[segmentIndex].uvac
+                            uvdc,
+                            uvac
                     );
 
                     if (blocks[blockOffset] != 0 || present) {
@@ -1161,14 +1185,19 @@ public final class Vp8Decoder {
     /// @param macroBlockInfo the packed segment and prediction metadata
     /// @return the filter level in the range `0` through `63`
     private int calculateFilterLevel(int macroBlockInfo) {
-        Segment segment = segments[loopFilterSegmentId(macroBlockInfo)];
         int filterLevel = frame.filterLevel;
         if (filterLevel == 0) {
             return 0;
         }
 
         if (segmentsEnabled) {
-            filterLevel = segment.deltaValues ? filterLevel + segment.loopFilterLevel : segment.loopFilterLevel;
+            int segmentFilterLevel = segmentLevel(
+                    segmentLoopFilterLevels,
+                    loopFilterSegmentId(macroBlockInfo)
+            );
+            filterLevel = segmentFeatureValuesAreDeltas
+                    ? filterLevel + segmentFilterLevel
+                    : segmentFilterLevel;
         }
         filterLevel = Math.max(0, Math.min(63, filterLevel));
 
@@ -1193,6 +1222,27 @@ public final class Vp8Decoder {
             info |= FILTER_INFO_NON_ZERO_DCT;
         }
         return (byte) info;
+    }
+
+    /// Replaces one signed byte in a packed set of four segment levels.
+    ///
+    /// @param packedLevels the packed levels to update
+    /// @param segmentIndex the segment index, from `0` through `3`
+    /// @param level the replacement level, in the signed-byte range
+    /// @return the updated packed levels
+    private static int setSegmentLevel(int packedLevels, int segmentIndex, int level) {
+        int shift = segmentIndex << 3;
+        int mask = 0xFF << shift;
+        return (packedLevels & ~mask) | ((level & 0xFF) << shift);
+    }
+
+    /// Returns one signed byte from a packed set of four segment levels.
+    ///
+    /// @param packedLevels the packed levels
+    /// @param segmentIndex the segment index, from `0` through `3`
+    /// @return the signed level at `segmentIndex`
+    private static int segmentLevel(int packedLevels, int segmentIndex) {
+        return (byte) (packedLevels >>> (segmentIndex << 3));
     }
 
     private static int loopFilterSegmentId(int macroBlockInfo) {
