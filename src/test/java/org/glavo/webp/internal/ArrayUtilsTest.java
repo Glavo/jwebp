@@ -5,6 +5,7 @@ package org.glavo.webp.internal;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -22,6 +23,16 @@ final class ArrayUtilsTest {
         assertEquals(0x6745_2301, ArrayUtils.getIntLE(bytes, 1));
         assertEquals(0xEFCD_AB89L, ArrayUtils.getUnsignedIntLE(bytes, 5));
         assertEquals(0xEFCD_AB89_6745_2301L, ArrayUtils.getLongLE(bytes, 1));
+    }
+
+    /// Verifies that an unaligned little-endian store writes exactly four bytes.
+    @Test
+    void writesLittleEndianIntAtUnalignedOffset() {
+        byte[] bytes = new byte[6];
+
+        ArrayUtils.setIntLE(bytes, 1, 0x6745_2301);
+
+        assertArrayEquals(new byte[]{0, 1, 0x23, 0x45, 0x67, 0}, bytes);
     }
 
     /// Verifies big-endian loads at an unaligned byte offset.
@@ -51,6 +62,8 @@ final class ArrayUtilsTest {
         assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getUnsignedIntBE(bytes, bytes.length - 3));
         assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getLongLE(bytes, 1));
         assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getLongBE(bytes, 1));
+        assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.setIntLE(bytes, -1, 0));
+        assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.setIntLE(bytes, bytes.length - 3, 0));
     }
 
     /// Returns bytes containing a recognizable primitive value beginning at offset one.

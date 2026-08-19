@@ -121,6 +121,18 @@ public final class ArrayUtils {
         return (int) INT_LE.get(array, offset);
     }
 
+    /// Writes an `int` in little-endian order beginning at a byte offset.
+    ///
+    /// The offset need not be aligned to an `int` boundary.
+    ///
+    /// @param array the destination bytes
+    /// @param offset the byte offset of the first destination byte
+    /// @param value the value to write
+    /// @throws IndexOutOfBoundsException if four bytes are not available at `offset`
+    public static void setIntLE(byte[] array, int offset, int value) {
+        INT_LE.set(array, offset, value);
+    }
+
     /// Returns the unsigned little-endian 32-bit value beginning at a byte offset.
     ///
     /// The offset need not be aligned to an `int` boundary.

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.webp.internal.lossy;
 
-import org.jetbrains.annotations.NotNullByDefault;
-
+import org.glavo.webp.internal.ArrayUtils;
 import org.glavo.webp.internal.lossy.LossyCommon.IntraMode;
+import org.jetbrains.annotations.NotNullByDefault;
 
 /// VP8 intra-prediction helpers.
 @NotNullByDefault
@@ -165,11 +165,12 @@ final class LossyPrediction {
     static void predictBvepred(byte[] a, int x0, int y0, int stride) {
         int p = a[(y0 - 1) * stride + x0 - 1] & 0xFF;
         int pos = (y0 - 1) * stride + x0;
-        int top0 = a[pos] & 0xFF;
-        int top1 = a[pos + 1] & 0xFF;
-        int top2 = a[pos + 2] & 0xFF;
-        int top3 = a[pos + 3] & 0xFF;
-        int top4 = a[pos + 4] & 0xFF;
+        long top = ArrayUtils.getLongLE(a, pos);
+        int top0 = (int) top & 0xFF;
+        int top1 = (int) (top >>> 8) & 0xFF;
+        int top2 = (int) (top >>> 16) & 0xFF;
+        int top3 = (int) (top >>> 24) & 0xFF;
+        int top4 = (int) (top >>> 32) & 0xFF;
         int average0 = avg3(p, top0, top1);
         int average1 = avg3(top0, top1, top2);
         int average2 = avg3(top1, top2, top3);
@@ -197,14 +198,15 @@ final class LossyPrediction {
 
     static void predictBldpred(byte[] a, int x0, int y0, int stride) {
         int pos = (y0 - 1) * stride + x0;
-        int top0 = a[pos] & 0xFF;
-        int top1 = a[pos + 1] & 0xFF;
-        int top2 = a[pos + 2] & 0xFF;
-        int top3 = a[pos + 3] & 0xFF;
-        int top4 = a[pos + 4] & 0xFF;
-        int top5 = a[pos + 5] & 0xFF;
-        int top6 = a[pos + 6] & 0xFF;
-        int top7 = a[pos + 7] & 0xFF;
+        long top = ArrayUtils.getLongLE(a, pos);
+        int top0 = (int) top & 0xFF;
+        int top1 = (int) (top >>> 8) & 0xFF;
+        int top2 = (int) (top >>> 16) & 0xFF;
+        int top3 = (int) (top >>> 24) & 0xFF;
+        int top4 = (int) (top >>> 32) & 0xFF;
+        int top5 = (int) (top >>> 40) & 0xFF;
+        int top6 = (int) (top >>> 48) & 0xFF;
+        int top7 = (int) (top >>> 56);
         int average0 = avg3(top0, top1, top2);
         int average1 = avg3(top1, top2, top3);
         int average2 = avg3(top2, top3, top4);
@@ -224,11 +226,12 @@ final class LossyPrediction {
         int e1 = a[pos + 3 * stride] & 0xFF;
         int e2 = a[pos + 2 * stride] & 0xFF;
         int e3 = a[pos + stride] & 0xFF;
-        int e4 = a[pos] & 0xFF;
-        int e5 = a[pos + 1] & 0xFF;
-        int e6 = a[pos + 2] & 0xFF;
-        int e7 = a[pos + 3] & 0xFF;
-        int e8 = a[pos + 4] & 0xFF;
+        long top = ArrayUtils.getLongLE(a, pos);
+        int e4 = (int) top & 0xFF;
+        int e5 = (int) (top >>> 8) & 0xFF;
+        int e6 = (int) (top >>> 16) & 0xFF;
+        int e7 = (int) (top >>> 24) & 0xFF;
+        int e8 = (int) (top >>> 32) & 0xFF;
         int average0 = avg3(e0, e1, e2);
         int average1 = avg3(e1, e2, e3);
         int average2 = avg3(e2, e3, e4);
@@ -247,55 +250,43 @@ final class LossyPrediction {
         int e1 = a[pos + 3 * stride] & 0xFF;
         int e2 = a[pos + 2 * stride] & 0xFF;
         int e3 = a[pos + stride] & 0xFF;
-        int e4 = a[pos] & 0xFF;
-        int e5 = a[pos + 1] & 0xFF;
-        int e6 = a[pos + 2] & 0xFF;
-        int e7 = a[pos + 3] & 0xFF;
-        int e8 = a[pos + 4] & 0xFF;
-        a[(y0 + 3) * stride + x0] = (byte) avg3(e1, e2, e3);
-        a[(y0 + 2) * stride + x0] = (byte) avg3(e2, e3, e4);
-        a[(y0 + 3) * stride + x0 + 1] = (byte) avg3(e3, e4, e5);
-        a[(y0 + 1) * stride + x0] = (byte) avg3(e3, e4, e5);
-        a[(y0 + 2) * stride + x0 + 1] = (byte) avg2(e4, e5);
-        a[y0 * stride + x0] = (byte) avg2(e4, e5);
-        a[(y0 + 3) * stride + x0 + 2] = (byte) avg3(e4, e5, e6);
-        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(e4, e5, e6);
-        a[(y0 + 2) * stride + x0 + 2] = (byte) avg2(e5, e6);
-        a[y0 * stride + x0 + 1] = (byte) avg2(e5, e6);
-        a[(y0 + 3) * stride + x0 + 3] = (byte) avg3(e5, e6, e7);
-        a[(y0 + 1) * stride + x0 + 2] = (byte) avg3(e5, e6, e7);
-        a[(y0 + 2) * stride + x0 + 3] = (byte) avg2(e6, e7);
-        a[y0 * stride + x0 + 2] = (byte) avg2(e6, e7);
-        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(e6, e7, e8);
-        a[y0 * stride + x0 + 3] = (byte) avg2(e7, e8);
+        long top = ArrayUtils.getLongLE(a, pos);
+        int e4 = (int) top & 0xFF;
+        int e5 = (int) (top >>> 8) & 0xFF;
+        int e6 = (int) (top >>> 16) & 0xFF;
+        int e7 = (int) (top >>> 24) & 0xFF;
+        int e8 = (int) (top >>> 32) & 0xFF;
+        write4(a, y0 * stride + x0,
+                avg2(e4, e5), avg2(e5, e6), avg2(e6, e7), avg2(e7, e8));
+        write4(a, (y0 + 1) * stride + x0,
+                avg3(e3, e4, e5), avg3(e4, e5, e6), avg3(e5, e6, e7), avg3(e6, e7, e8));
+        write4(a, (y0 + 2) * stride + x0,
+                avg3(e2, e3, e4), avg2(e4, e5), avg2(e5, e6), avg2(e6, e7));
+        write4(a, (y0 + 3) * stride + x0,
+                avg3(e1, e2, e3), avg3(e3, e4, e5), avg3(e4, e5, e6), avg3(e5, e6, e7));
     }
 
     static void predictBvlpred(byte[] a, int x0, int y0, int stride) {
         int pos = (y0 - 1) * stride + x0;
-        int top0 = a[pos] & 0xFF;
-        int top1 = a[pos + 1] & 0xFF;
-        int top2 = a[pos + 2] & 0xFF;
-        int top3 = a[pos + 3] & 0xFF;
-        int top4 = a[pos + 4] & 0xFF;
-        int top5 = a[pos + 5] & 0xFF;
-        int top6 = a[pos + 6] & 0xFF;
-        int top7 = a[pos + 7] & 0xFF;
-        a[y0 * stride + x0] = (byte) avg2(top0, top1);
-        a[(y0 + 1) * stride + x0] = (byte) avg3(top0, top1, top2);
-        a[(y0 + 2) * stride + x0] = (byte) avg2(top1, top2);
-        a[y0 * stride + x0 + 1] = (byte) avg2(top1, top2);
-        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(top1, top2, top3);
-        a[(y0 + 3) * stride + x0] = (byte) avg3(top1, top2, top3);
-        a[(y0 + 2) * stride + x0 + 1] = (byte) avg2(top2, top3);
-        a[y0 * stride + x0 + 2] = (byte) avg2(top2, top3);
-        a[(y0 + 3) * stride + x0 + 1] = (byte) avg3(top2, top3, top4);
-        a[(y0 + 1) * stride + x0 + 2] = (byte) avg3(top2, top3, top4);
-        a[(y0 + 2) * stride + x0 + 2] = (byte) avg2(top3, top4);
-        a[y0 * stride + x0 + 3] = (byte) avg2(top3, top4);
-        a[(y0 + 3) * stride + x0 + 2] = (byte) avg3(top3, top4, top5);
-        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(top3, top4, top5);
-        a[(y0 + 2) * stride + x0 + 3] = (byte) avg3(top4, top5, top6);
-        a[(y0 + 3) * stride + x0 + 3] = (byte) avg3(top5, top6, top7);
+        long top = ArrayUtils.getLongLE(a, pos);
+        int top0 = (int) top & 0xFF;
+        int top1 = (int) (top >>> 8) & 0xFF;
+        int top2 = (int) (top >>> 16) & 0xFF;
+        int top3 = (int) (top >>> 24) & 0xFF;
+        int top4 = (int) (top >>> 32) & 0xFF;
+        int top5 = (int) (top >>> 40) & 0xFF;
+        int top6 = (int) (top >>> 48) & 0xFF;
+        int top7 = (int) (top >>> 56);
+        write4(a, y0 * stride + x0,
+                avg2(top0, top1), avg2(top1, top2), avg2(top2, top3), avg2(top3, top4));
+        write4(a, (y0 + 1) * stride + x0,
+                avg3(top0, top1, top2), avg3(top1, top2, top3),
+                avg3(top2, top3, top4), avg3(top3, top4, top5));
+        write4(a, (y0 + 2) * stride + x0,
+                avg2(top1, top2), avg2(top2, top3), avg2(top3, top4), avg3(top4, top5, top6));
+        write4(a, (y0 + 3) * stride + x0,
+                avg3(top1, top2, top3), avg3(top2, top3, top4),
+                avg3(top3, top4, top5), avg3(top5, top6, top7));
     }
 
     static void predictBhdpred(byte[] a, int x0, int y0, int stride) {
@@ -304,26 +295,19 @@ final class LossyPrediction {
         int e1 = a[pos + 3 * stride] & 0xFF;
         int e2 = a[pos + 2 * stride] & 0xFF;
         int e3 = a[pos + stride] & 0xFF;
-        int e4 = a[pos] & 0xFF;
-        int e5 = a[pos + 1] & 0xFF;
-        int e6 = a[pos + 2] & 0xFF;
-        int e7 = a[pos + 3] & 0xFF;
-        a[(y0 + 3) * stride + x0] = (byte) avg2(e0, e1);
-        a[(y0 + 3) * stride + x0 + 1] = (byte) avg3(e0, e1, e2);
-        a[(y0 + 2) * stride + x0] = (byte) avg2(e1, e2);
-        a[(y0 + 3) * stride + x0 + 2] = (byte) avg2(e1, e2);
-        a[(y0 + 2) * stride + x0 + 1] = (byte) avg3(e1, e2, e3);
-        a[(y0 + 3) * stride + x0 + 3] = (byte) avg3(e1, e2, e3);
-        a[(y0 + 2) * stride + x0 + 2] = (byte) avg2(e2, e3);
-        a[(y0 + 1) * stride + x0] = (byte) avg2(e2, e3);
-        a[(y0 + 2) * stride + x0 + 3] = (byte) avg3(e2, e3, e4);
-        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(e2, e3, e4);
-        a[(y0 + 1) * stride + x0 + 2] = (byte) avg2(e3, e4);
-        a[y0 * stride + x0] = (byte) avg2(e3, e4);
-        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(e3, e4, e5);
-        a[y0 * stride + x0 + 1] = (byte) avg3(e3, e4, e5);
-        a[y0 * stride + x0 + 2] = (byte) avg3(e4, e5, e6);
-        a[y0 * stride + x0 + 3] = (byte) avg3(e5, e6, e7);
+        long top = ArrayUtils.getLongLE(a, pos);
+        int e4 = (int) top & 0xFF;
+        int e5 = (int) (top >>> 8) & 0xFF;
+        int e6 = (int) (top >>> 16) & 0xFF;
+        int e7 = (int) (top >>> 24) & 0xFF;
+        write4(a, y0 * stride + x0,
+                avg2(e3, e4), avg3(e3, e4, e5), avg3(e4, e5, e6), avg3(e5, e6, e7));
+        write4(a, (y0 + 1) * stride + x0,
+                avg2(e2, e3), avg3(e2, e3, e4), avg2(e3, e4), avg3(e3, e4, e5));
+        write4(a, (y0 + 2) * stride + x0,
+                avg2(e1, e2), avg3(e1, e2, e3), avg2(e2, e3), avg3(e2, e3, e4));
+        write4(a, (y0 + 3) * stride + x0,
+                avg2(e0, e1), avg3(e0, e1, e2), avg2(e1, e2), avg3(e1, e2, e3));
     }
 
     static void predictBhupred(byte[] a, int x0, int y0, int stride) {
@@ -331,22 +315,15 @@ final class LossyPrediction {
         int left1 = a[(y0 + 1) * stride + x0 - 1] & 0xFF;
         int left2 = a[(y0 + 2) * stride + x0 - 1] & 0xFF;
         int left3 = a[(y0 + 3) * stride + x0 - 1] & 0xFF;
-        a[y0 * stride + x0] = (byte) avg2(left0, left1);
-        a[y0 * stride + x0 + 1] = (byte) avg3(left0, left1, left2);
-        a[y0 * stride + x0 + 2] = (byte) avg2(left1, left2);
-        a[(y0 + 1) * stride + x0] = (byte) avg2(left1, left2);
-        a[y0 * stride + x0 + 3] = (byte) avg3(left1, left2, left3);
-        a[(y0 + 1) * stride + x0 + 1] = (byte) avg3(left1, left2, left3);
-        a[(y0 + 1) * stride + x0 + 2] = (byte) avg2(left2, left3);
-        a[(y0 + 2) * stride + x0] = (byte) avg2(left2, left3);
-        a[(y0 + 1) * stride + x0 + 3] = (byte) avg3(left2, left3, left3);
-        a[(y0 + 2) * stride + x0 + 1] = (byte) avg3(left2, left3, left3);
-        a[(y0 + 2) * stride + x0 + 2] = (byte) left3;
-        a[(y0 + 2) * stride + x0 + 3] = (byte) left3;
-        a[(y0 + 3) * stride + x0] = (byte) left3;
-        a[(y0 + 3) * stride + x0 + 1] = (byte) left3;
-        a[(y0 + 3) * stride + x0 + 2] = (byte) left3;
-        a[(y0 + 3) * stride + x0 + 3] = (byte) left3;
+        write4(a, y0 * stride + x0,
+                avg2(left0, left1), avg3(left0, left1, left2),
+                avg2(left1, left2), avg3(left1, left2, left3));
+        write4(a, (y0 + 1) * stride + x0,
+                avg2(left1, left2), avg3(left1, left2, left3),
+                avg2(left2, left3), avg3(left2, left3, left3));
+        write4(a, (y0 + 2) * stride + x0,
+                avg2(left2, left3), avg3(left2, left3, left3), left3, left3);
+        write4(a, (y0 + 3) * stride + x0, left3, left3, left3, left3);
     }
 
     static int avg3(int left, int center, int right) {
@@ -366,10 +343,11 @@ final class LossyPrediction {
     /// @param value2 the third sample
     /// @param value3 the fourth sample
     private static void write4(byte[] output, int offset, int value0, int value1, int value2, int value3) {
-        output[offset] = (byte) value0;
-        output[offset + 1] = (byte) value1;
-        output[offset + 2] = (byte) value2;
-        output[offset + 3] = (byte) value3;
+        int packed = (value0 & 0xFF)
+                | ((value1 & 0xFF) << 8)
+                | ((value2 & 0xFF) << 16)
+                | ((value3 & 0xFF) << 24);
+        ArrayUtils.setIntLE(output, offset, packed);
     }
 
 }
