@@ -7,11 +7,18 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Tests canonical VP8L Huffman tree construction and workspace reuse.
 @NotNullByDefault
 final class LosslessHuffmanTreeTest {
+
+    /// Verifies that the packed single-node state rejects values that overlap the marker bit.
+    @Test
+    void rejectsNegativeSingleSymbol() {
+        assertThrows(IllegalArgumentException.class, () -> LosslessHuffmanTree.single(-1));
+    }
 
     /// Verifies that reused offset storage is overwritten for every active code length.
     @Test

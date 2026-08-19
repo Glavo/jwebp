@@ -21,24 +21,38 @@ public final class LosslessHuffmanTree {
     /// Maximum width of the primary lookup table.
     private static final int MAX_TABLE_BITS = 9;
 
-    private final boolean singleNode;
-    private final int symbol;
-    private final int tableMask;
+    /// Marks a packed state as a single-node symbol rather than a primary-table mask.
+    private static final int SINGLE_NODE_MASK = Integer.MIN_VALUE;
+
+    /// Single-node marker and symbol, or the primary-table index mask for a table-backed tree.
+    private final int symbolOrTableMask;
+
+    /// Primary lookup table, or `null` for a single-node tree.
     private final char @Nullable @Unmodifiable [] primaryTable;
+
+    /// Secondary lookup table, or `null` for a single-node tree.
     private final char @Nullable @Unmodifiable [] secondaryTable;
 
+    /// Creates a single-node tree.
+    ///
+    /// @param symbol the sole symbol
+    /// @throws IllegalArgumentException if {@code symbol} is negative
     private LosslessHuffmanTree(int symbol) {
-        this.singleNode = true;
-        this.symbol = symbol;
-        this.tableMask = 0;
+        if (symbol < 0) {
+            throw new IllegalArgumentException("symbol < 0: " + symbol);
+        }
+        this.symbolOrTableMask = SINGLE_NODE_MASK | symbol;
         this.primaryTable = null;
         this.secondaryTable = null;
     }
 
+    /// Creates a table-backed tree.
+    ///
+    /// @param tableMask the primary-table index mask
+    /// @param primaryTable the primary lookup table
+    /// @param secondaryTable the secondary lookup table
     private LosslessHuffmanTree(int tableMask, char[] primaryTable, char[] secondaryTable) {
-        this.singleNode = false;
-        this.symbol = 0;
-        this.tableMask = tableMask;
+        this.symbolOrTableMask = tableMask;
         this.primaryTable = primaryTable;
         this.secondaryTable = secondaryTable;
     }
@@ -47,6 +61,7 @@ public final class LosslessHuffmanTree {
     ///
     /// @param symbol the only symbol in the tree
     /// @return the resulting tree
+    /// @throws IllegalArgumentException if {@code symbol} is negative
     public static LosslessHuffmanTree single(int symbol) {
         return new LosslessHuffmanTree(symbol);
     }
@@ -213,7 +228,7 @@ public final class LosslessHuffmanTree {
     ///
     /// @return `true` for a degenerate one-symbol tree
     public boolean isSingleNode() {
-        return singleNode;
+        return symbolOrTableMask < 0;
     }
 
     /// Reads one symbol from the bitstream.
@@ -222,12 +237,13 @@ public final class LosslessHuffmanTree {
     /// @return the decoded symbol
     /// @throws WebPException if the bitstream is invalid
     public int readSymbol(LosslessBitReader bitReader) throws WebPException {
-        if (singleNode) {
-            return symbol;
+        int symbolOrTableMask = this.symbolOrTableMask;
+        if (symbolOrTableMask < 0) {
+            return symbolOrTableMask & Integer.MAX_VALUE;
         }
 
         int value = (int) bitReader.peekFull();
-        int entry = primaryTable[value & tableMask];
+        int entry = primaryTable[value & symbolOrTableMask];
         int length = entry >>> 12;
         if (length <= MAX_TABLE_BITS) {
             bitReader.consume(length);
@@ -247,11 +263,12 @@ public final class LosslessHuffmanTree {
     /// @return the bit count in bits 12 and above plus the symbol in the low 12 bits, or `-1` if a
     ///         secondary table lookup would be required
     public int peekSymbol(LosslessBitReader bitReader) {
-        if (singleNode) {
-            return symbol;
+        int symbolOrTableMask = this.symbolOrTableMask;
+        if (symbolOrTableMask < 0) {
+            return symbolOrTableMask & Integer.MAX_VALUE;
         }
         int value = (int) bitReader.peekFull();
-        int entry = primaryTable[value & tableMask];
+        int entry = primaryTable[value & symbolOrTableMask];
         int length = entry >>> 12;
         if (length <= MAX_TABLE_BITS) {
             return entry;
