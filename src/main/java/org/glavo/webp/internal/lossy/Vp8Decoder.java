@@ -56,8 +56,12 @@ public final class Vp8Decoder {
     private final Segment[] segments = new Segment[LossyCommon.MAX_SEGMENTS];
 
     private boolean loopFilterAdjustmentsEnabled;
-    private final int[] refDelta = new int[4];
-    private final int[] modeDelta = new int[4];
+
+    /// Loop-filter delta for `INTRA_FRAME` macroblocks.
+    private byte intraFrameFilterDelta;
+
+    /// Loop-filter delta for `B_PRED` macroblocks.
+    private byte bPredFilterDelta;
 
     private final LossyArithmeticDecoder[] partitions = {
             new LossyArithmeticDecoder(),
@@ -153,8 +157,8 @@ public final class Vp8Decoder {
         numPartitions = 1;
         probSkipFalse = -1;
         tokenProbs = LossyTables.FLAT_COEFF_PROBS;
-        Arrays.fill(refDelta, 0);
-        Arrays.fill(modeDelta, 0);
+        intraFrameFilterDelta = 0;
+        bPredFilterDelta = 0;
         Arrays.fill(segmentProbs, 255);
         for (Segment segment : segments) {
             segment.ydc = 0;
@@ -445,11 +449,15 @@ public final class Vp8Decoder {
 
     private void readLoopFilterAdjustments() throws WebPException {
         if (headerDecoder.readFlag()) {
-            for (int i = 0; i < 4; i++) {
-                refDelta[i] = headerDecoder.readOptionalSignedValue(6);
+            // WebP VP8 payloads are key frames, so the inter-frame deltas are
+            // syntactically present but cannot affect any decoded macroblock.
+            intraFrameFilterDelta = (byte) headerDecoder.readOptionalSignedValue(6);
+            for (int i = 1; i < 4; i++) {
+                headerDecoder.readOptionalSignedValue(6);
             }
-            for (int i = 0; i < 4; i++) {
-                modeDelta[i] = headerDecoder.readOptionalSignedValue(6);
+            bPredFilterDelta = (byte) headerDecoder.readOptionalSignedValue(6);
+            for (int i = 1; i < 4; i++) {
+                headerDecoder.readOptionalSignedValue(6);
             }
         }
         headerDecoder.ensureNotPastEof();
@@ -1165,9 +1173,9 @@ public final class Vp8Decoder {
         filterLevel = Math.max(0, Math.min(63, filterLevel));
 
         if (loopFilterAdjustmentsEnabled) {
-            filterLevel += refDelta[0];
+            filterLevel += intraFrameFilterDelta;
             if (loopFilterLumaModeCode(macroBlockInfo) == LumaMode.B) {
-                filterLevel += modeDelta[0];
+                filterLevel += bPredFilterDelta;
             }
         }
         filterLevel = Math.max(0, Math.min(63, filterLevel));
