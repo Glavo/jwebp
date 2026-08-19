@@ -679,8 +679,8 @@ public final class LosslessDecoder {
         if (planeCode > 120) {
             return planeCode - 120;
         }
-        int packed = Byte.toUnsignedInt(LosslessConstants.DISTANCE_MAP[planeCode - 1]);
-        int dx = packed >> 4;
+        int packed = LosslessConstants.DISTANCE_MAP[planeCode - 1];
+        int dx = (packed >>> 4) & 0xF;
         int dy = packed & 0xF;
         if (dx >= 9) {
             dx -= 16;
