@@ -153,270 +153,270 @@ final class LossyTables {
     /// Coefficient-update probabilities in plane, band, context, and token order.
     ///
     /// Plane numbers in the grouping comments correspond to [LossyCommon.Plane].
-    static final byte @Unmodifiable [] FLAT_COEFF_UPDATE_PROBS = probabilities(
+    static final byte @Unmodifiable [] FLAT_COEFF_UPDATE_PROBS = {
             // Plane 0, band 0
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 0, band 1
-            176, 246, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            223, 241, 252, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            249, 253, 253, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 176, (byte) 246, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 223, (byte) 241, (byte) 252, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 249, (byte) 253, (byte) 253, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 0, band 2
-            255, 244, 252, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            234, 254, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            253, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 244, (byte) 252, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 234, (byte) 254, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 253, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 0, band 3
-            255, 246, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            239, 253, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            254, 255, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 246, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 239, (byte) 253, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 254, (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 0, band 4
-            255, 248, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            251, 255, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 248, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 251, (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 0, band 5
-            255, 253, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            251, 254, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            254, 255, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 253, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 251, (byte) 254, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 254, (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 0, band 6
-            255, 254, 253, 255, 254, 255, 255, 255, 255, 255, 255, // Context 0
-            250, 255, 254, 255, 254, 255, 255, 255, 255, 255, 255, // Context 1
-            254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 254, (byte) 253, (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 250, (byte) 255, (byte) 254, (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 0, band 7
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 1, band 0
-            217, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            225, 252, 241, 253, 255, 255, 254, 255, 255, 255, 255, // Context 1
-            234, 250, 241, 250, 253, 255, 253, 254, 255, 255, 255, // Context 2
+            (byte) 217, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 225, (byte) 252, (byte) 241, (byte) 253, (byte) 255, (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 234, (byte) 250, (byte) 241, (byte) 250, (byte) 253, (byte) 255, (byte) 253, (byte) 254, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 1, band 1
-            255, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            223, 254, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            238, 253, 254, 254, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 223, (byte) 254, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 238, (byte) 253, (byte) 254, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 1, band 2
-            255, 248, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            249, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 248, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 249, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 1, band 3
-            255, 253, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            247, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 253, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 247, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 1, band 4
-            255, 253, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            252, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 253, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 252, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 1, band 5
-            255, 254, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            253, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 254, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 253, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 1, band 6
-            255, 254, 253, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            250, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 254, (byte) 253, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 250, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 1, band 7
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 2, band 0
-            186, 251, 250, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            234, 251, 244, 254, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            251, 251, 243, 253, 254, 255, 254, 255, 255, 255, 255, // Context 2
+            (byte) 186, (byte) 251, (byte) 250, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 234, (byte) 251, (byte) 244, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 251, (byte) 251, (byte) 243, (byte) 253, (byte) 254, (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 2, band 1
-            255, 253, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            236, 253, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            251, 253, 253, 254, 254, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 253, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 236, (byte) 253, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 251, (byte) 253, (byte) 253, (byte) 254, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 2, band 2
-            255, 254, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            254, 254, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 254, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 254, (byte) 254, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 2, band 3
-            255, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            254, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 254, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 2, band 4
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 2, band 5
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 2, band 6
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 2, band 7
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 3, band 0
-            248, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            250, 254, 252, 254, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            248, 254, 249, 253, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 248, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 250, (byte) 254, (byte) 252, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 248, (byte) 254, (byte) 249, (byte) 253, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 3, band 1
-            255, 253, 253, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            246, 253, 253, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            252, 254, 251, 254, 254, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 253, (byte) 253, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 246, (byte) 253, (byte) 253, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 252, (byte) 254, (byte) 251, (byte) 254, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 3, band 2
-            255, 254, 252, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            248, 254, 253, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            253, 255, 254, 254, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 254, (byte) 252, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 248, (byte) 254, (byte) 253, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 253, (byte) 255, (byte) 254, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 3, band 3
-            255, 251, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            245, 251, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            253, 253, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 251, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 245, (byte) 251, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 253, (byte) 253, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 3, band 4
-            255, 251, 253, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            252, 253, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 251, (byte) 253, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 252, (byte) 253, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 3, band 5
-            255, 252, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            249, 255, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 254, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 252, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 249, (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 3, band 6
-            255, 255, 253, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            250, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 2
+            (byte) 255, (byte) 255, (byte) 253, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 250, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 2
             // Plane 3, band 7
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 0
-            254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, // Context 1
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255 // Context 2
-    );
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 0
+            (byte) 254, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, // Context 1
+            (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255 // Context 2
+    };
 
     /// Default coefficient probabilities in plane, band, context, and token order.
     ///
     /// Plane numbers in the grouping comments correspond to [LossyCommon.Plane].
-    static final byte @Unmodifiable [] FLAT_COEFF_PROBS = probabilities(
+    static final byte @Unmodifiable [] FLAT_COEFF_PROBS = {
             // Plane 0, band 0
-            128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, // Context 0
-            128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, // Context 1
-            128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, // Context 2
+            (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 0, band 1
-            253, 136, 254, 255, 228, 219, 128, 128, 128, 128, 128, // Context 0
-            189, 129, 242, 255, 227, 213, 255, 219, 128, 128, 128, // Context 1
-            106, 126, 227, 252, 214, 209, 255, 255, 128, 128, 128, // Context 2
+            (byte) 253, (byte) 136, (byte) 254, (byte) 255, (byte) 228, (byte) 219, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 189, (byte) 129, (byte) 242, (byte) 255, (byte) 227, (byte) 213, (byte) 255, (byte) 219, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            106, 126, (byte) 227, (byte) 252, (byte) 214, (byte) 209, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 0, band 2
-            1, 98, 248, 255, 236, 226, 255, 255, 128, 128, 128, // Context 0
-            181, 133, 238, 254, 221, 234, 255, 154, 128, 128, 128, // Context 1
-            78, 134, 202, 247, 198, 180, 255, 219, 128, 128, 128, // Context 2
+            1, 98, (byte) 248, (byte) 255, (byte) 236, (byte) 226, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 181, (byte) 133, (byte) 238, (byte) 254, (byte) 221, (byte) 234, (byte) 255, (byte) 154, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            78, (byte) 134, (byte) 202, (byte) 247, (byte) 198, (byte) 180, (byte) 255, (byte) 219, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 0, band 3
-            1, 185, 249, 255, 243, 255, 128, 128, 128, 128, 128, // Context 0
-            184, 150, 247, 255, 236, 224, 128, 128, 128, 128, 128, // Context 1
-            77, 110, 216, 255, 236, 230, 128, 128, 128, 128, 128, // Context 2
+            1, (byte) 185, (byte) 249, (byte) 255, (byte) 243, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 184, (byte) 150, (byte) 247, (byte) 255, (byte) 236, (byte) 224, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            77, 110, (byte) 216, (byte) 255, (byte) 236, (byte) 230, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 0, band 4
-            1, 101, 251, 255, 241, 255, 128, 128, 128, 128, 128, // Context 0
-            170, 139, 241, 252, 236, 209, 255, 255, 128, 128, 128, // Context 1
-            37, 116, 196, 243, 228, 255, 255, 255, 128, 128, 128, // Context 2
+            1, 101, (byte) 251, (byte) 255, (byte) 241, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 170, (byte) 139, (byte) 241, (byte) 252, (byte) 236, (byte) 209, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            37, 116, (byte) 196, (byte) 243, (byte) 228, (byte) 255, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 0, band 5
-            1, 204, 254, 255, 245, 255, 128, 128, 128, 128, 128, // Context 0
-            207, 160, 250, 255, 238, 128, 128, 128, 128, 128, 128, // Context 1
-            102, 103, 231, 255, 211, 171, 128, 128, 128, 128, 128, // Context 2
+            1, (byte) 204, (byte) 254, (byte) 255, (byte) 245, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 207, (byte) 160, (byte) 250, (byte) 255, (byte) 238, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            102, 103, (byte) 231, (byte) 255, (byte) 211, (byte) 171, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 0, band 6
-            1, 152, 252, 255, 240, 255, 128, 128, 128, 128, 128, // Context 0
-            177, 135, 243, 255, 234, 225, 128, 128, 128, 128, 128, // Context 1
-            80, 129, 211, 255, 194, 224, 128, 128, 128, 128, 128, // Context 2
+            1, (byte) 152, (byte) 252, (byte) 255, (byte) 240, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 177, (byte) 135, (byte) 243, (byte) 255, (byte) 234, (byte) 225, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            80, (byte) 129, (byte) 211, (byte) 255, (byte) 194, (byte) 224, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 0, band 7
-            1, 1, 255, 128, 128, 128, 128, 128, 128, 128, 128, // Context 0
-            246, 1, 255, 128, 128, 128, 128, 128, 128, 128, 128, // Context 1
-            255, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, // Context 2
+            1, 1, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 246, 1, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 1, band 0
-            198, 35, 237, 223, 193, 187, 162, 160, 145, 155, 62, // Context 0
-            131, 45, 198, 221, 172, 176, 220, 157, 252, 221, 1, // Context 1
-            68, 47, 146, 208, 149, 167, 221, 162, 255, 223, 128, // Context 2
+            (byte) 198, 35, (byte) 237, (byte) 223, (byte) 193, (byte) 187, (byte) 162, (byte) 160, (byte) 145, (byte) 155, 62, // Context 0
+            (byte) 131, 45, (byte) 198, (byte) 221, (byte) 172, (byte) 176, (byte) 220, (byte) 157, (byte) 252, (byte) 221, 1, // Context 1
+            68, 47, (byte) 146, (byte) 208, (byte) 149, (byte) 167, (byte) 221, (byte) 162, (byte) 255, (byte) 223, (byte) 128, // Context 2
             // Plane 1, band 1
-            1, 149, 241, 255, 221, 224, 255, 255, 128, 128, 128, // Context 0
-            184, 141, 234, 253, 222, 220, 255, 199, 128, 128, 128, // Context 1
-            81, 99, 181, 242, 176, 190, 249, 202, 255, 255, 128, // Context 2
+            1, (byte) 149, (byte) 241, (byte) 255, (byte) 221, (byte) 224, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 184, (byte) 141, (byte) 234, (byte) 253, (byte) 222, (byte) 220, (byte) 255, (byte) 199, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            81, 99, (byte) 181, (byte) 242, (byte) 176, (byte) 190, (byte) 249, (byte) 202, (byte) 255, (byte) 255, (byte) 128, // Context 2
             // Plane 1, band 2
-            1, 129, 232, 253, 214, 197, 242, 196, 255, 255, 128, // Context 0
-            99, 121, 210, 250, 201, 198, 255, 202, 128, 128, 128, // Context 1
-            23, 91, 163, 242, 170, 187, 247, 210, 255, 255, 128, // Context 2
+            1, (byte) 129, (byte) 232, (byte) 253, (byte) 214, (byte) 197, (byte) 242, (byte) 196, (byte) 255, (byte) 255, (byte) 128, // Context 0
+            99, 121, (byte) 210, (byte) 250, (byte) 201, (byte) 198, (byte) 255, (byte) 202, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            23, 91, (byte) 163, (byte) 242, (byte) 170, (byte) 187, (byte) 247, (byte) 210, (byte) 255, (byte) 255, (byte) 128, // Context 2
             // Plane 1, band 3
-            1, 200, 246, 255, 234, 255, 128, 128, 128, 128, 128, // Context 0
-            109, 178, 241, 255, 231, 245, 255, 255, 128, 128, 128, // Context 1
-            44, 130, 201, 253, 205, 192, 255, 255, 128, 128, 128, // Context 2
+            1, (byte) 200, (byte) 246, (byte) 255, (byte) 234, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            109, (byte) 178, (byte) 241, (byte) 255, (byte) 231, (byte) 245, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            44, (byte) 130, (byte) 201, (byte) 253, (byte) 205, (byte) 192, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 1, band 4
-            1, 132, 239, 251, 219, 209, 255, 165, 128, 128, 128, // Context 0
-            94, 136, 225, 251, 218, 190, 255, 255, 128, 128, 128, // Context 1
-            22, 100, 174, 245, 186, 161, 255, 199, 128, 128, 128, // Context 2
+            1, (byte) 132, (byte) 239, (byte) 251, (byte) 219, (byte) 209, (byte) 255, (byte) 165, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            94, (byte) 136, (byte) 225, (byte) 251, (byte) 218, (byte) 190, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            22, 100, (byte) 174, (byte) 245, (byte) 186, (byte) 161, (byte) 255, (byte) 199, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 1, band 5
-            1, 182, 249, 255, 232, 235, 128, 128, 128, 128, 128, // Context 0
-            124, 143, 241, 255, 227, 234, 128, 128, 128, 128, 128, // Context 1
-            35, 77, 181, 251, 193, 211, 255, 205, 128, 128, 128, // Context 2
+            1, (byte) 182, (byte) 249, (byte) 255, (byte) 232, (byte) 235, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            124, (byte) 143, (byte) 241, (byte) 255, (byte) 227, (byte) 234, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            35, 77, (byte) 181, (byte) 251, (byte) 193, (byte) 211, (byte) 255, (byte) 205, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 1, band 6
-            1, 157, 247, 255, 236, 231, 255, 255, 128, 128, 128, // Context 0
-            121, 141, 235, 255, 225, 227, 255, 255, 128, 128, 128, // Context 1
-            45, 99, 188, 251, 195, 217, 255, 224, 128, 128, 128, // Context 2
+            1, (byte) 157, (byte) 247, (byte) 255, (byte) 236, (byte) 231, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            121, (byte) 141, (byte) 235, (byte) 255, (byte) 225, (byte) 227, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            45, 99, (byte) 188, (byte) 251, (byte) 195, (byte) 217, (byte) 255, (byte) 224, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 1, band 7
-            1, 1, 251, 255, 213, 255, 128, 128, 128, 128, 128, // Context 0
-            203, 1, 248, 255, 255, 128, 128, 128, 128, 128, 128, // Context 1
-            137, 1, 177, 255, 224, 255, 128, 128, 128, 128, 128, // Context 2
+            1, 1, (byte) 251, (byte) 255, (byte) 213, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 203, 1, (byte) 248, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            (byte) 137, 1, (byte) 177, (byte) 255, (byte) 224, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 2, band 0
-            253, 9, 248, 251, 207, 208, 255, 192, 128, 128, 128, // Context 0
-            175, 13, 224, 243, 193, 185, 249, 198, 255, 255, 128, // Context 1
-            73, 17, 171, 221, 161, 179, 236, 167, 255, 234, 128, // Context 2
+            (byte) 253, 9, (byte) 248, (byte) 251, (byte) 207, (byte) 208, (byte) 255, (byte) 192, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 175, 13, (byte) 224, (byte) 243, (byte) 193, (byte) 185, (byte) 249, (byte) 198, (byte) 255, (byte) 255, (byte) 128, // Context 1
+            73, 17, (byte) 171, (byte) 221, (byte) 161, (byte) 179, (byte) 236, (byte) 167, (byte) 255, (byte) 234, (byte) 128, // Context 2
             // Plane 2, band 1
-            1, 95, 247, 253, 212, 183, 255, 255, 128, 128, 128, // Context 0
-            239, 90, 244, 250, 211, 209, 255, 255, 128, 128, 128, // Context 1
-            155, 77, 195, 248, 188, 195, 255, 255, 128, 128, 128, // Context 2
+            1, 95, (byte) 247, (byte) 253, (byte) 212, (byte) 183, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 239, 90, (byte) 244, (byte) 250, (byte) 211, (byte) 209, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            (byte) 155, 77, (byte) 195, (byte) 248, (byte) 188, (byte) 195, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 2, band 2
-            1, 24, 239, 251, 218, 219, 255, 205, 128, 128, 128, // Context 0
-            201, 51, 219, 255, 196, 186, 128, 128, 128, 128, 128, // Context 1
-            69, 46, 190, 239, 201, 218, 255, 228, 128, 128, 128, // Context 2
+            1, 24, (byte) 239, (byte) 251, (byte) 218, (byte) 219, (byte) 255, (byte) 205, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 201, 51, (byte) 219, (byte) 255, (byte) 196, (byte) 186, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            69, 46, (byte) 190, (byte) 239, (byte) 201, (byte) 218, (byte) 255, (byte) 228, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 2, band 3
-            1, 191, 251, 255, 255, 128, 128, 128, 128, 128, 128, // Context 0
-            223, 165, 249, 255, 213, 255, 128, 128, 128, 128, 128, // Context 1
-            141, 124, 248, 255, 255, 128, 128, 128, 128, 128, 128, // Context 2
+            1, (byte) 191, (byte) 251, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 223, (byte) 165, (byte) 249, (byte) 255, (byte) 213, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            (byte) 141, 124, (byte) 248, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 2, band 4
-            1, 16, 248, 255, 255, 128, 128, 128, 128, 128, 128, // Context 0
-            190, 36, 230, 255, 236, 255, 128, 128, 128, 128, 128, // Context 1
-            149, 1, 255, 128, 128, 128, 128, 128, 128, 128, 128, // Context 2
+            1, 16, (byte) 248, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 190, 36, (byte) 230, (byte) 255, (byte) 236, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            (byte) 149, 1, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 2, band 5
-            1, 226, 255, 128, 128, 128, 128, 128, 128, 128, 128, // Context 0
-            247, 192, 255, 128, 128, 128, 128, 128, 128, 128, 128, // Context 1
-            240, 128, 255, 128, 128, 128, 128, 128, 128, 128, 128, // Context 2
+            1, (byte) 226, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 247, (byte) 192, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            (byte) 240, (byte) 128, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 2, band 6
-            1, 134, 252, 255, 255, 128, 128, 128, 128, 128, 128, // Context 0
-            213, 62, 250, 255, 255, 128, 128, 128, 128, 128, 128, // Context 1
-            55, 93, 255, 128, 128, 128, 128, 128, 128, 128, 128, // Context 2
+            1, (byte) 134, (byte) 252, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 213, 62, (byte) 250, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            55, 93, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 2, band 7
-            128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, // Context 0
-            128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, // Context 1
-            128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, // Context 2
+            (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 3, band 0
-            202, 24, 213, 235, 186, 191, 220, 160, 240, 175, 255, // Context 0
-            126, 38, 182, 232, 169, 184, 228, 174, 255, 187, 128, // Context 1
-            61, 46, 138, 219, 151, 178, 240, 170, 255, 216, 128, // Context 2
+            (byte) 202, 24, (byte) 213, (byte) 235, (byte) 186, (byte) 191, (byte) 220, (byte) 160, (byte) 240, (byte) 175, (byte) 255, // Context 0
+            126, 38, (byte) 182, (byte) 232, (byte) 169, (byte) 184, (byte) 228, (byte) 174, (byte) 255, (byte) 187, (byte) 128, // Context 1
+            61, 46, (byte) 138, (byte) 219, (byte) 151, (byte) 178, (byte) 240, (byte) 170, (byte) 255, (byte) 216, (byte) 128, // Context 2
             // Plane 3, band 1
-            1, 112, 230, 250, 199, 191, 247, 159, 255, 255, 128, // Context 0
-            166, 109, 228, 252, 211, 215, 255, 174, 128, 128, 128, // Context 1
-            39, 77, 162, 232, 172, 180, 245, 178, 255, 255, 128, // Context 2
+            1, 112, (byte) 230, (byte) 250, (byte) 199, (byte) 191, (byte) 247, (byte) 159, (byte) 255, (byte) 255, (byte) 128, // Context 0
+            (byte) 166, 109, (byte) 228, (byte) 252, (byte) 211, (byte) 215, (byte) 255, (byte) 174, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            39, 77, (byte) 162, (byte) 232, (byte) 172, (byte) 180, (byte) 245, (byte) 178, (byte) 255, (byte) 255, (byte) 128, // Context 2
             // Plane 3, band 2
-            1, 52, 220, 246, 198, 199, 249, 220, 255, 255, 128, // Context 0
-            124, 74, 191, 243, 183, 193, 250, 221, 255, 255, 128, // Context 1
-            24, 71, 130, 219, 154, 170, 243, 182, 255, 255, 128, // Context 2
+            1, 52, (byte) 220, (byte) 246, (byte) 198, (byte) 199, (byte) 249, (byte) 220, (byte) 255, (byte) 255, (byte) 128, // Context 0
+            124, 74, (byte) 191, (byte) 243, (byte) 183, (byte) 193, (byte) 250, (byte) 221, (byte) 255, (byte) 255, (byte) 128, // Context 1
+            24, 71, (byte) 130, (byte) 219, (byte) 154, (byte) 170, (byte) 243, (byte) 182, (byte) 255, (byte) 255, (byte) 128, // Context 2
             // Plane 3, band 3
-            1, 182, 225, 249, 219, 240, 255, 224, 128, 128, 128, // Context 0
-            149, 150, 226, 252, 216, 205, 255, 171, 128, 128, 128, // Context 1
-            28, 108, 170, 242, 183, 194, 254, 223, 255, 255, 128, // Context 2
+            1, (byte) 182, (byte) 225, (byte) 249, (byte) 219, (byte) 240, (byte) 255, (byte) 224, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 149, (byte) 150, (byte) 226, (byte) 252, (byte) 216, (byte) 205, (byte) 255, (byte) 171, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            28, 108, (byte) 170, (byte) 242, (byte) 183, (byte) 194, (byte) 254, (byte) 223, (byte) 255, (byte) 255, (byte) 128, // Context 2
             // Plane 3, band 4
-            1, 81, 230, 252, 204, 203, 255, 192, 128, 128, 128, // Context 0
-            123, 102, 209, 247, 188, 196, 255, 233, 128, 128, 128, // Context 1
-            20, 95, 153, 243, 164, 173, 255, 203, 128, 128, 128, // Context 2
+            1, 81, (byte) 230, (byte) 252, (byte) 204, (byte) 203, (byte) 255, (byte) 192, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            123, 102, (byte) 209, (byte) 247, (byte) 188, (byte) 196, (byte) 255, (byte) 233, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            20, 95, (byte) 153, (byte) 243, (byte) 164, (byte) 173, (byte) 255, (byte) 203, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 3, band 5
-            1, 222, 248, 255, 216, 213, 128, 128, 128, 128, 128, // Context 0
-            168, 175, 246, 252, 235, 205, 255, 255, 128, 128, 128, // Context 1
-            47, 116, 215, 255, 211, 212, 255, 255, 128, 128, 128, // Context 2
+            1, (byte) 222, (byte) 248, (byte) 255, (byte) 216, (byte) 213, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 168, (byte) 175, (byte) 246, (byte) 252, (byte) 235, (byte) 205, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            47, 116, (byte) 215, (byte) 255, (byte) 211, (byte) 212, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 3, band 6
-            1, 121, 236, 253, 212, 214, 255, 255, 128, 128, 128, // Context 0
-            141, 84, 213, 252, 201, 202, 255, 219, 128, 128, 128, // Context 1
-            42, 80, 160, 240, 162, 185, 255, 205, 128, 128, 128, // Context 2
+            1, 121, (byte) 236, (byte) 253, (byte) 212, (byte) 214, (byte) 255, (byte) 255, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 141, 84, (byte) 213, (byte) 252, (byte) 201, (byte) 202, (byte) 255, (byte) 219, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            42, 80, (byte) 160, (byte) 240, (byte) 162, (byte) 185, (byte) 255, (byte) 205, (byte) 128, (byte) 128, (byte) 128, // Context 2
             // Plane 3, band 7
-            1, 1, 255, 128, 128, 128, 128, 128, 128, 128, 128, // Context 0
-            244, 1, 255, 128, 128, 128, 128, 128, 128, 128, 128, // Context 1
-            238, 1, 255, 128, 128, 128, 128, 128, 128, 128, 128 // Context 2
-    );
+            1, 1, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 0
+            (byte) 244, 1, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, // Context 1
+            (byte) 238, 1, (byte) 255, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128, (byte) 128 // Context 2
+    };
 
     /// Number of coefficient bands in each VP8 plane probability table.
     static final int COEFF_BAND_COUNT = 8;
@@ -432,12 +432,12 @@ final class LossyTables {
             COEFF_BAND_COUNT * COEFF_CONTEXT_COUNT * COEFF_TOKEN_PROBABILITY_COUNT;
 
     /// Extra-bit probabilities for coefficient categories 3 through 6.
-    static final byte @Unmodifiable [] LARGE_DCT_CATEGORY_PROBABILITIES = probabilities(
-            173, 148, 140, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            176, 155, 140, 135, 0, 0, 0, 0, 0, 0, 0, 0,
-            180, 157, 141, 134, 130, 0, 0, 0, 0, 0, 0, 0,
-            254, 254, 243, 230, 196, 177, 153, 140, 133, 130, 129, 0
-    );
+    static final byte @Unmodifiable [] LARGE_DCT_CATEGORY_PROBABILITIES = {
+            (byte) 173, (byte) 148, (byte) 140, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            (byte) 176, (byte) 155, (byte) 140, (byte) 135, 0, 0, 0, 0, 0, 0, 0, 0,
+            (byte) 180, (byte) 157, (byte) 141, (byte) 134, (byte) 130, 0, 0, 0, 0, 0, 0, 0,
+            (byte) 254, (byte) 254, (byte) 243, (byte) 230, (byte) 196, (byte) 177, (byte) 153, (byte) 140, (byte) 133, (byte) 130, (byte) 129, 0
+    };
 
     /// Number of padded probability entries per large coefficient category.
     static final int LARGE_DCT_CATEGORY_STRIDE = 12;
@@ -471,22 +471,6 @@ final class LossyTables {
     static final int[] ZIGZAG = {0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15};
 
     private LossyTables() {
-    }
-
-    /// Converts unsigned probability values to their compact encoded representation.
-    ///
-    /// @param values probabilities in the range `0` through `255`
-    /// @return the probabilities encoded as unsigned bytes
-    private static byte[] probabilities(int... values) {
-        byte[] probabilities = new byte[values.length];
-        for (int i = 0; i < values.length; i++) {
-            int value = values[i];
-            if ((value & ~0xFF) != 0) {
-                throw new AssertionError("VP8 probability is outside the unsigned-byte range: " + value);
-            }
-            probabilities[i] = (byte) value;
-        }
-        return probabilities;
     }
 
     /// Builds the flat probability-table offset for each coefficient band.
