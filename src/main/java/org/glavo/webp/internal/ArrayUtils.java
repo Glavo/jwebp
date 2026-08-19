@@ -73,6 +73,18 @@ public final class ArrayUtils {
         return (short) SHORT_LE.get(array, offset);
     }
 
+    /// Returns the unsigned little-endian 16-bit value beginning at a byte offset.
+    ///
+    /// The offset need not be aligned to a `short` boundary.
+    ///
+    /// @param array the source bytes
+    /// @param offset the byte offset of the first source byte
+    /// @return the decoded value, from `0` through `65535`
+    /// @throws IndexOutOfBoundsException if two bytes are not available at `offset`
+    public static int getUnsignedShortLE(byte[] array, int offset) {
+        return Short.toUnsignedInt(getShortLE(array, offset));
+    }
+
     /// Returns the big-endian `short` beginning at a byte offset.
     ///
     /// The offset need not be aligned to a `short` boundary.
@@ -83,6 +95,18 @@ public final class ArrayUtils {
     /// @throws IndexOutOfBoundsException if two bytes are not available at `offset`
     public static short getShortBE(byte[] array, int offset) {
         return (short) SHORT_BE.get(array, offset);
+    }
+
+    /// Returns the unsigned big-endian 16-bit value beginning at a byte offset.
+    ///
+    /// The offset need not be aligned to a `short` boundary.
+    ///
+    /// @param array the source bytes
+    /// @param offset the byte offset of the first source byte
+    /// @return the decoded value, from `0` through `65535`
+    /// @throws IndexOutOfBoundsException if two bytes are not available at `offset`
+    public static int getUnsignedShortBE(byte[] array, int offset) {
+        return Short.toUnsignedInt(getShortBE(array, offset));
     }
 
     /// Returns the little-endian `int` beginning at a byte offset.
@@ -97,6 +121,18 @@ public final class ArrayUtils {
         return (int) INT_LE.get(array, offset);
     }
 
+    /// Returns the unsigned little-endian 32-bit value beginning at a byte offset.
+    ///
+    /// The offset need not be aligned to an `int` boundary.
+    ///
+    /// @param array the source bytes
+    /// @param offset the byte offset of the first source byte
+    /// @return the decoded value, from `0` through `4294967295`
+    /// @throws IndexOutOfBoundsException if four bytes are not available at `offset`
+    public static long getUnsignedIntLE(byte[] array, int offset) {
+        return Integer.toUnsignedLong(getIntLE(array, offset));
+    }
+
     /// Returns the big-endian `int` beginning at a byte offset.
     ///
     /// The offset need not be aligned to an `int` boundary.
@@ -107,6 +143,18 @@ public final class ArrayUtils {
     /// @throws IndexOutOfBoundsException if four bytes are not available at `offset`
     public static int getIntBE(byte[] array, int offset) {
         return (int) INT_BE.get(array, offset);
+    }
+
+    /// Returns the unsigned big-endian 32-bit value beginning at a byte offset.
+    ///
+    /// The offset need not be aligned to an `int` boundary.
+    ///
+    /// @param array the source bytes
+    /// @param offset the byte offset of the first source byte
+    /// @return the decoded value, from `0` through `4294967295`
+    /// @throws IndexOutOfBoundsException if four bytes are not available at `offset`
+    public static long getUnsignedIntBE(byte[] array, int offset) {
+        return Integer.toUnsignedLong(getIntBE(array, offset));
     }
 
     /// Returns the little-endian `long` beginning at a byte offset.

@@ -18,7 +18,9 @@ final class ArrayUtilsTest {
         byte[] bytes = sampleBytes();
 
         assertEquals((short) 0x2301, ArrayUtils.getShortLE(bytes, 1));
+        assertEquals(0xAB89, ArrayUtils.getUnsignedShortLE(bytes, 5));
         assertEquals(0x6745_2301, ArrayUtils.getIntLE(bytes, 1));
+        assertEquals(0xEFCD_AB89L, ArrayUtils.getUnsignedIntLE(bytes, 5));
         assertEquals(0xEFCD_AB89_6745_2301L, ArrayUtils.getLongLE(bytes, 1));
     }
 
@@ -28,7 +30,9 @@ final class ArrayUtilsTest {
         byte[] bytes = sampleBytes();
 
         assertEquals((short) 0x0123, ArrayUtils.getShortBE(bytes, 1));
+        assertEquals(0x89AB, ArrayUtils.getUnsignedShortBE(bytes, 5));
         assertEquals(0x0123_4567, ArrayUtils.getIntBE(bytes, 1));
+        assertEquals(0x89AB_CDEFL, ArrayUtils.getUnsignedIntBE(bytes, 5));
         assertEquals(0x0123_4567_89AB_CDEFL, ArrayUtils.getLongBE(bytes, 1));
     }
 
@@ -39,8 +43,12 @@ final class ArrayUtilsTest {
 
         assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getShortLE(bytes, -1));
         assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getShortBE(bytes, bytes.length - 1));
+        assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getUnsignedShortLE(bytes, -1));
+        assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getUnsignedShortBE(bytes, bytes.length - 1));
         assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getIntLE(bytes, bytes.length - 3));
         assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getIntBE(bytes, bytes.length - 3));
+        assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getUnsignedIntLE(bytes, bytes.length - 3));
+        assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getUnsignedIntBE(bytes, bytes.length - 3));
         assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getLongLE(bytes, 1));
         assertThrows(IndexOutOfBoundsException.class, () -> ArrayUtils.getLongBE(bytes, 1));
     }

@@ -189,7 +189,7 @@ public final class WebPSequentialParser {
                         throw new WebPException("ANIM chunk is too small");
                     }
                     backgroundColorHint = Arrays.copyOf(chunkPayload, 4);
-                    loopCount = Short.toUnsignedInt(ArrayUtils.getShortLE(chunkPayload, 4));
+                    loopCount = ArrayUtils.getUnsignedShortLE(chunkPayload, 4);
                 }
                 case FourCC.ALPH -> {
                     if (alpha) {
@@ -396,8 +396,8 @@ public final class WebPSequentialParser {
             throw new WebPException("Invalid VP8 frame signature");
         }
 
-        int width = Short.toUnsignedInt(ArrayUtils.getShortLE(payload, 6)) & 0x3FFF;
-        int height = Short.toUnsignedInt(ArrayUtils.getShortLE(payload, 8)) & 0x3FFF;
+        int width = ArrayUtils.getUnsignedShortLE(payload, 6) & 0x3FFF;
+        int height = ArrayUtils.getUnsignedShortLE(payload, 8) & 0x3FFF;
         return new Dimensions(width, height);
     }
 
@@ -415,7 +415,7 @@ public final class WebPSequentialParser {
         if (signature != 0x2F) {
             throw new WebPException("Invalid VP8L signature");
         }
-        long bits = Integer.toUnsignedLong(ArrayUtils.getIntLE(payload, 1));
+        long bits = ArrayUtils.getUnsignedIntLE(payload, 1);
         int width = (int) (bits & 0x3FFF) + 1;
         int height = (int) ((bits >>> 14) & 0x3FFF) + 1;
         boolean alphaUsed = ((bits >>> 28) & 1) != 0;
@@ -432,7 +432,7 @@ public final class WebPSequentialParser {
     /// @param offset the first source byte
     /// @return the decoded unsigned value
     private static int readUnsignedInt24LE(byte[] data, int offset) {
-        return Short.toUnsignedInt(ArrayUtils.getShortLE(data, offset))
+        return ArrayUtils.getUnsignedShortLE(data, offset)
                 | (Byte.toUnsignedInt(data[offset + 2]) << 16);
     }
 

@@ -176,10 +176,10 @@ final class LossyArithmeticDecoder {
             if (inputLimit - inputPosition >= Integer.BYTES) {
                 byte[] input = this.input;
                 int position = inputPosition;
-                int nextValue = ArrayUtils.getIntBE(input, position);
+                long nextValue = ArrayUtils.getUnsignedIntBE(input, position);
                 inputPosition = position + Integer.BYTES;
                 value <<= 32;
-                value |= Integer.toUnsignedLong(nextValue);
+                value |= nextValue;
                 bitCount += 32;
             } else {
                 loadFromTailBytes();
@@ -225,10 +225,10 @@ final class LossyArithmeticDecoder {
             if (inputLimit - inputPosition >= Integer.BYTES) {
                 byte[] input = this.input;
                 int position = inputPosition;
-                int nextValue = ArrayUtils.getIntBE(input, position);
+                long nextValue = ArrayUtils.getUnsignedIntBE(input, position);
                 inputPosition = position + Integer.BYTES;
                 value <<= 32;
-                value |= Integer.toUnsignedLong(nextValue);
+                value |= nextValue;
                 bitCount += 32;
             } else {
                 loadFromTailBytes();

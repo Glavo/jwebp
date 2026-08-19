@@ -400,7 +400,7 @@ public final class Vp8Decoder {
             int sizesOffset = readExactly(3 * partitionCount - 3);
             for (int i = 0; i < partitionCount - 1; i++) {
                 int sizeOffset = sizesOffset + i * 3;
-                int partitionSize = Short.toUnsignedInt(ArrayUtils.getShortLE(input, sizeOffset))
+                int partitionSize = ArrayUtils.getUnsignedShortLE(input, sizeOffset)
                         | (Byte.toUnsignedInt(input[sizeOffset + 2]) << 16);
                 int partitionOffset = readExactly(partitionSize);
                 partitions[i].init(input, partitionOffset, partitionSize);
@@ -1318,7 +1318,7 @@ public final class Vp8Decoder {
         int position = inputPosition;
         if (inputLimit - position >= Short.BYTES) {
             inputPosition = position + Short.BYTES;
-            return Short.toUnsignedInt(ArrayUtils.getShortLE(input, position));
+            return ArrayUtils.getUnsignedShortLE(input, position);
         }
         return readU8() | (readU8() << 8);
     }
@@ -1331,7 +1331,7 @@ public final class Vp8Decoder {
         int position = inputPosition;
         if (inputLimit - position >= 3) {
             inputPosition = position + 3;
-            return Short.toUnsignedInt(ArrayUtils.getShortLE(input, position))
+            return ArrayUtils.getUnsignedShortLE(input, position)
                     | (Byte.toUnsignedInt(input[position + 2]) << 16);
         }
         return readU8() | (readU8() << 8) | (readU8() << 16);

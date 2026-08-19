@@ -66,7 +66,7 @@ public final class LosslessBitReader {
             count += loadedBytes * Byte.SIZE;
             position += loadedBytes;
         } else if (count <= 32 && endPosition - position >= Integer.BYTES) {
-            long next = Integer.toUnsignedLong(ArrayUtils.getIntLE(data, position));
+            long next = ArrayUtils.getUnsignedIntLE(data, position);
             bits |= next << count;
             count += Integer.SIZE;
             position += Integer.BYTES;
