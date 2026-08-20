@@ -5,7 +5,9 @@ package org.glavo.webp.internal;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
+import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import java.util.Arrays;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,6 +44,32 @@ final class ArgbTest {
                 0xFF88_99AA
         }));
         assertEquals(0, Argb.countOpaquePrefix(new int[]{0x0011_2233, 0xFF44_5566}));
+    }
+
+    /// Verifies opaque-prefix detection around aggregate scan boundaries.
+    @Test
+    void countsOpaquePrefixesAcrossScanBoundaries() {
+        for (int prefixLength : new int[]{0, 1, 7, 8, 9, 15, 16, 17, 31, 32, 33}) {
+            int[] pixels = new int[prefixLength + 1];
+            Arrays.fill(pixels, 0xFF12_3456);
+            pixels[prefixLength] = 0xFE12_3456;
+            assertEquals(prefixLength, Argb.countOpaquePrefix(pixels));
+
+            IntBuffer directPixels = ByteBuffer.allocateDirect((prefixLength + 3) * Integer.BYTES)
+                    .asIntBuffer();
+            directPixels.put(0, 0x0012_3456);
+            for (int index = 0; index < prefixLength; index++) {
+                directPixels.put(index + 1, 0xFF12_3456);
+            }
+            directPixels.put(prefixLength + 1, 0xFE12_3456);
+            directPixels.put(prefixLength + 2, 0xFF12_3456);
+            directPixels.position(1);
+            directPixels.limit(prefixLength + 2);
+
+            assertEquals(prefixLength, Argb.countOpaquePrefix(directPixels));
+            assertEquals(1, directPixels.position());
+            assertEquals(prefixLength + 2, directPixels.limit());
+        }
     }
 
     /// Verifies that buffer-prefix detection is relative to the remaining region and preserves state.

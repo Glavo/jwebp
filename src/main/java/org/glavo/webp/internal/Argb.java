@@ -13,6 +13,12 @@ import java.nio.IntBuffer;
 @NotNullByDefault
 public final class Argb {
 
+    /// Smallest unsigned packed pixel whose alpha channel is fully opaque.
+    private static final int OPAQUE_PIXEL_MIN = 0xFF00_0000;
+
+    /// Number of pixels checked by each aggregate opaque-prefix scan.
+    private static final int OPAQUE_SCAN_BLOCK_SIZE = 8;
+
     private Argb() {
     }
 
@@ -40,7 +46,33 @@ public final class Argb {
     /// @return the number of consecutive pixels from index zero whose alpha channel is `255`
     public static int countOpaquePrefix(int[] argb) {
         int index = 0;
-        while (index < argb.length && alpha(argb[index]) == 0xFF) {
+        int scalarLimit = Math.min(argb.length, OPAQUE_SCAN_BLOCK_SIZE);
+        while (index < scalarLimit
+                && Integer.compareUnsigned(argb[index], OPAQUE_PIXEL_MIN) >= 0) {
+            index++;
+        }
+        if (index < scalarLimit) {
+            return index;
+        }
+
+        int blockLimit = argb.length - (OPAQUE_SCAN_BLOCK_SIZE - 1);
+        while (index < blockLimit) {
+            // The high byte remains 0xFF only when every pixel in the block is opaque.
+            int alphaIntersection = argb[index]
+                    & argb[index + 1]
+                    & argb[index + 2]
+                    & argb[index + 3]
+                    & argb[index + 4]
+                    & argb[index + 5]
+                    & argb[index + 6]
+                    & argb[index + 7];
+            if (Integer.compareUnsigned(alphaIntersection, OPAQUE_PIXEL_MIN) < 0) {
+                break;
+            }
+            index += OPAQUE_SCAN_BLOCK_SIZE;
+        }
+        while (index < argb.length
+                && Integer.compareUnsigned(argb[index], OPAQUE_PIXEL_MIN) >= 0) {
             index++;
         }
         return index;
@@ -57,7 +89,33 @@ public final class Argb {
         int position = argb.position();
         int index = position;
         int limit = argb.limit();
-        while (index < limit && alpha(argb.get(index)) == 0xFF) {
+        int scalarLimit = position + Math.min(limit - position, OPAQUE_SCAN_BLOCK_SIZE);
+        while (index < scalarLimit
+                && Integer.compareUnsigned(argb.get(index), OPAQUE_PIXEL_MIN) >= 0) {
+            index++;
+        }
+        if (index < scalarLimit) {
+            return index - position;
+        }
+
+        int blockLimit = limit - (OPAQUE_SCAN_BLOCK_SIZE - 1);
+        while (index < blockLimit) {
+            // The high byte remains 0xFF only when every pixel in the block is opaque.
+            int alphaIntersection = argb.get(index)
+                    & argb.get(index + 1)
+                    & argb.get(index + 2)
+                    & argb.get(index + 3)
+                    & argb.get(index + 4)
+                    & argb.get(index + 5)
+                    & argb.get(index + 6)
+                    & argb.get(index + 7);
+            if (Integer.compareUnsigned(alphaIntersection, OPAQUE_PIXEL_MIN) < 0) {
+                break;
+            }
+            index += OPAQUE_SCAN_BLOCK_SIZE;
+        }
+        while (index < limit
+                && Integer.compareUnsigned(argb.get(index), OPAQUE_PIXEL_MIN) >= 0) {
             index++;
         }
         return index - position;
