@@ -4,6 +4,8 @@ package org.glavo.webp.internal;
 
 import org.jetbrains.annotations.NotNullByDefault;
 
+import java.nio.IntBuffer;
+
 /// Packed `ARGB` pixel helpers.
 ///
 /// Decoder workspaces use non-premultiplied `0xAARRGGBB` integers. Public frame pixels may remain
@@ -30,6 +32,35 @@ public final class Argb {
     /// Returns the alpha channel.
     public static int alpha(int argb) {
         return argb >>> 24;
+    }
+
+    /// Returns the number of leading opaque pixels in an array.
+    ///
+    /// @param argb the packed `ARGB` pixels to inspect
+    /// @return the number of consecutive pixels from index zero whose alpha channel is `255`
+    public static int countOpaquePrefix(int[] argb) {
+        int index = 0;
+        while (index < argb.length && alpha(argb[index]) == 0xFF) {
+            index++;
+        }
+        return index;
+    }
+
+    /// Returns the number of leading opaque pixels in a buffer's remaining region.
+    ///
+    /// The buffer's position and limit are not changed.
+    ///
+    /// @param argb the packed `ARGB` pixels to inspect
+    /// @return the number of consecutive pixels from the current position whose alpha channel is
+    ///         `255`
+    public static int countOpaquePrefix(IntBuffer argb) {
+        int position = argb.position();
+        int index = position;
+        int limit = argb.limit();
+        while (index < limit && alpha(argb.get(index)) == 0xFF) {
+            index++;
+        }
+        return index - position;
     }
 
     /// Returns the red channel.

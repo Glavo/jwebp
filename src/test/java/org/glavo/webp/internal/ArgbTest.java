@@ -5,6 +5,7 @@ package org.glavo.webp.internal;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
+import java.nio.IntBuffer;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,6 +24,42 @@ final class ArgbTest {
         assertEquals(0x0000_0000, Argb.unpremultiply(0x0000_0000));
         assertEquals(0xFF11_2233, Argb.unpremultiply(0xFF11_2233));
         assertEquals(0x80FF_8040, Argb.unpremultiply(0x8080_4020));
+    }
+
+    /// Verifies opaque-prefix detection across empty, opaque, and translucent arrays.
+    @Test
+    void countsOpaqueArrayPrefixes() {
+        assertEquals(0, Argb.countOpaquePrefix(new int[0]));
+        assertEquals(3, Argb.countOpaquePrefix(new int[]{
+                0xFF11_2233,
+                0xFF44_5566,
+                0xFF77_8899
+        }));
+        assertEquals(2, Argb.countOpaquePrefix(new int[]{
+                0xFF11_2233,
+                0xFF44_5566,
+                0x8055_6677,
+                0xFF88_99AA
+        }));
+        assertEquals(0, Argb.countOpaquePrefix(new int[]{0x0011_2233, 0xFF44_5566}));
+    }
+
+    /// Verifies that buffer-prefix detection is relative to the remaining region and preserves state.
+    @Test
+    void countsOpaqueBufferPrefixesWithoutChangingState() {
+        IntBuffer pixels = IntBuffer.wrap(new int[]{
+                0x0011_2233,
+                0xFF44_5566,
+                0xFF77_8899,
+                0x80AA_BBCC,
+                0xFFD0_E0F0
+        });
+        pixels.position(1);
+        pixels.limit(4);
+
+        assertEquals(2, Argb.countOpaquePrefix(pixels));
+        assertEquals(1, pixels.position());
+        assertEquals(4, pixels.limit());
     }
 
     /// Verifies that packed addition matches independent modulo-256 channel arithmetic.

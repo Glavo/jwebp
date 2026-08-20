@@ -109,15 +109,15 @@ public final class WebPFrame {
         this.pixelFormat = pixelFormat;
         this.customPixelBuffer = false;
         int[] output = copyArgb ? argbPixels.clone() : argbPixels;
-        boolean opaque = true;
+        boolean opaque = false;
         if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
-            for (int index = 0; index < output.length; index++) {
-                int pixel = output[index];
-                opaque &= (pixel >>> 24) == 0xFF;
-                output[index] = Argb.premultiply(pixel);
+            int opaquePrefix = Argb.countOpaquePrefix(output);
+            opaque = opaquePrefix == output.length;
+            for (int index = opaquePrefix; index < output.length; index++) {
+                output[index] = Argb.premultiply(output[index]);
             }
         }
-        this.opaque = pixelFormat == WebPPixelFormat.INT_ARGB_PRE && opaque;
+        this.opaque = opaque;
         this.pixels = IntBuffer.wrap(output).asReadOnlyBuffer();
     }
 
@@ -167,14 +167,13 @@ public final class WebPFrame {
         if (pixels.isReadOnly()) {
             throw new ReadOnlyBufferException();
         }
-        boolean allOpaque = opaque;
+        boolean allOpaque = pixelFormat == WebPPixelFormat.INT_ARGB_PRE && opaque;
         if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
             if (!opaque) {
-                allOpaque = true;
-                for (int index = pixels.position(); index < pixels.limit(); index++) {
-                    int pixel = pixels.get(index);
-                    allOpaque &= (pixel >>> 24) == 0xFF;
-                    pixels.put(index, Argb.premultiply(pixel));
+                int opaquePrefix = Argb.countOpaquePrefix(pixels);
+                allOpaque = opaquePrefix == pixels.remaining();
+                for (int index = pixels.position() + opaquePrefix; index < pixels.limit(); index++) {
+                    pixels.put(index, Argb.premultiply(pixels.get(index)));
                 }
             }
         }
@@ -184,7 +183,7 @@ public final class WebPFrame {
         this.durationMillis = durationMillis;
         this.pixelFormat = pixelFormat;
         this.customPixelBuffer = true;
-        this.opaque = pixelFormat == WebPPixelFormat.INT_ARGB_PRE && allOpaque;
+        this.opaque = allOpaque;
         this.pixels = pixels.slice().asReadOnlyBuffer();
     }
 
