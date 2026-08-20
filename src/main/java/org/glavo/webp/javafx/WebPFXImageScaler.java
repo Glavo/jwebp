@@ -24,7 +24,7 @@ final class WebPFXImageScaler {
     ///
     /// @param frame the source frame
     /// @param scalePlan the target dimensions and filtering mode
-    /// @return position-zero, read-only direct presentation pixels
+    /// @return position-zero direct presentation pixels
     static @UnmodifiableView IntBuffer prepareStaticPixels(WebPFrame frame, ScalePlan scalePlan) {
         @UnmodifiableView IntBuffer source = frame.getPixels();
         if (!scalePlan.scalingRequired()
@@ -39,14 +39,14 @@ final class WebPFXImageScaler {
 
         IntBuffer target = allocateDirectBuffer(frame.getWidth(), frame.getHeight());
         copyAsArgbPre(source, frame.getPixelFormat(), target);
-        return target.asReadOnlyBuffer();
+        return target;
     }
 
     /// Scales one frame into newly allocated `INT_ARGB_PRE` storage.
     ///
     /// @param frame the source frame
     /// @param scalePlan the target dimensions and filtering mode
-    /// @return position-zero, read-only direct scaled pixels
+    /// @return position-zero direct scaled pixels
     static @UnmodifiableView IntBuffer scaleAsArgbPre(WebPFrame frame, ScalePlan scalePlan) {
         @UnmodifiableView IntBuffer source = frame.getPixels();
         IntBuffer target = allocateDirectBuffer(scalePlan.targetWidth(), scalePlan.targetHeight());
@@ -56,7 +56,7 @@ final class WebPFXImageScaler {
             scaleNearest(source, frame.getPixelFormat(), scalePlan, target);
         }
         target.rewind();
-        return target.asReadOnlyBuffer();
+        return target;
     }
 
     /// Allocates writable direct storage for JavaFX presentation.
@@ -100,17 +100,15 @@ final class WebPFXImageScaler {
             WebPPixelFormat sourceFormat,
             IntBuffer target
     ) {
-        @UnmodifiableView IntBuffer sourceView = source.asReadOnlyBuffer();
-        sourceView.rewind();
         target.clear();
+        int pixelCount = source.limit();
         if (sourceFormat == WebPPixelFormat.INT_ARGB_PRE) {
-            target.put(sourceView);
+            target.put(0, source, 0, pixelCount);
         } else {
-            while (sourceView.hasRemaining()) {
-                target.put(Argb.premultiply(sourceView.get()));
+            for (int index = 0; index < pixelCount; index++) {
+                target.put(index, Argb.premultiply(source.get(index)));
             }
         }
-        target.rewind();
     }
 
     /// Scales pixels with nearest-neighbor sampling into `INT_ARGB_PRE` storage.

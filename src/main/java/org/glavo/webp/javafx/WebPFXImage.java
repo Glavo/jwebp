@@ -314,7 +314,7 @@ public final class WebPFXImage extends WritableImage {
 
     /// Retained pixel storage and timing for one animation presentation frame.
     ///
-    /// @param pixels the position-zero, read-only packed pixel view
+    /// @param pixels the position-zero packed pixel view retained without subsequent modification
     /// @param pixelFormat the representation used by `pixels`
     /// @param durationMillis the presentation duration in milliseconds
     @NotNullByDefault

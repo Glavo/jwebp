@@ -49,8 +49,25 @@ final class WebPFXImageScalerTest {
         IntBuffer presentation = WebPFXImageScaler.prepareStaticPixels(frame, scalePlan);
 
         assertTrue(presentation.isDirect());
-        assertTrue(presentation.isReadOnly());
         assertEquals(source, presentation);
+    }
+
+    /// Verifies that bulk copying does not mutate the source cursor and resets the target cursor.
+    @Test
+    void bulkCopyPreservesBufferState() {
+        IntBuffer source = IntBuffer.wrap(new int[]{1, 2, 3});
+        source.position(1);
+        IntBuffer target = WebPFXImageScaler.allocateDirectBuffer(3, 1);
+        target.position(2);
+
+        WebPFXImageScaler.copyAsArgbPre(source, WebPPixelFormat.INT_ARGB_PRE, target);
+
+        assertEquals(1, source.position());
+        assertEquals(3, source.limit());
+        assertEquals(0, target.position());
+        assertEquals(1, target.get(0));
+        assertEquals(2, target.get(1));
+        assertEquals(3, target.get(2));
     }
 
     /// Decodes the regression image into heap-backed premultiplied pixels.
