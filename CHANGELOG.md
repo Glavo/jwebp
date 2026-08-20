@@ -28,6 +28,7 @@
 
 - Improve VP8 and VP8L decoding throughput and substantially reduce temporary allocations, especially for animated WebP images
 - Decode static frames directly into caller-provided storage, avoiding a full-size heap `ARGB` staging array and the subsequent copy
+- Pack scaled animation frames into bounded direct-memory chunks, reducing native allocations and Cleaner objects
 
 ### Fixed
 

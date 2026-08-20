@@ -70,6 +70,37 @@ final class WebPFXImageScalerTest {
         assertEquals(3, target.get(2));
     }
 
+    /// Verifies scaling into a slice without modifying adjacent packed regions.
+    ///
+    /// @throws WebPException if the regression fixture cannot be decoded
+    @Test
+    void scalesIntoSuppliedPackedRegion() throws WebPException {
+        WebPFrame frame = decodeHeapPremultipliedFrame();
+        int targetWidth = Math.multiplyExact(frame.getWidth(), 2);
+        int targetHeight = Math.multiplyExact(frame.getHeight(), 2);
+        int pixelCount = Math.multiplyExact(targetWidth, targetHeight);
+        int sentinel = 0x1357_9BDF;
+        IntBuffer packed = WebPFXImageScaler.allocateDirectPixels(pixelCount + 2);
+        packed.put(0, sentinel);
+        packed.put(pixelCount + 1, sentinel);
+        IntBuffer target = packed.slice(1, pixelCount);
+        WebPFXImageScaler.ScalePlan scalePlan = new WebPFXImageScaler.ScalePlan(
+                frame.getWidth(),
+                frame.getHeight(),
+                targetWidth,
+                targetHeight,
+                false
+        );
+
+        WebPFXImageScaler.scaleAsArgbPre(frame, scalePlan, target);
+
+        assertEquals(0, target.position());
+        assertEquals(pixelCount, target.limit());
+        assertEquals(frame.getPixels().get(0), target.get(0));
+        assertEquals(sentinel, packed.get(0));
+        assertEquals(sentinel, packed.get(pixelCount + 1));
+    }
+
     /// Decodes the regression image into heap-backed premultiplied pixels.
     ///
     /// @return the decoded static frame

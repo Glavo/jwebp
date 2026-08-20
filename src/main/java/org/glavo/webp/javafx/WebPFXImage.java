@@ -40,6 +40,9 @@ import java.util.Objects;
 @NotNullByDefault
 public final class WebPFXImage extends WritableImage {
 
+    /// Maximum target byte size for one packed direct allocation used by scaled animation frames.
+    private static final int MAX_ANIMATION_CHUNK_BYTES = 128 * 1024 * 1024;
+
     /// JavaFX pixel buffer backed by direct pixel storage.
     private final PixelBuffer<IntBuffer> pixelBuffer;
 
@@ -128,15 +131,13 @@ public final class WebPFXImage extends WritableImage {
             return createStaticImage(image.getFirstFrame(), scalePlan);
         }
 
-        @Unmodifiable List<AnimationFrame> animationFrames = prepareAnimationFrames(
+        PreparedAnimation preparedAnimation = prepareAnimation(
                 image.getFrames(),
                 scalePlan
         );
+        @Unmodifiable List<AnimationFrame> animationFrames = preparedAnimation.frames();
         AnimationFrame firstFrame = animationFrames.get(0);
-        IntBuffer animationBuffer = WebPFXImageScaler.allocateDirectBuffer(
-                scalePlan.targetWidth(),
-                scalePlan.targetHeight()
-        );
+        IntBuffer animationBuffer = preparedAnimation.presentationPixels();
         WebPFXImageScaler.copyAsArgbPre(firstFrame.pixels(), firstFrame.pixelFormat(), animationBuffer);
         PixelBuffer<IntBuffer> pixelBuffer = createPixelBuffer(
                 scalePlan.targetWidth(),
@@ -270,36 +271,94 @@ public final class WebPFXImage extends WritableImage {
         return new WebPFXImage(pixelBuffer);
     }
 
-    /// Prepares the frame data retained by an animated image.
+    /// Prepares retained frame data and mutable presentation storage for an animated image.
     ///
     /// Intrinsic-size frames retain views of their existing pixel storage. Scaled frames retain
-    /// only target-size direct premultiplied pixels, allowing the original frame objects and their
-    /// full-size storage to be reclaimed when the caller no longer references them.
+    /// only target-size direct premultiplied pixels packed into bounded allocations, allowing the
+    /// original frame objects and their full-size storage to be reclaimed when the caller no
+    /// longer references them. The mutable presentation region is packed with scaled frames and
+    /// allocated separately for intrinsic-size frames.
     ///
     /// @param sourceFrames the decoded presentation frames
     /// @param scalePlan the target dimensions and filtering mode
-    /// @return an immutable list of retained animation data
-    private static @Unmodifiable List<AnimationFrame> prepareAnimationFrames(
+    /// @return the retained frames and mutable JavaFX presentation pixels
+    private static PreparedAnimation prepareAnimation(
             @Unmodifiable List<WebPFrame> sourceFrames,
             ScalePlan scalePlan
     ) {
         ArrayList<AnimationFrame> preparedFrames = new ArrayList<>(sourceFrames.size());
-        for (WebPFrame frame : sourceFrames) {
-            if (scalePlan.scalingRequired()) {
+        IntBuffer presentationPixels;
+        if (scalePlan.scalingRequired()) {
+            int pixelCount;
+            int regionCount;
+            try {
+                pixelCount = Math.multiplyExact(scalePlan.targetWidth(), scalePlan.targetHeight());
+                regionCount = Math.addExact(sourceFrames.size(), 1);
+            } catch (ArithmeticException ex) {
+                throw new IllegalArgumentException("Scaled animation dimensions are too large", ex);
+            }
+            IntBuffer[] regions = allocatePackedAnimationRegions(regionCount, pixelCount);
+            for (int frameIndex = 0; frameIndex < sourceFrames.size(); frameIndex++) {
+                WebPFrame frame = sourceFrames.get(frameIndex);
+                IntBuffer framePixels = regions[frameIndex];
+                WebPFXImageScaler.scaleAsArgbPre(frame, scalePlan, framePixels);
                 preparedFrames.add(new AnimationFrame(
-                        WebPFXImageScaler.scaleAsArgbPre(frame, scalePlan),
+                        framePixels,
                         WebPPixelFormat.INT_ARGB_PRE,
                         frame.getDurationMillis()
                 ));
-            } else {
+            }
+            presentationPixels = regions[sourceFrames.size()];
+        } else {
+            for (WebPFrame frame : sourceFrames) {
                 preparedFrames.add(new AnimationFrame(
                         frame.getPixels(),
                         frame.getPixelFormat(),
                         frame.getDurationMillis()
                 ));
             }
+            presentationPixels = WebPFXImageScaler.allocateDirectBuffer(
+                    scalePlan.targetWidth(),
+                    scalePlan.targetHeight()
+            );
         }
-        return List.copyOf(preparedFrames);
+        return new PreparedAnimation(List.copyOf(preparedFrames), presentationPixels);
+    }
+
+    /// Allocates fixed-size direct regions in chunks containing only complete regions.
+    ///
+    /// Each chunk is capped at [#MAX_ANIMATION_CHUNK_BYTES] unless a single region is larger. No
+    /// region spans multiple chunks.
+    ///
+    /// @param regionCount the number of equal-sized regions to allocate
+    /// @param pixelCount the number of integer pixels in each region
+    /// @return position-zero region slices in allocation order
+    /// @throws IllegalArgumentException if a region cannot fit in one direct buffer
+    private static IntBuffer[] allocatePackedAnimationRegions(int regionCount, int pixelCount) {
+        long regionBytes = (long) pixelCount * Integer.BYTES;
+        if (regionBytes > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                    "Animation frame is too large for direct storage: " + regionBytes + " bytes"
+            );
+        }
+
+        int regionsPerChunk = (int) Math.max(1L, MAX_ANIMATION_CHUNK_BYTES / regionBytes);
+        IntBuffer[] regions = new IntBuffer[regionCount];
+        int regionIndex = 0;
+        while (regionIndex < regionCount) {
+            int chunkRegionCount = Math.min(regionsPerChunk, regionCount - regionIndex);
+            int chunkPixelCount;
+            try {
+                chunkPixelCount = Math.multiplyExact(pixelCount, chunkRegionCount);
+            } catch (ArithmeticException ex) {
+                throw new IllegalArgumentException("Animation chunk is too large", ex);
+            }
+            IntBuffer chunk = WebPFXImageScaler.allocateDirectPixels(chunkPixelCount);
+            for (int chunkIndex = 0; chunkIndex < chunkRegionCount; chunkIndex++) {
+                regions[regionIndex++] = chunk.slice(chunkIndex * pixelCount, pixelCount);
+            }
+        }
+        return regions;
     }
 
     /// Creates a JavaFX pixel buffer over prepared direct `INT_ARGB_PRE` storage.
@@ -322,6 +381,17 @@ public final class WebPFXImage extends WritableImage {
             @UnmodifiableView IntBuffer pixels,
             WebPPixelFormat pixelFormat,
             int durationMillis
+    ) {
+    }
+
+    /// Prepared immutable animation frames and the mutable JavaFX presentation region.
+    ///
+    /// @param frames retained frame pixels and timing information
+    /// @param presentationPixels writable target-size `INT_ARGB_PRE` pixels
+    @NotNullByDefault
+    private record PreparedAnimation(
+            @Unmodifiable List<AnimationFrame> frames,
+            IntBuffer presentationPixels
     ) {
     }
 }

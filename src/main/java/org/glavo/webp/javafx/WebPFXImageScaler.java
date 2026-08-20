@@ -48,15 +48,41 @@ final class WebPFXImageScaler {
     /// @param scalePlan the target dimensions and filtering mode
     /// @return position-zero direct scaled pixels
     static @UnmodifiableView IntBuffer scaleAsArgbPre(WebPFrame frame, ScalePlan scalePlan) {
-        @UnmodifiableView IntBuffer source = frame.getPixels();
         IntBuffer target = allocateDirectBuffer(scalePlan.targetWidth(), scalePlan.targetHeight());
+        scaleAsArgbPre(frame, scalePlan, target);
+        return target;
+    }
+
+    /// Scales one frame into supplied `INT_ARGB_PRE` storage.
+    ///
+    /// The destination must have exactly one element per target pixel. Its position is reset to
+    /// zero before this method returns.
+    ///
+    /// @param frame the source frame
+    /// @param scalePlan the target dimensions and filtering mode
+    /// @param target the writable target-size pixel storage
+    /// @throws IllegalArgumentException if the destination size does not match the scale plan
+    static void scaleAsArgbPre(WebPFrame frame, ScalePlan scalePlan, IntBuffer target) {
+        int expectedPixels;
+        try {
+            expectedPixels = Math.multiplyExact(scalePlan.targetWidth(), scalePlan.targetHeight());
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("Scaled image dimensions are too large", ex);
+        }
+        if (target.capacity() != expectedPixels) {
+            throw new IllegalArgumentException(
+                    "Target buffer capacity does not match scaled dimensions: "
+                            + target.capacity() + " != " + expectedPixels
+            );
+        }
+
+        @UnmodifiableView IntBuffer source = frame.getPixels();
         if (scalePlan.smooth()) {
             scaleBilinear(source, frame.getPixelFormat(), scalePlan, target);
         } else {
             scaleNearest(source, frame.getPixelFormat(), scalePlan, target);
         }
         target.rewind();
-        return target;
     }
 
     /// Allocates writable direct storage for JavaFX presentation.
@@ -73,14 +99,24 @@ final class WebPFXImageScaler {
             throw new IllegalArgumentException("Image dimensions are too large: " + width + "x" + height, ex);
         }
 
+        return allocateDirectPixels(pixelCount);
+    }
+
+    /// Allocates writable native-order direct storage for packed integer pixels.
+    ///
+    /// @param pixelCount the number of integer pixels to allocate
+    /// @return a position-zero writable direct buffer
+    /// @throws IllegalArgumentException if `pixelCount` is negative or its byte size exceeds the
+    ///                                  supported buffer capacity
+    static IntBuffer allocateDirectPixels(int pixelCount) {
+        if (pixelCount < 0) {
+            throw new IllegalArgumentException("pixelCount < 0: " + pixelCount);
+        }
         int byteCount;
         try {
             byteCount = Math.multiplyExact(pixelCount, Integer.BYTES);
         } catch (ArithmeticException ex) {
-            throw new IllegalArgumentException(
-                    "Image dimensions are too large for direct storage: " + width + "x" + height,
-                    ex
-            );
+            throw new IllegalArgumentException("Pixel count is too large for direct storage: " + pixelCount, ex);
         }
         return ByteBuffer.allocateDirect(byteCount)
                 .order(ByteOrder.nativeOrder())
