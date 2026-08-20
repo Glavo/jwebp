@@ -59,26 +59,22 @@ System.out.println("frames = " + image.getFrames().size());
 System.out.println("pixels = " + image.getFirstFrame().getArgbPixels());
 ```
 
-Use an immutable decoder configuration when a different pixel representation or buffer location is
-needed:
+Select a different stored pixel representation when reading the image:
 
 ```java
-WebPDecoder decoder = WebPDecoder.DEFAULT
-        .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-        .withDirect(true);
-
-WebPImage image = decoder.read(Path.of("sample.webp"));
+WebPImage image = WebPImage.read(
+        Path.of("sample.webp"),
+        WebPPixelFormat.INT_ARGB_PRE
+);
 ```
 
-For static images, direct output is decoded into the final frame buffer without first materializing
-a full-size heap `ARGB` array. Codec workspaces and animated-image composition may still use heap
-memory.
+Frames returned by `WebPImage.read(...)` are heap-backed.
 
 Stream frames from an animated WebP:
 
 ```java
 try (InputStream input = Files.newInputStream(Path.of("/animated.webp"));
-     WebPImageReader reader = WebPDecoder.DEFAULT.open(input)) {
+     WebPImageReader reader = WebPImageReader.open(input)) {
     while (true) {
         WebPFrame frame = reader.readNextFrame();
         if (frame == null) {
@@ -89,10 +85,11 @@ try (InputStream input = Files.newInputStream(Path.of("/animated.webp"));
 }
 ```
 
-`readNextFrame(IntBuffer)` decodes a frame into the buffer region beginning at its current position
-and retains that region without copying. The buffer may be heap-backed or direct and may use either
-byte order. A successful call advances its position by the canvas pixel count; the caller must not
-modify the retained region while the frame remains in use.
+`readNextFrame(WebPPixelFormat, IntBuffer)` decodes a frame into the buffer region beginning at its
+current position and retains that region without copying. The buffer may be heap-backed or direct
+and may use either byte order. A successful call advances its position by the canvas pixel count;
+the caller must not modify the retained region while the frame remains in use. Reader-allocated
+frames are always heap-backed, so direct storage must be supplied explicitly through this overload.
 
 ### JavaFX Integration
 
@@ -102,17 +99,15 @@ However, JWebP also provides optional components for JavaFX, located in the `org
 which can easily convert `WebPImage` to JavaFX `Image`:
 
 ```java
-WebPDecoder fxDecoder = WebPDecoder.DEFAULT
-        .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-        .withDirect(true);
+WebPImage decoded = WebPImage.read(..., WebPPixelFormat.INT_ARGB_PRE);
 
 // Create a JavaFX image from a WebPImage.
 // If it is an animated WebP, it will automatically play the animation.
 // You can control its presentation by passing WebPFXImageOptions.
-javafx.scene.image.Image image = WebPFXImage.of(fxDecoder.read(...));
+javafx.scene.image.Image image = WebPFXImage.of(decoded);
 
 // Create a JavaFX image from a WebPFrame.
-javafx.scene.image.Image frameImage = WebPFXImage.of(fxDecoder.read(...).getFirstFrame());
+javafx.scene.image.Image frameImage = WebPFXImage.of(decoded.getFirstFrame());
 
 // Scale into a 640-by-480 bounding box while preserving the aspect ratio.
 WebPFXImageOptions fxOptions = WebPFXImageOptions.DEFAULT
@@ -120,7 +115,7 @@ WebPFXImageOptions fxOptions = WebPFXImageOptions.DEFAULT
         .withPreserveRatio(true)
         .withSmooth(true);
 javafx.scene.image.Image scaledImage = WebPFXImage.of(
-        fxDecoder.read(...),
+        decoded,
         fxOptions
 );
 ```
@@ -128,9 +123,9 @@ javafx.scene.image.Image scaledImage = WebPFXImage.of(
 `WebPFXImageOptions` configures the requested size, aspect-ratio preservation, smooth filtering,
 and animation autoplay without ambiguous positional boolean arguments. Scaling affects only the
 JavaFX presentation; decoded `WebPFrame` and `WebPImage` objects retain their intrinsic dimensions.
-Intrinsic-size static `INT_ARGB_PRE` frames are used directly as the JavaFX `PixelBuffer` backing
-store. When conversion or scaling requires a new buffer, it follows the source frame's heap or
-direct storage location.
+Intrinsic-size static direct `INT_ARGB_PRE` frames are used directly as the JavaFX `PixelBuffer`
+backing store. Heap frames, format conversion, and scaling use newly allocated direct presentation
+storage.
 
 ### Swing Integration
 

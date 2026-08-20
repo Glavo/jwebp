@@ -7,15 +7,15 @@
 - Change the project license from Apache-2.0 to MPL-2.0 for version 0.3.0
 - Remove `WebPImageLoadOptions`, the scale-aware `WebPImage#read` and `WebPImageReader#open` overloads, and the `getSourceWidth()` / `getSourceHeight()` methods; core images are now always decoded at their intrinsic canvas size, with presentation scaling available through `WebPFXImage#of(...)` and `WebPFXImageOptions`
 - Replace the public `WebPFXImage` constructors and positional configuration overloads with `WebPFXImage#of(...)` factory methods using `WebPFXImageOptions`
-- Replace `WebPImageReader#readNextFrame(boolean)` with `WebPImageReader#readNextFrame(IntBuffer)`, which retains a caller-provided pixel-buffer region for the decoded frame
+- Remove `WebPDecoder`; `WebPImage` now accepts only a pixel format and always uses heap-backed frames, while `WebPImageReader` selects the format per frame and requires a caller-provided `IntBuffer` for direct storage
+- Replace `WebPImageReader#readNextFrame(boolean)` with `readNextFrame(WebPPixelFormat)` and `readNextFrame(WebPPixelFormat, IntBuffer)`
 - `WebPFXImage#getPixelWriter()` is now unsupported because `WebPFXImage` is backed by a `PixelBuffer`
 
 ### Added
 
 - New API: `WebPFrame#getArgb(int, int)`
 - New API: `WebPSwingUtils`
-- New immutable `WebPDecoder` API for configuring decoded pixel format and the default frame buffer location
-- Heap-backed and direct frame buffers for `INT_ARGB` and `INT_ARGB_PRE` pixels, with caller-provided `IntBuffer` storage during streaming decode
+- Heap-backed and caller-provided frame buffers for `INT_ARGB` and `INT_ARGB_PRE` pixels during streaming decode
 - New API: `WebPFrame#usesCustomPixelBuffer()`
 - New immutable `WebPFXImageOptions` API for JavaFX presentation scaling, filtering, and animation autoplay
 
@@ -27,7 +27,7 @@
 ### Performance
 
 - Improve VP8 and VP8L decoding throughput and substantially reduce temporary allocations, especially for animated WebP images
-- Decode static direct-buffer frames into their final storage, avoiding a full-size heap `ARGB` staging array and the subsequent copy
+- Decode static frames directly into caller-provided storage, avoiding a full-size heap `ARGB` staging array and the subsequent copy
 
 ### Fixed
 

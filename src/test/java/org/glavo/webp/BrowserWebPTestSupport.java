@@ -10,6 +10,9 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,11 +40,21 @@ final class BrowserWebPTestSupport {
         WebPImage eager = WebPImage.read(new ByteArrayInputStream(encoded));
 
         if (!eager.isAnimated()) {
-            WebPImage direct = WebPDecoder.DEFAULT
-                    .withDirect(true)
-                    .read(new ByteArrayInputStream(encoded));
-            assertTrue(direct.getFirstFrame().getPixels().isDirect(), resourceName + " direct storage");
-            assertImageEquals(eager, direct, resourceName + " direct decode");
+            try (WebPImageReader reader = WebPImageReader.open(new ByteArrayInputStream(encoded))) {
+                int pixelCount = Math.multiplyExact(reader.getWidth(), reader.getHeight());
+                IntBuffer storage = ByteBuffer
+                        .allocateDirect(Math.multiplyExact(pixelCount, Integer.BYTES))
+                        .order(ByteOrder.nativeOrder())
+                        .asIntBuffer();
+                WebPFrame direct = reader.readNextFrame(WebPPixelFormat.INT_ARGB, storage);
+                assertNotNull(direct, resourceName + " direct frame");
+                assertTrue(direct.getPixels().isDirect(), resourceName + " direct storage");
+                assertArrayEquals(
+                        eager.getFirstFrame().getArgbArray(),
+                        direct.getArgbArray(),
+                        resourceName + " direct decode"
+                );
+            }
         }
 
         try (WebPImageReader reader = WebPImageReader.open(new ByteArrayInputStream(encoded))) {

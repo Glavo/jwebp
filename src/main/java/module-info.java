@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Glavo
 // SPDX-License-Identifier: MPL-2.0
 
-import org.glavo.webp.WebPDecoder;
 import org.glavo.webp.WebPImage;
 import org.glavo.webp.WebPImageReader;
 
@@ -10,12 +9,10 @@ import org.glavo.webp.WebPImageReader;
 /// The module exposes a public API in `org.glavo.webp` for reading static and
 /// animated WebP images, extracting metadata, and converting decoded frames to optionally scaled
 /// JavaFX images.
-/// [WebPDecoder] configures the packed integer pixel representation and whether returned frame
-/// buffers are direct by default. Three entry points are provided:
+/// Two entry points are provided:
 ///
-///   - [WebPDecoder] for immutable, reusable decoding configuration;
 ///   - [WebPImage] for eager full-image decode;
-///   - [WebPImageReader] for forward-only frame-by-frame decode.
+///   - [WebPImageReader] for forward-only frame-by-frame decode with per-frame output selection.
 ///
 /// The decoder is implemented in pure Java. It does not depend on `java.desktop` or any
 /// external WebP codec.

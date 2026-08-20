@@ -6,9 +6,8 @@ import org.glavo.webp.internal.Argb;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.UnmodifiableView;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.IntBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.util.Objects;
 
 /// An immutable decoded presentation frame.
@@ -37,7 +36,7 @@ public final class WebPFrame {
     /// Pixel representation used by [#pixels].
     private final WebPPixelFormat pixelFormat;
 
-    /// Whether the pixel storage was supplied through the custom-buffer reader overload.
+    /// Whether the pixel storage was supplied by the reader's caller.
     private final boolean customPixelBuffer;
 
     /// Read-only, position-zero view of the frame's tightly packed pixels.
@@ -56,7 +55,6 @@ public final class WebPFrame {
                 durationMillis,
                 argbPixels,
                 WebPPixelFormat.INT_ARGB,
-                false,
                 false
         );
     }
@@ -71,7 +69,6 @@ public final class WebPFrame {
     /// @param durationMillis the display duration in milliseconds, or `0` for a still image
     /// @param argbPixels tightly packed non-premultiplied `ARGB` source pixels
     /// @param pixelFormat the requested stored pixel representation
-    /// @param direct whether to store the pixels in a direct buffer
     /// @param copyArgb whether heap output must copy the source array before conversion
     /// @throws IllegalArgumentException if dimensions, duration, or source length are invalid
     WebPFrame(
@@ -80,7 +77,6 @@ public final class WebPFrame {
             int durationMillis,
             int[] argbPixels,
             WebPPixelFormat pixelFormat,
-            boolean direct,
             boolean copyArgb
     ) {
         Objects.requireNonNull(argbPixels, "argbPixels");
@@ -109,29 +105,31 @@ public final class WebPFrame {
         this.durationMillis = durationMillis;
         this.pixelFormat = pixelFormat;
         this.customPixelBuffer = false;
-        this.pixels = createPixels(argbPixels, pixelFormat, direct, copyArgb);
+        this.pixels = createPixels(argbPixels, pixelFormat, copyArgb);
     }
 
-    /// Creates a frame by retaining prepared pixel storage.
+    /// Creates a frame by converting and retaining caller-provided pixel storage.
     ///
-    /// The remaining buffer region must contain exactly one tightly packed pixel per frame pixel
-    /// in `pixelFormat`. The caller must not modify the retained region while the frame remains in
+    /// The remaining buffer region must contain exactly one tightly packed non-premultiplied
+    /// `ARGB` pixel per frame pixel. The pixels are converted in place when `pixelFormat` requires
+    /// premultiplication. The caller must not modify the retained region while the frame remains in
     /// use.
     ///
     /// @param width the frame width in pixels
     /// @param height the frame height in pixels
     /// @param durationMillis the display duration in milliseconds, or `0` for a still image
     /// @param pixelFormat the stored pixel representation
-    /// @param pixels the prepared pixel storage to retain
-    /// @param customPixelBuffer whether the storage was supplied by the reader's caller
+    /// @param pixels writable, tightly packed non-premultiplied `ARGB` storage to retain
+    /// @param opaque whether every source pixel is known to be fully opaque
     /// @throws IllegalArgumentException if dimensions, duration, or buffer size are invalid
+    /// @throws ReadOnlyBufferException if `pixels` is read-only
     WebPFrame(
             int width,
             int height,
             int durationMillis,
             WebPPixelFormat pixelFormat,
             IntBuffer pixels,
-            boolean customPixelBuffer
+            boolean opaque
     ) {
         Objects.requireNonNull(pixelFormat, "pixelFormat");
         Objects.requireNonNull(pixels, "pixels");
@@ -153,12 +151,20 @@ public final class WebPFrame {
                             + pixels.remaining() + " != " + pixelCount
             );
         }
+        if (pixels.isReadOnly()) {
+            throw new ReadOnlyBufferException();
+        }
+        if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE && !opaque) {
+            for (int index = pixels.position(); index < pixels.limit(); index++) {
+                pixels.put(index, Argb.premultiply(pixels.get(index)));
+            }
+        }
         this.width = width;
         this.height = height;
         this.scanlineStride = width;
         this.durationMillis = durationMillis;
         this.pixelFormat = pixelFormat;
-        this.customPixelBuffer = customPixelBuffer;
+        this.customPixelBuffer = true;
         this.pixels = pixels.slice().asReadOnlyBuffer();
     }
 
@@ -205,7 +211,7 @@ public final class WebPFrame {
     /// not permit modifying the pixel region while this frame remains in use.
     ///
     /// @return `true` if the pixel storage was supplied to
-    ///         [WebPImageReader#readNextFrame(IntBuffer)]
+    ///         [WebPImageReader#readNextFrame(WebPPixelFormat, IntBuffer)]
     public boolean usesCustomPixelBuffer() {
         return customPixelBuffer;
     }
@@ -273,52 +279,19 @@ public final class WebPFrame {
     ///
     /// @param argbPixels the source non-premultiplied pixels
     /// @param pixelFormat the destination representation
-    /// @param direct whether to allocate direct destination storage
     /// @param copyArgb whether heap output must copy its source before conversion
     /// @return a read-only, position-zero buffer
     private static @UnmodifiableView IntBuffer createPixels(
             int[] argbPixels,
             WebPPixelFormat pixelFormat,
-            boolean direct,
             boolean copyArgb
     ) {
-        if (!direct) {
-            int[] output = copyArgb ? argbPixels.clone() : argbPixels;
-            if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
-                for (int index = 0; index < argbPixels.length; index++) {
-                    output[index] = Argb.premultiply(output[index]);
-                }
-            }
-            return IntBuffer.wrap(output).asReadOnlyBuffer();
-        }
-
-        IntBuffer output = allocateDirectPixels(argbPixels.length);
-        if (pixelFormat == WebPPixelFormat.INT_ARGB) {
-            output.put(argbPixels);
-        } else {
-            for (int argbPixel : argbPixels) {
-                output.put(Argb.premultiply(argbPixel));
+        int[] output = copyArgb ? argbPixels.clone() : argbPixels;
+        if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
+            for (int index = 0; index < argbPixels.length; index++) {
+                output[index] = Argb.premultiply(output[index]);
             }
         }
-        output.flip();
-        return output.asReadOnlyBuffer();
-    }
-
-    /// Allocates writable native-order direct storage for packed integer pixels.
-    ///
-    /// @param pixelCount the number of pixels to allocate
-    /// @return a position-zero direct integer buffer
-    /// @throws IllegalArgumentException if `pixelCount` is negative or the required byte size
-    ///                                  exceeds the supported range
-    static IntBuffer allocateDirectPixels(int pixelCount) {
-        int byteCount;
-        try {
-            byteCount = Math.multiplyExact(pixelCount, Integer.BYTES);
-        } catch (ArithmeticException ex) {
-            throw new IllegalArgumentException("Pixel buffer is too large for direct storage", ex);
-        }
-        return ByteBuffer.allocateDirect(byteCount)
-                .order(ByteOrder.nativeOrder())
-                .asIntBuffer();
+        return IntBuffer.wrap(output).asReadOnlyBuffer();
     }
 }

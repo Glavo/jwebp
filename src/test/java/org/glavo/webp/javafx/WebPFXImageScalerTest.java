@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.webp.javafx;
 
-import org.glavo.webp.WebPDecoder;
 import org.glavo.webp.WebPException;
 import org.glavo.webp.WebPFrame;
+import org.glavo.webp.WebPImage;
 import org.glavo.webp.WebPPixelFormat;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
@@ -78,9 +78,8 @@ final class WebPFXImageScalerTest {
         InputStream source = Objects.requireNonNull(
                 WebPFXImageScalerTest.class.getClassLoader().getResourceAsStream("images/regression-tiny.webp")
         );
-        return WebPDecoder.DEFAULT
-                .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-                .read(source)
+        return WebPImage
+                .read(source, WebPPixelFormat.INT_ARGB_PRE)
                 .getFirstFrame();
     }
 }

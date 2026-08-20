@@ -69,20 +69,19 @@ final class LibWebpPortedTest {
             WebPImage eager = WebPImage.read(new ByteArrayInputStream(bytes));
             assertFalse(eager.getFrames().isEmpty(), resource);
 
-            WebPDecoder decoder = WebPDecoder.DEFAULT
-                    .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-                    .withDirect(true);
-
             Image firstFrameImage = WebPFXImage.of(
-                    decoder.read(new ByteArrayInputStream(bytes)).getFirstFrame()
+                    WebPImage.read(
+                            new ByteArrayInputStream(bytes),
+                            WebPPixelFormat.INT_ARGB_PRE
+                    ).getFirstFrame()
             );
             assertTrue(firstFrameImage.getWidth() > 0, resource);
             assertTrue(firstFrameImage.getHeight() > 0, resource);
 
-            try (WebPImageReader reader = decoder.open(new ChunkedInputStream(bytes, 7))) {
+            try (WebPImageReader reader = WebPImageReader.open(new ChunkedInputStream(bytes, 7))) {
                 List<WebPFrame> frames = new ArrayList<>();
                 while (true) {
-                    WebPFrame next = reader.readNextFrame();
+                    WebPFrame next = reader.readNextFrame(WebPPixelFormat.INT_ARGB_PRE);
                     if (next == null) {
                         break;
                     }
@@ -98,21 +97,14 @@ final class LibWebpPortedTest {
     void configuredDecodingIsStableAcrossChunkedInput() throws Exception {
         byte[] bytes = readResourceBytes(LIBWEBP_EXAMPLE_WEBP);
 
-        for (WebPDecoder decoder : List.of(
-                WebPDecoder.DEFAULT,
-                WebPDecoder.DEFAULT.withPixelFormat(WebPPixelFormat.INT_ARGB_PRE),
-                WebPDecoder.DEFAULT.withDirect(true),
-                WebPDecoder.DEFAULT
-                        .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-                        .withDirect(true)
-        )) {
-            WebPImage eager = decoder.read(new ByteArrayInputStream(bytes));
-            WebPImage streaming = decoder.read(new ChunkedInputStream(bytes, 5));
+        for (WebPPixelFormat pixelFormat : WebPPixelFormat.values()) {
+            WebPImage eager = WebPImage.read(new ByteArrayInputStream(bytes), pixelFormat);
+            WebPImage streaming = WebPImage.read(new ChunkedInputStream(bytes, 5), pixelFormat);
 
             assertEquals(eager.getWidth(), streaming.getWidth());
             assertEquals(eager.getHeight(), streaming.getHeight());
             assertEquals(eager.getFrames().size(), streaming.getFrames().size());
-            assertEquals(decoder.getPixelFormat(), streaming.getFirstFrame().getPixelFormat());
+            assertEquals(pixelFormat, streaming.getFirstFrame().getPixelFormat());
             assertFrameSamplesClose(streaming.getFrames().get(0), readPixels(eager.getFrames().get(0)), 0);
         }
     }
@@ -175,18 +167,20 @@ final class LibWebpPortedTest {
     }
 
     private static void assertOnlyExpectedDecodeFailure(byte[] data) {
-        WebPDecoder decoder = WebPDecoder.DEFAULT
-                .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-                .withDirect(true);
-
         assertOnlyWebPException(() -> WebPImage.read(new ByteArrayInputStream(data)));
-        assertOnlyWebPException(() -> decoder.read(new ChunkedInputStream(data, 3)));
+        assertOnlyWebPException(() -> WebPImage.read(
+                new ChunkedInputStream(data, 3),
+                WebPPixelFormat.INT_ARGB_PRE
+        ));
         assertOnlyWebPException(() -> WebPFXImage.of(
-                decoder.read(new ByteArrayInputStream(data)).getFirstFrame()
+                WebPImage.read(
+                        new ByteArrayInputStream(data),
+                        WebPPixelFormat.INT_ARGB_PRE
+                ).getFirstFrame()
         ));
         assertOnlyWebPException(() -> {
-            try (WebPImageReader reader = decoder.open(new ChunkedInputStream(data, 5))) {
-                while (reader.readNextFrame() != null) {
+            try (WebPImageReader reader = WebPImageReader.open(new ChunkedInputStream(data, 5))) {
+                while (reader.readNextFrame(WebPPixelFormat.INT_ARGB_PRE) != null) {
                     // Consume until exhausted or a WebPException is raised.
                 }
             }

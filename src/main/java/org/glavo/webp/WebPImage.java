@@ -5,10 +5,12 @@ package org.glavo.webp;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /// Fully decoded WebP content.
 ///
@@ -17,26 +19,69 @@ import java.util.List;
 @NotNullByDefault
 public final class WebPImage {
 
-    /// Reads and fully decodes a WebP stream using [WebPDecoder#DEFAULT].
+    /// Reads and fully decodes a WebP stream into heap-backed [WebPPixelFormat#INT_ARGB] frames.
     ///
-    /// The supplied stream is closed before this method returns, including when decoding fails.
+    /// Ownership of the stream transfers to this method. The stream is closed before this method
+    /// returns, including when decoding fails.
     ///
     /// @param input the WebP byte stream
     /// @return the fully decoded image
     /// @throws WebPException if parsing or decoding fails
     /// @throws NullPointerException if `input` is `null`
     public static WebPImage read(InputStream input) throws WebPException {
-        return WebPDecoder.DEFAULT.read(input);
+        return read(input, WebPPixelFormat.INT_ARGB);
     }
 
-    /// Reads and fully decodes a WebP file using [WebPDecoder#DEFAULT].
+    /// Reads and fully decodes a WebP stream into heap-backed frames.
+    ///
+    /// Once both arguments have been validated, ownership of the stream transfers to this method.
+    /// The stream is closed before this method returns, including when decoding fails.
+    ///
+    /// @param input the WebP byte stream
+    /// @param pixelFormat the stored frame pixel representation
+    /// @return the fully decoded image
+    /// @throws WebPException if parsing, decoding, or closing fails
+    /// @throws NullPointerException if `input` or `pixelFormat` is `null`
+    public static WebPImage read(InputStream input, WebPPixelFormat pixelFormat) throws WebPException {
+        Objects.requireNonNull(pixelFormat, "pixelFormat");
+        Objects.requireNonNull(input, "input");
+        try (WebPImageReader reader = WebPImageReader.open(input)) {
+            return collect(reader, pixelFormat);
+        } catch (IOException ex) {
+            if (ex instanceof WebPException webPException) {
+                throw webPException;
+            }
+            throw new WebPException("Failed to decode WebP stream", ex);
+        }
+    }
+
+    /// Reads and fully decodes a WebP file into heap-backed [WebPPixelFormat#INT_ARGB] frames.
     ///
     /// @param path the WebP file path
     /// @return the fully decoded image
     /// @throws WebPException if the file cannot be parsed or decoded
     /// @throws NullPointerException if `path` is `null`
     public static WebPImage read(Path path) throws WebPException {
-        return WebPDecoder.DEFAULT.read(path);
+        return read(path, WebPPixelFormat.INT_ARGB);
+    }
+
+    /// Reads and fully decodes a WebP file into heap-backed frames.
+    ///
+    /// @param path the WebP file path
+    /// @param pixelFormat the stored frame pixel representation
+    /// @return the fully decoded image
+    /// @throws WebPException if the file cannot be opened, parsed, decoded, or closed
+    /// @throws NullPointerException if `path` or `pixelFormat` is `null`
+    public static WebPImage read(Path path, WebPPixelFormat pixelFormat) throws WebPException {
+        Objects.requireNonNull(path, "path");
+        Objects.requireNonNull(pixelFormat, "pixelFormat");
+        try (WebPImageReader reader = WebPImageReader.open(path)) {
+            return collect(reader, pixelFormat);
+        } catch (WebPException ex) {
+            throw ex;
+        } catch (IOException ex) {
+            throw new WebPException("Failed to decode WebP file: " + path, ex);
+        }
     }
 
     /// Image canvas width in pixels.
@@ -180,17 +225,21 @@ public final class WebPImage {
     /// The reader remains open and positioned at end of input when this method returns.
     ///
     /// @param reader the reader to exhaust
+    /// @param pixelFormat the stored representation for every collected frame
     /// @return the fully decoded image
     /// @throws WebPException if any frame cannot be decoded
-    static WebPImage collect(WebPImageReader reader) throws WebPException {
+    static WebPImage collect(
+            WebPImageReader reader,
+            WebPPixelFormat pixelFormat
+    ) throws WebPException {
         List<WebPFrame> frames;
         if (reader.getFrameCount() == 1) {
             //noinspection DataFlowIssue
-            frames = List.of(reader.readNextFrame());
+            frames = List.of(reader.readNextFrame(pixelFormat));
         } else {
             frames = new ArrayList<>(Math.max(1, reader.getFrameCount()));
             while (true) {
-                WebPFrame next = reader.readNextFrame();
+                WebPFrame next = reader.readNextFrame(pixelFormat);
                 if (next == null) {
                     break;
                 }

@@ -16,6 +16,9 @@ import org.junit.jupiter.api.Test;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -127,11 +130,17 @@ final class WebPFXImageTest {
 
     @Test
     void javaFxImageUsesPremultipliedDirectFrameThroughPixelBuffer() throws Exception {
-        WebPDecoder decoder = WebPDecoder.DEFAULT
-                .withPixelFormat(WebPPixelFormat.INT_ARGB_PRE)
-                .withDirect(true);
-        WebPFrame frame = decoder.read(resource("images/regression-tiny.webp")).getFirstFrame();
+        WebPFrame frame;
+        try (WebPImageReader reader = WebPImageReader.open(resource("images/regression-tiny.webp"))) {
+            int pixelCount = Math.multiplyExact(reader.getWidth(), reader.getHeight());
+            IntBuffer storage = ByteBuffer
+                    .allocateDirect(Math.multiplyExact(pixelCount, Integer.BYTES))
+                    .order(ByteOrder.nativeOrder())
+                    .asIntBuffer();
+            frame = reader.readNextFrame(WebPPixelFormat.INT_ARGB_PRE, storage);
+        }
 
+        assertNotNull(frame);
         assertTrue(frame.getPixels().isDirect());
         WebPFXImage image = callOnFxThread(() -> WebPFXImage.of(frame));
 

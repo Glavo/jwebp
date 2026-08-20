@@ -25,7 +25,8 @@ import java.util.Objects;
 ///
 /// The reader parses the RIFF container sequentially, buffers only the encoded frame payloads
 /// needed for later decode, and decodes full-canvas presentation frames on demand. A reader is
-/// stateful and not safe for concurrent use. Create configured readers from [WebPDecoder].
+/// stateful and not safe for concurrent use. The output pixel representation is selected for each
+/// frame read.
 @NotNullByDefault
 public final class WebPImageReader implements AutoCloseable {
 
@@ -44,34 +45,11 @@ public final class WebPImageReader implements AutoCloseable {
     /// @throws WebPException if the stream cannot be parsed
     /// @throws NullPointerException if `source` is `null`
     public static WebPImageReader open(InputStream source) throws WebPException {
-        return WebPDecoder.DEFAULT.open(source);
-    }
-
-    /// Opens a streaming reader for a file.
-    ///
-    /// @param path the WebP file path
-    /// @return a new streaming reader
-    /// @throws IOException if the file cannot be opened or read
-    /// @throws WebPException if the file cannot be parsed
-    /// @throws NullPointerException if `path` is `null`
-    public static WebPImageReader open(Path path) throws IOException, WebPException {
-        return WebPDecoder.DEFAULT.open(path);
-    }
-
-    /// Opens a configured reader for a generic byte stream.
-    ///
-    /// The input is closed if parsing fails; otherwise ownership is transferred to the returned
-    /// reader.
-    ///
-    /// @param source the WebP byte stream
-    /// @param decoder the immutable decoder configuration
-    /// @return a new configured reader
-    /// @throws WebPException if the stream cannot be parsed or read
-    static WebPImageReader open(InputStream source, WebPDecoder decoder) throws WebPException {
+        Objects.requireNonNull(source, "source");
         BufferedInput bufferedInput = new BufferedInput.OfInputStream(source);
         try {
             ParsedWebPImage image = WebPSequentialParser.parse(bufferedInput);
-            return new WebPImageReader(bufferedInput, image, decoder);
+            return new WebPImageReader(bufferedInput, image);
         } catch (IOException | RuntimeException ex) {
             closeAfterOpenFailure(bufferedInput, ex);
             if (ex instanceof WebPException webPException) {
@@ -84,22 +62,20 @@ public final class WebPImageReader implements AutoCloseable {
         }
     }
 
-    /// Opens a configured reader for a file.
-    ///
-    /// The channel is closed if parsing fails; otherwise ownership is transferred to the returned
-    /// reader.
+    /// Opens a streaming reader for a file.
     ///
     /// @param path the WebP file path
-    /// @param decoder the immutable decoder configuration
-    /// @return a new configured reader
+    /// @return a new streaming reader
     /// @throws IOException if the file cannot be opened or read
     /// @throws WebPException if the file cannot be parsed
-    static WebPImageReader open(Path path, WebPDecoder decoder) throws IOException, WebPException {
+    /// @throws NullPointerException if `path` is `null`
+    public static WebPImageReader open(Path path) throws IOException, WebPException {
+        Objects.requireNonNull(path, "path");
         SeekableByteChannel channel = Files.newByteChannel(path);
         try {
             BufferedInput bufferedInput = new BufferedInput.OfByteChannel(channel);
             ParsedWebPImage image = WebPSequentialParser.parse(bufferedInput);
-            return new WebPImageReader(bufferedInput, image, decoder);
+            return new WebPImageReader(bufferedInput, image);
         } catch (IOException | RuntimeException ex) {
             try {
                 channel.close();
@@ -124,9 +100,6 @@ public final class WebPImageReader implements AutoCloseable {
 
     /// Immutable metadata that owns the parser-exclusive payload arrays.
     private final WebPMetadata metadata;
-
-    /// Immutable output configuration captured when this reader was opened.
-    private final WebPDecoder decoder;
 
     /// Stateful VP8 decoder created on demand and reused across lossy frame decodes.
     private @Nullable Vp8Decoder vp8Decoder;
@@ -162,8 +135,7 @@ public final class WebPImageReader implements AutoCloseable {
     ///
     /// @param ownedInput the input closed with this reader
     /// @param image the parsed WebP container
-    /// @param decoder the immutable output configuration
-    private WebPImageReader(AutoCloseable ownedInput, ParsedWebPImage image, WebPDecoder decoder) {
+    private WebPImageReader(AutoCloseable ownedInput, ParsedWebPImage image) {
         this.ownedInput = ownedInput;
         this.image = image;
         this.metadata = WebPMetadata.fromOwnedPayloads(
@@ -171,7 +143,6 @@ public final class WebPImageReader implements AutoCloseable {
                 image.exifMetadata(),
                 image.xmpMetadata()
         );
-        this.decoder = decoder;
     }
 
     /// Returns the image canvas width.
@@ -253,12 +224,25 @@ public final class WebPImageReader implements AutoCloseable {
     /// Decodes the next frame, if available.
     ///
     /// Each returned animation frame is already composited to the full source canvas. Its pixel
-    /// format and buffer location use the defaults of the [WebPDecoder] that created this reader.
-    /// The returned frame owns storage allocated by the reader.
+    /// storage is heap-backed and uses [WebPPixelFormat#INT_ARGB].
     ///
     /// @return the next frame, or `null` when the stream is exhausted
     /// @throws WebPException if decoding fails
     public @Nullable WebPFrame readNextFrame() throws WebPException {
+        return readNextFrame(WebPPixelFormat.INT_ARGB);
+    }
+
+    /// Decodes the next frame into reader-allocated heap storage, if a frame is available.
+    ///
+    /// Each returned animation frame is already composited to the full source canvas. The returned
+    /// frame owns its heap-backed storage in the requested representation.
+    ///
+    /// @param pixelFormat the stored pixel representation
+    /// @return the next frame, or `null` when the stream is exhausted
+    /// @throws WebPException if decoding fails
+    /// @throws NullPointerException if `pixelFormat` is `null`
+    public @Nullable WebPFrame readNextFrame(WebPPixelFormat pixelFormat) throws WebPException {
+        Objects.requireNonNull(pixelFormat, "pixelFormat");
         ensureOpen();
         if (nextFrameIndex >= image.frames().size()) {
             return null;
@@ -266,40 +250,28 @@ public final class WebPImageReader implements AutoCloseable {
 
         ParsedFrameDescriptor descriptor = image.frames().get(nextFrameIndex);
         try {
+            int[] frameArgb = decodeFrameArgb(descriptor);
             WebPFrame frame;
-            if (!image.animated() && decoder.isDirect()) {
-                int pixelCount = framePixelCount();
-                IntBuffer frameArgb = WebPFrame.allocateDirectPixels(pixelCount);
-                decodeFrameArgb(descriptor, frameArgb);
-                frame = decoder.createFrame(
+            if (image.animated()) {
+                compositeAnimatedFrame(descriptor, frameArgb, framePixelCount());
+                assert animationCanvas != null;
+                frame = new WebPFrame(
+                        image.sourceWidth(),
+                        image.sourceHeight(),
+                        descriptor.durationMillis(),
+                        animationCanvas,
+                        pixelFormat,
+                        true
+                );
+            } else {
+                frame = new WebPFrame(
                         descriptor.width(),
                         descriptor.height(),
                         descriptor.durationMillis(),
                         frameArgb,
-                        !descriptor.lossless() && descriptor.alphaChunk() == null,
+                        pixelFormat,
                         false
                 );
-            } else {
-                int[] frameArgb = decodeFrameArgb(descriptor);
-                if (image.animated()) {
-                    compositeAnimatedFrame(descriptor, frameArgb, framePixelCount());
-                    assert animationCanvas != null;
-                    frame = decoder.createFrame(
-                            image.sourceWidth(),
-                            image.sourceHeight(),
-                            descriptor.durationMillis(),
-                            animationCanvas,
-                            true
-                    );
-                } else {
-                    frame = decoder.createFrame(
-                            descriptor.width(),
-                            descriptor.height(),
-                            descriptor.durationMillis(),
-                            frameArgb,
-                            false
-                    );
-                }
             }
 
             nextFrameIndex++;
@@ -310,44 +282,53 @@ public final class WebPImageReader implements AutoCloseable {
         }
     }
 
-    /// Decodes the next frame into caller-provided pixel storage, if a frame is available.
+    /// Decodes the next frame in the requested representation into caller-provided pixel storage.
     ///
     /// The next canvas-width times canvas-height elements beginning at `storage.position()` receive
-    /// tightly packed pixels in the format configured by the [WebPDecoder] that created this
-    /// reader. The storage may be heap-backed or direct and may use either byte order. On success,
-    /// its position advances past that region and the returned frame retains the region without
-    /// copying. The storage limit is not changed. The caller must not modify the retained region
-    /// while the frame remains in use.
+    /// tightly packed pixels in `pixelFormat`. The storage may be heap-backed or direct and may use
+    /// either byte order. On success, its position advances past that region and the returned frame
+    /// retains the region without copying. The storage limit is not changed. The caller must not
+    /// modify the retained region while the frame remains in use.
     ///
     /// When no frame remains, this method returns `null` without inspecting or changing a non-null
     /// storage buffer's state. If decoding fails, the storage position and reader frame index
     /// remain unchanged, but any pixels already written to the destination region are unspecified.
     ///
+    /// @param pixelFormat the stored pixel representation
     /// @param storage the writable pixel storage to retain on successful decode
     /// @return the next frame, or `null` when the stream is exhausted
     /// @throws WebPException if decoding fails
-    /// @throws NullPointerException if `storage` is `null`
+    /// @throws NullPointerException if `pixelFormat` or `storage` is `null`
     /// @throws ReadOnlyBufferException if a frame remains and `storage` is read-only
     /// @throws IllegalArgumentException if a frame remains and the storage has insufficient
     ///                                  remaining elements
-    public @Nullable WebPFrame readNextFrame(IntBuffer storage) throws WebPException {
+    public @Nullable WebPFrame readNextFrame(
+            WebPPixelFormat pixelFormat,
+            IntBuffer storage
+    ) throws WebPException {
+        Objects.requireNonNull(pixelFormat, "pixelFormat");
         Objects.requireNonNull(storage, "storage");
         ensureOpen();
         if (nextFrameIndex >= image.frames().size()) {
             return null;
         }
-        return decodeNextFrame(storage, framePixelCount());
+        return decodeNextFrame(pixelFormat, storage, framePixelCount());
     }
 
     /// Decodes one known-to-exist frame into caller-provided storage.
     ///
+    /// @param pixelFormat the requested stored pixel representation
     /// @param storage the destination whose current region will be retained by the frame
     /// @param pixelCount the full-canvas pixel count
     /// @return the decoded frame
     /// @throws WebPException if decoding fails
     /// @throws ReadOnlyBufferException if `storage` is read-only
     /// @throws IllegalArgumentException if the storage has insufficient remaining elements
-    private WebPFrame decodeNextFrame(IntBuffer storage, int pixelCount) throws WebPException {
+    private WebPFrame decodeNextFrame(
+            WebPPixelFormat pixelFormat,
+            IntBuffer storage,
+            int pixelCount
+    ) throws WebPException {
         if (storage.isReadOnly()) {
             throw new ReadOnlyBufferException();
         }
@@ -370,23 +351,23 @@ public final class WebPImageReader implements AutoCloseable {
                 compositeAnimatedFrame(descriptor, decodedArgb, pixelCount);
                 assert animationCanvas != null;
                 frameArgb.put(0, animationCanvas, 0, pixelCount);
-                frame = decoder.createFrame(
+                frame = new WebPFrame(
                         image.sourceWidth(),
                         image.sourceHeight(),
                         descriptor.durationMillis(),
+                        pixelFormat,
                         frameArgb,
-                        false,
-                        true
+                        false
                 );
             } else {
                 decodeFrameArgb(descriptor, frameArgb);
-                frame = decoder.createFrame(
+                frame = new WebPFrame(
                         descriptor.width(),
                         descriptor.height(),
                         descriptor.durationMillis(),
+                        pixelFormat,
                         frameArgb,
-                        !descriptor.lossless() && descriptor.alphaChunk() == null,
-                        true
+                        !descriptor.lossless() && descriptor.alphaChunk() == null
                 );
             }
 

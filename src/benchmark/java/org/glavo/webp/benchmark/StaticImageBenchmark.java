@@ -6,8 +6,10 @@ import com.twelvemonkeys.imageio.plugins.webp.WebPImageReaderSpi;
 import dev.matrixlab.webp4j.WebPCodec;
 import javafx.embed.swing.SwingFXUtils;
 import javafx.scene.image.Image;
-import org.glavo.webp.WebPDecoder;
+import org.glavo.webp.WebPFrame;
 import org.glavo.webp.WebPImage;
+import org.glavo.webp.WebPImageReader;
+import org.glavo.webp.WebPPixelFormat;
 import org.glavo.webp.javafx.WebPFXImage;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -28,6 +30,10 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 /// JMH benchmarks comparing this project against TwelveMonkeys and direct JavaFX PNG loading.
@@ -43,9 +49,6 @@ public class StaticImageBenchmark {
 
     private static final String TEST_DATA_ROOT = "jwebp-test-data/";
     private static final WebPImageReaderSpi TWELVE_MONKEYS_SPI = new WebPImageReaderSpi();
-
-    /// Decoder that retains final frame pixels in direct memory.
-    private static final WebPDecoder DIRECT_DECODER = WebPDecoder.DEFAULT.withDirect(true);
 
     @State(Scope.Benchmark)
     public static class BenchmarkImages {
@@ -78,11 +81,11 @@ public class StaticImageBenchmark {
     /// Measures lossy decoding directly into retained off-heap frame storage.
     ///
     /// @param images the selected benchmark inputs
-    /// @return the decoded image
+    /// @return the decoded frame
     /// @throws Exception if decoding fails
     @Benchmark
-    public WebPImage jwebpLossyDirect(BenchmarkImages images) throws Exception {
-        return DIRECT_DECODER.read(new ByteArrayInputStream(images.lossyWebp));
+    public WebPFrame jwebpLossyDirect(BenchmarkImages images) throws Exception {
+        return readDirectFrame(images.lossyWebp);
     }
 
     @Benchmark
@@ -108,11 +111,29 @@ public class StaticImageBenchmark {
     /// Measures lossless decoding directly into retained off-heap frame storage.
     ///
     /// @param images the selected benchmark inputs
-    /// @return the decoded image
+    /// @return the decoded frame
     /// @throws Exception if decoding fails
     @Benchmark
-    public WebPImage jwebpLosslessDirect(BenchmarkImages images) throws Exception {
-        return DIRECT_DECODER.read(new ByteArrayInputStream(images.losslessWebp));
+    public WebPFrame jwebpLosslessDirect(BenchmarkImages images) throws Exception {
+        return readDirectFrame(images.losslessWebp);
+    }
+
+    /// Decodes one static WebP into caller-allocated direct storage.
+    ///
+    /// @param encoded the encoded WebP payload
+    /// @return the decoded frame
+    /// @throws Exception if opening, allocation, or decoding fails
+    private static WebPFrame readDirectFrame(byte[] encoded) throws Exception {
+        try (WebPImageReader reader = WebPImageReader.open(new ByteArrayInputStream(encoded))) {
+            int pixelCount = Math.multiplyExact(reader.getWidth(), reader.getHeight());
+            IntBuffer storage = ByteBuffer
+                    .allocateDirect(Math.multiplyExact(pixelCount, Integer.BYTES))
+                    .order(ByteOrder.nativeOrder())
+                    .asIntBuffer();
+            return Objects.requireNonNull(
+                    reader.readNextFrame(WebPPixelFormat.INT_ARGB, storage)
+            );
+        }
     }
 
     @Benchmark
