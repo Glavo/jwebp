@@ -22,14 +22,14 @@
 
 ### Changed
 
-- Back JavaFX images with direct `PixelBuffer` storage, while presenting intrinsic-size static direct `INT_ARGB_PRE` frames without copying
+- Back JavaFX images with adaptive `PixelBuffer` storage: ordinary images use heap memory, while large static images and animations with a large combined retained size use direct memory
 - For scaled animated JavaFX images, scale frames once during construction and retain only their target-size pixel storage
 
 ### Performance
 
 - Improve VP8 and VP8L decoding throughput and substantially reduce temporary allocations, especially for animated WebP images
 - Decode static frames directly into caller-provided storage, avoiding a full-size heap `ARGB` staging array and the subsequent copy
-- Pack scaled animation frames into bounded direct-memory chunks, reducing native allocations and Cleaner objects
+- Pack prepared animation frames into bounded adaptive-memory chunks, reducing allocation objects and moving only large frame sets off heap
 - Decode JavaFX images without constructing an intermediate heap-backed `WebPImage`
 - Reuse compatible premultiplied frame storage for non-premultiplied pixel access
 

@@ -431,11 +431,7 @@ public final class WebPImageReader implements AutoCloseable {
     ) {
         boolean allOpaque = pixelFormat == WebPPixelFormat.INT_ARGB_PRE && opaque;
         if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE && !opaque) {
-            int opaquePrefix = Argb.countOpaquePrefix(pixels);
-            allOpaque = opaquePrefix == pixels.remaining();
-            for (int index = pixels.position() + opaquePrefix; index < pixels.limit(); index++) {
-                pixels.put(index, Argb.premultiply(pixels.get(index)));
-            }
+            allOpaque = Argb.premultiply(pixels);
         }
 
         return new WebPFrame(

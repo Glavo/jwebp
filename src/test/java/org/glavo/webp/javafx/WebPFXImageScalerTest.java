@@ -10,33 +10,21 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
-import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Tests direct pixel storage prepared for JavaFX presentation.
+/// Tests pixel storage prepared for JavaFX presentation.
 @NotNullByDefault
 final class WebPFXImageScalerTest {
 
-    /// Verifies that newly allocated presentation storage is direct and uses native byte order.
-    @Test
-    void allocatesDirectPresentationStorage() {
-        IntBuffer buffer = WebPFXImageScaler.allocateDirectBuffer(3, 2);
-
-        assertTrue(buffer.isDirect());
-        assertEquals(ByteOrder.nativeOrder(), buffer.order());
-        assertEquals(6, buffer.capacity());
-    }
-
-    /// Verifies that a compatible heap frame is copied before it backs a JavaFX pixel buffer.
+    /// Verifies that compatible intrinsic-size heap storage can directly back a pixel buffer.
     ///
     /// @throws WebPException if the regression fixture cannot be decoded
     @Test
-    void copiesCompatibleHeapFrameIntoDirectPresentationStorage() throws WebPException {
+    void reusesCompatibleHeapPresentationStorage() throws WebPException {
         WebPFrame frame = decodeHeapPremultipliedFrame();
         IntBuffer source = frame.getPixels();
         WebPFXImageScaler.ScalePlan scalePlan = WebPFXImageScaler.ScalePlan.create(
@@ -48,7 +36,7 @@ final class WebPFXImageScalerTest {
         assertFalse(source.isDirect());
         IntBuffer presentation = WebPFXImageScaler.prepareStaticPixels(frame, scalePlan);
 
-        assertTrue(presentation.isDirect());
+        assertFalse(presentation.isDirect());
         assertEquals(source, presentation);
     }
 
@@ -57,7 +45,7 @@ final class WebPFXImageScalerTest {
     void bulkCopyPreservesBufferState() {
         IntBuffer source = IntBuffer.wrap(new int[]{1, 2, 3});
         source.position(1);
-        IntBuffer target = WebPFXImageScaler.allocateDirectBuffer(3, 1);
+        IntBuffer target = WebPFXImageStorage.allocate(3, 1);
         target.position(2);
 
         WebPFXImageScaler.copyAsArgbPre(source, WebPPixelFormat.INT_ARGB_PRE, target);
@@ -80,7 +68,7 @@ final class WebPFXImageScalerTest {
         int targetHeight = Math.multiplyExact(frame.getHeight(), 2);
         int pixelCount = Math.multiplyExact(targetWidth, targetHeight);
         int sentinel = 0x1357_9BDF;
-        IntBuffer packed = WebPFXImageScaler.allocateDirectPixels(pixelCount + 2);
+        IntBuffer packed = WebPFXImageStorage.allocatePixels(pixelCount + 2);
         packed.put(0, sentinel);
         packed.put(pixelCount + 1, sentinel);
         IntBuffer target = packed.slice(1, pixelCount);

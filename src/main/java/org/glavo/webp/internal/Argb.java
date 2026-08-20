@@ -5,6 +5,7 @@ package org.glavo.webp.internal;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.nio.IntBuffer;
+import java.util.Objects;
 
 /// Packed `ARGB` pixel helpers.
 ///
@@ -13,6 +14,7 @@ import java.nio.IntBuffer;
 @NotNullByDefault
 public final class Argb {
 
+    /// Prevents instantiation.
     private Argb() {
     }
 
@@ -39,9 +41,21 @@ public final class Argb {
     /// @param argb the packed `ARGB` pixels to inspect
     /// @return the number of consecutive pixels from index zero whose alpha channel is `255`
     public static int countOpaquePrefix(int[] argb) {
-        int index;
-        int blockEnd = argb.length & ~3;
-        for (index = 0; index < blockEnd; index += 4) {
+        return countOpaquePrefix(argb, 0, argb.length);
+    }
+
+    /// Returns the absolute index after the leading opaque pixels in an array range.
+    ///
+    /// @param argb the packed `ARGB` pixels to inspect
+    /// @param fromIndex the inclusive range start
+    /// @param toIndex the exclusive range end
+    /// @return the first non-opaque index, or `toIndex` if the range is fully opaque
+    /// @throws IndexOutOfBoundsException if the range is outside the array
+    private static int countOpaquePrefix(int[] argb, int fromIndex, int toIndex) {
+        Objects.checkFromToIndex(fromIndex, toIndex, argb.length);
+        int index = fromIndex;
+        int blockEnd = toIndex - ((toIndex - fromIndex) & 3);
+        for (; index < blockEnd; index += 4) {
             int all = argb[index]
                     & argb[index + 1]
                     & argb[index + 2]
@@ -50,7 +64,7 @@ public final class Argb {
                 break;
             }
         }
-        for (; index < argb.length; index++) {
+        for (; index < toIndex; index++) {
             if (alpha(argb[index]) != 0xFF) {
                 break;
             }
@@ -118,15 +132,56 @@ public final class Argb {
     /// @param argb the non-premultiplied pixels to convert
     /// @return `true` if every input pixel was fully opaque; otherwise `false`
     public static boolean premultiply(int[] argb) {
+        return premultiply(argb, 0, argb.length);
+    }
+
+    /// Premultiplies a buffer's remaining pixels in place and reports whether every input pixel
+    /// was opaque.
+    ///
+    /// The buffer's position and limit are not changed. Heap-backed writable buffers use their
+    /// backing array directly.
+    ///
+    /// @param argb the writable non-premultiplied pixels to convert
+    /// @return `true` if every input pixel was fully opaque; otherwise `false`
+    /// @throws java.nio.ReadOnlyBufferException if a non-opaque pixel must be converted and the
+    ///                                           buffer is read-only
+    public static boolean premultiply(IntBuffer argb) {
+        int position = argb.position();
+        int limit = argb.limit();
+        if (argb.hasArray()) {
+            int arrayOffset = argb.arrayOffset();
+            return premultiply(argb.array(), arrayOffset + position, arrayOffset + limit);
+        }
+
         int opaquePrefix = countOpaquePrefix(argb);
-        for (int index = opaquePrefix; index < argb.length; index++) {
+        for (int index = position + opaquePrefix; index < limit; index++) {
+            int pixel = argb.get(index);
+            int alpha = alpha(pixel);
+            if (alpha != 0xFF) {
+                argb.put(index, premultiplyNonOpaque(pixel, alpha));
+            }
+        }
+        return opaquePrefix == limit - position;
+    }
+
+    /// Premultiplies an array range in place and reports whether every input pixel was opaque.
+    ///
+    /// @param argb the non-premultiplied pixels to convert
+    /// @param fromIndex the inclusive range start
+    /// @param toIndex the exclusive range end
+    /// @return `true` if every input pixel was fully opaque; otherwise `false`
+    /// @throws IndexOutOfBoundsException if the range is outside the array
+    private static boolean premultiply(int[] argb, int fromIndex, int toIndex) {
+        Objects.checkFromToIndex(fromIndex, toIndex, argb.length);
+        int opaquePrefix = countOpaquePrefix(argb, fromIndex, toIndex);
+        for (int index = opaquePrefix; index < toIndex; index++) {
             int pixel = argb[index];
             int alpha = alpha(pixel);
             if (alpha != 0xFF) {
                 argb[index] = premultiplyNonOpaque(pixel, alpha);
             }
         }
-        return opaquePrefix == argb.length;
+        return opaquePrefix == toIndex;
     }
 
     /// Premultiplies a pixel whose alpha channel is known not to be opaque.

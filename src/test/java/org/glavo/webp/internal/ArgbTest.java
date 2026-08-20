@@ -65,6 +65,32 @@ final class ArgbTest {
         assertArrayEquals(new int[]{0xFF11_2233, 0x8080_4020, 0, 0xFF44_5566}, mixed);
     }
 
+    /// Verifies heap-buffer premultiplication over the remaining region without changing its state.
+    @Test
+    void premultipliesHeapBufferRanges() {
+        int[] pixels = {
+                0x0011_2233,
+                0xFF44_5566,
+                0x80FF_8040,
+                0x0011_2233,
+                0xFF77_8899
+        };
+        IntBuffer buffer = IntBuffer.wrap(pixels);
+        buffer.position(1);
+        buffer.limit(4);
+
+        assertFalse(Argb.premultiply(buffer));
+        assertEquals(1, buffer.position());
+        assertEquals(4, buffer.limit());
+        assertArrayEquals(new int[]{
+                0x0011_2233,
+                0xFF44_5566,
+                0x8080_4020,
+                0,
+                0xFF77_8899
+        }, pixels);
+    }
+
     /// Verifies opaque-prefix detection across empty, opaque, and translucent arrays.
     @Test
     void countsOpaqueArrayPrefixes() {
