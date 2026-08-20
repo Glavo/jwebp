@@ -27,8 +27,8 @@ import java.util.Objects;
 ///
 /// Instances are backed by a JavaFX [PixelBuffer] in `INT_ARGB_PRE` representation. A static
 /// [WebPFrame] already decoded as [WebPPixelFormat#INT_ARGB_PRE] is used directly when its
-/// intrinsic dimensions are requested. Converting the pixel representation or scaling creates a
-/// new presentation buffer in the same heap or direct memory location as its source frame.
+/// intrinsic dimensions are requested and its pixels are direct. Heap pixels, pixel-format
+/// conversion, and scaling are copied into direct presentation storage.
 /// Animated frames are scaled once during construction and copied into one reusable `PixelBuffer`
 /// during playback.
 ///
@@ -40,10 +40,10 @@ import java.util.Objects;
 @NotNullByDefault
 public final class WebPFXImage extends WritableImage {
 
-    /// JavaFX pixel buffer backing this image.
+    /// JavaFX pixel buffer backed by direct pixel storage.
     private final PixelBuffer<IntBuffer> pixelBuffer;
 
-    /// Mutable presentation storage used only by animated images.
+    /// Mutable direct presentation storage used only by animated images.
     private final @Nullable IntBuffer animationBuffer;
 
     /// Pixel data and timing retained for animation playback; static images keep this list empty.
@@ -133,10 +133,9 @@ public final class WebPFXImage extends WritableImage {
                 scalePlan
         );
         AnimationFrame firstFrame = animationFrames.get(0);
-        IntBuffer animationBuffer = WebPFXImageScaler.allocateBuffer(
+        IntBuffer animationBuffer = WebPFXImageScaler.allocateDirectBuffer(
                 scalePlan.targetWidth(),
-                scalePlan.targetHeight(),
-                firstFrame.pixels().isDirect()
+                scalePlan.targetHeight()
         );
         WebPFXImageScaler.copyAsArgbPre(firstFrame.pixels(), firstFrame.pixelFormat(), animationBuffer);
         PixelBuffer<IntBuffer> pixelBuffer = createPixelBuffer(
@@ -274,7 +273,7 @@ public final class WebPFXImage extends WritableImage {
     /// Prepares the frame data retained by an animated image.
     ///
     /// Intrinsic-size frames retain views of their existing pixel storage. Scaled frames retain
-    /// only the target-size premultiplied pixels, allowing the original frame objects and their
+    /// only target-size direct premultiplied pixels, allowing the original frame objects and their
     /// full-size storage to be reclaimed when the caller no longer references them.
     ///
     /// @param sourceFrames the decoded presentation frames
@@ -303,11 +302,11 @@ public final class WebPFXImage extends WritableImage {
         return List.copyOf(preparedFrames);
     }
 
-    /// Creates a JavaFX pixel buffer over prepared `INT_ARGB_PRE` storage.
+    /// Creates a JavaFX pixel buffer over prepared direct `INT_ARGB_PRE` storage.
     ///
     /// @param width the image width
     /// @param height the image height
-    /// @param buffer the position-zero pixel storage
+    /// @param buffer the position-zero direct pixel storage
     /// @return the JavaFX pixel buffer
     private static PixelBuffer<IntBuffer> createPixelBuffer(int width, int height, IntBuffer buffer) {
         return new PixelBuffer<>(width, height, buffer, PixelFormat.getIntArgbPreInstance());

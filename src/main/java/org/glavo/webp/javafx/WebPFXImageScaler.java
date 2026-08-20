@@ -12,7 +12,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 
-/// Prepares premultiplied pixel storage for JavaFX presentation.
+/// Prepares premultiplied direct pixel storage for JavaFX presentation.
 @NotNullByDefault
 final class WebPFXImageScaler {
 
@@ -24,10 +24,12 @@ final class WebPFXImageScaler {
     ///
     /// @param frame the source frame
     /// @param scalePlan the target dimensions and filtering mode
-    /// @return position-zero, read-only presentation pixels
+    /// @return position-zero, read-only direct presentation pixels
     static @UnmodifiableView IntBuffer prepareStaticPixels(WebPFrame frame, ScalePlan scalePlan) {
         @UnmodifiableView IntBuffer source = frame.getPixels();
-        if (!scalePlan.scalingRequired() && frame.getPixelFormat() == WebPPixelFormat.INT_ARGB_PRE) {
+        if (!scalePlan.scalingRequired()
+                && frame.getPixelFormat() == WebPPixelFormat.INT_ARGB_PRE
+                && source.isDirect()) {
             return source;
         }
 
@@ -35,7 +37,7 @@ final class WebPFXImageScaler {
             return scaleAsArgbPre(frame, scalePlan);
         }
 
-        IntBuffer target = allocateBuffer(frame.getWidth(), frame.getHeight(), source.isDirect());
+        IntBuffer target = allocateDirectBuffer(frame.getWidth(), frame.getHeight());
         copyAsArgbPre(source, frame.getPixelFormat(), target);
         return target.asReadOnlyBuffer();
     }
@@ -44,14 +46,10 @@ final class WebPFXImageScaler {
     ///
     /// @param frame the source frame
     /// @param scalePlan the target dimensions and filtering mode
-    /// @return position-zero, read-only scaled pixels
+    /// @return position-zero, read-only direct scaled pixels
     static @UnmodifiableView IntBuffer scaleAsArgbPre(WebPFrame frame, ScalePlan scalePlan) {
         @UnmodifiableView IntBuffer source = frame.getPixels();
-        IntBuffer target = allocateBuffer(
-                scalePlan.targetWidth(),
-                scalePlan.targetHeight(),
-                source.isDirect()
-        );
+        IntBuffer target = allocateDirectBuffer(scalePlan.targetWidth(), scalePlan.targetHeight());
         if (scalePlan.smooth()) {
             scaleBilinear(source, frame.getPixelFormat(), scalePlan, target);
         } else {
@@ -61,14 +59,13 @@ final class WebPFXImageScaler {
         return target.asReadOnlyBuffer();
     }
 
-    /// Allocates writable JavaFX presentation storage in the requested memory location.
+    /// Allocates writable direct storage for JavaFX presentation.
     ///
     /// @param width the buffer width in pixels
     /// @param height the buffer height in pixels
-    /// @param direct whether to allocate direct storage
     /// @return a position-zero writable buffer
     /// @throws IllegalArgumentException if the dimensions exceed the supported buffer size
-    static IntBuffer allocateBuffer(int width, int height, boolean direct) {
+    static IntBuffer allocateDirectBuffer(int width, int height) {
         int pixelCount;
         try {
             pixelCount = Math.multiplyExact(width, height);
@@ -76,21 +73,18 @@ final class WebPFXImageScaler {
             throw new IllegalArgumentException("Image dimensions are too large: " + width + "x" + height, ex);
         }
 
-        if (direct) {
-            int byteCount;
-            try {
-                byteCount = Math.multiplyExact(pixelCount, Integer.BYTES);
-            } catch (ArithmeticException ex) {
-                throw new IllegalArgumentException(
-                        "Image dimensions are too large for direct storage: " + width + "x" + height,
-                        ex
-                );
-            }
-            return ByteBuffer.allocateDirect(byteCount)
-                    .order(ByteOrder.nativeOrder())
-                    .asIntBuffer();
+        int byteCount;
+        try {
+            byteCount = Math.multiplyExact(pixelCount, Integer.BYTES);
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException(
+                    "Image dimensions are too large for direct storage: " + width + "x" + height,
+                    ex
+            );
         }
-        return IntBuffer.allocate(pixelCount);
+        return ByteBuffer.allocateDirect(byteCount)
+                .order(ByteOrder.nativeOrder())
+                .asIntBuffer();
     }
 
     /// Copies pixels into writable `INT_ARGB_PRE` storage.

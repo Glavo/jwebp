@@ -19,7 +19,7 @@
 
 ### Changed
 
-- Back JavaFX images with `PixelBuffer`, allowing intrinsic-size static `INT_ARGB_PRE` frames to be presented without copying
+- Back JavaFX images with direct `PixelBuffer` storage, while presenting intrinsic-size static direct `INT_ARGB_PRE` frames without copying
 - For scaled animated JavaFX images, scale frames once during construction and retain only their target-size pixel storage
 
 ### Performance
