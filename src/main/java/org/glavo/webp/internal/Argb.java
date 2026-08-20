@@ -41,7 +41,7 @@ public final class Argb {
     public static int countOpaquePrefix(int[] argb) {
         int index = 0;
         int blockLimit = argb.length - 3;
-        while (index < blockLimit) {
+        for (; index < blockLimit; index += 4) {
             int all = argb[index]
                     & argb[index + 1]
                     & argb[index + 2]
@@ -49,10 +49,11 @@ public final class Argb {
             if ((all & 0xFF00_0000) != 0xFF00_0000) {
                 break;
             }
-            index += 4;
         }
-        while (index < argb.length && alpha(argb[index]) == 0xFF) {
-            index++;
+        for (; index < argb.length; index++) {
+            if (alpha(argb[index]) != 0xFF) {
+                break;
+            }
         }
         return index;
     }
