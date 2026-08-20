@@ -14,6 +14,7 @@ import org.glavo.webp.WebPFrame;
 import org.glavo.webp.WebPImage;
 import org.glavo.webp.WebPImageReader;
 import org.glavo.webp.WebPPixelFormat;
+import org.glavo.webp.internal.Argb;
 import org.glavo.webp.javafx.WebPFXImageScaler.ScalePlan;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -30,11 +31,9 @@ import java.util.Objects;
 
 /// JavaFX image adapter for decoded WebP content.
 ///
-/// Instances are backed by a JavaFX [PixelBuffer] in `INT_ARGB_PRE` representation. A static
-/// [WebPFrame] already decoded as [WebPPixelFormat#INT_ARGB_PRE] is used directly when its
-/// intrinsic dimensions are requested. Other static pixels are prepared during construction.
-/// Animated frames are converted or scaled once during construction and copied into one reusable
-/// `PixelBuffer` during playback.
+/// Instances are backed by a JavaFX [PixelBuffer] in `INT_ARGB_PRE` representation. Static and
+/// animated pixels are prepared during construction. Animation playback copies each presentation
+/// step into one reusable `PixelBuffer`.
 ///
 /// Because the superclass is constructed from a `PixelBuffer`, the inherited
 /// [#getPixelWriter()] operation is unsupported.
@@ -513,9 +512,10 @@ public final class WebPFXImage extends WritableImage {
 
     /// Prepares retained frame data and mutable presentation storage for an animated image.
     ///
-    /// Every frame is converted once to target-size `INT_ARGB_PRE` pixels. The retained frames and
-    /// mutable presentation region are packed together using the adaptive animation storage policy,
-    /// allowing the original frame storage to be reclaimed when the caller no longer references it.
+    /// Intrinsic-size frames whose stored bits are already valid `INT_ARGB_PRE` pixels are retained
+    /// directly when their storage location is compatible with the adaptive animation policy.
+    /// Other frames are converted once into packed target-size storage. A separate mutable region
+    /// backs JavaFX presentation.
     ///
     /// @param sourceFrames the decoded presentation frames
     /// @param scalePlan the target dimensions and filtering mode
@@ -531,6 +531,16 @@ public final class WebPFXImage extends WritableImage {
             regionCount = Math.addExact(sourceFrames.size(), 1);
         } catch (ArithmeticException ex) {
             throw new IllegalArgumentException("Animation dimensions are too large", ex);
+        }
+
+        @Nullable PreparedAnimation reusable = tryReuseAnimationFrames(
+                sourceFrames,
+                scalePlan,
+                pixelCount,
+                regionCount
+        );
+        if (reusable != null) {
+            return reusable;
         }
 
         IntBuffer[] regions = WebPFXImageStorage.allocateRegions(regionCount, pixelCount);
@@ -552,6 +562,47 @@ public final class WebPFXImage extends WritableImage {
         return new PreparedAnimation(
                 List.copyOf(preparedFrames),
                 regions[sourceFrames.size()]
+        );
+    }
+
+    /// Retains compatible intrinsic-size frames without copying their pixels.
+    ///
+    /// When the combined animation size selects direct storage, every source frame must already be
+    /// direct; otherwise this method declines reuse so [#prepareAnimation(List, ScalePlan)] can
+    /// migrate the complete retained sequence off heap.
+    ///
+    /// @param sourceFrames the decoded presentation frames
+    /// @param scalePlan the target dimensions and filtering mode
+    /// @param pixelCount the number of pixels in each target frame
+    /// @param regionCount the frame count plus one mutable presentation region
+    /// @return prepared animation storage, or `null` when conversion or migration is required
+    private static @Nullable PreparedAnimation tryReuseAnimationFrames(
+            @Unmodifiable List<WebPFrame> sourceFrames,
+            ScalePlan scalePlan,
+            int pixelCount,
+            int regionCount
+    ) {
+        if (scalePlan.scalingRequired()) {
+            return null;
+        }
+
+        boolean directPreferred = WebPFXImageStorage.prefersDirect(pixelCount, regionCount);
+        ArrayList<AnimationFrame> frames = new ArrayList<>(sourceFrames.size());
+        for (WebPFrame frame : sourceFrames) {
+            @UnmodifiableView IntBuffer pixels = frame.getPixels();
+            if (directPreferred && !pixels.isDirect()) {
+                return null;
+            }
+            if (frame.getPixelFormat() != WebPPixelFormat.INT_ARGB_PRE
+                    && Argb.countOpaquePrefix(pixels) != pixelCount) {
+                return null;
+            }
+            frames.add(new AnimationFrame(pixels, frame.getDurationMillis()));
+        }
+
+        return new PreparedAnimation(
+                List.copyOf(frames),
+                WebPFXImageStorage.allocatePixels(pixelCount, directPreferred)
         );
     }
 

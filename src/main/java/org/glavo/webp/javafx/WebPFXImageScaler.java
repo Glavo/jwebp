@@ -27,7 +27,8 @@ final class WebPFXImageScaler {
     static @UnmodifiableView IntBuffer prepareStaticPixels(WebPFrame frame, ScalePlan scalePlan) {
         @UnmodifiableView IntBuffer source = frame.getPixels();
         if (!scalePlan.scalingRequired()
-                && frame.getPixelFormat() == WebPPixelFormat.INT_ARGB_PRE) {
+                && (frame.getPixelFormat() == WebPPixelFormat.INT_ARGB_PRE
+                    || Argb.countOpaquePrefix(source) == source.remaining())) {
             return source;
         }
 

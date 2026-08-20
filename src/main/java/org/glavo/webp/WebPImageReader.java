@@ -114,7 +114,7 @@ public final class WebPImageReader implements AutoCloseable {
     /// Mutable full-size non-premultiplied animation compositing canvas.
     private int @Nullable [] animationCanvas;
 
-    /// Exact-sized scratch pixels reused between compatible animated frame decodes.
+    /// Grow-only scratch pixels reused across animated frame-region decodes.
     private int @Nullable [] reusableAnimationFrameArgb;
 
     /// Whether the previous frame region must be cleared before the next composition step.
@@ -529,11 +529,22 @@ public final class WebPImageReader implements AutoCloseable {
 
     /// Decodes one raw frame payload to tightly packed non-premultiplied `ARGB` pixels.
     ///
+    /// For animations, the returned scratch array may be larger than the current frame region;
+    /// only its leading `width * height` elements contain decoded pixels.
+    ///
     /// @param descriptor the parsed frame descriptor and encoded payload
-    /// @return the decoded frame-region pixels
+    /// @return mutable storage containing the decoded frame-region pixels at index zero
     /// @throws WebPException if VP8, VP8L, or ALPH decoding fails
     private int[] decodeFrameArgb(ParsedFrameDescriptor descriptor) throws WebPException {
-        int[] argb = acquireFrameArgb(descriptor.width() * descriptor.height());
+        int pixelCount = frameRegionPixelCount(descriptor);
+        int[] argb = acquireFrameArgb(pixelCount);
+        if (argb.length != pixelCount) {
+            IntBuffer output = IntBuffer.wrap(argb);
+            output.limit(pixelCount);
+            decodeFrameArgb(descriptor, output);
+            return argb;
+        }
+
         if (descriptor.lossless()) {
             new LosslessDecoder(descriptor.imageChunk()).decodeFrame(descriptor.width(), descriptor.height(), false, argb);
             return argb;
@@ -581,6 +592,19 @@ public final class WebPImageReader implements AutoCloseable {
         }
     }
 
+    /// Returns the validated pixel count of one encoded frame region.
+    ///
+    /// @param descriptor the parsed frame descriptor
+    /// @return the frame-region pixel count
+    /// @throws WebPException if the frame dimensions exceed an integer-sized buffer
+    private static int frameRegionPixelCount(ParsedFrameDescriptor descriptor) throws WebPException {
+        try {
+            return Math.multiplyExact(descriptor.width(), descriptor.height());
+        } catch (ArithmeticException ex) {
+            throw new WebPException("Frame dimensions are too large for a pixel buffer", ex);
+        }
+    }
+
     /// Returns the reader-local VP8 decoder, creating it for the first lossy frame.
     ///
     /// @return the reusable VP8 decoder
@@ -593,15 +617,15 @@ public final class WebPImageReader implements AutoCloseable {
         return result;
     }
 
-    /// Returns an exact-sized frame buffer, reusing it when animated frames share dimensions.
+    /// Returns frame decode storage, retaining the largest animated scratch allocation seen so far.
     ///
     /// @param length the required pixel count
-    /// @return an exact-sized mutable decode buffer
+    /// @return a mutable decode buffer whose length is at least `length`
     private int[] acquireFrameArgb(int length) {
         if (!image.animated()) {
             return new int[length];
         }
-        if (reusableAnimationFrameArgb == null || reusableAnimationFrameArgb.length != length) {
+        if (reusableAnimationFrameArgb == null || reusableAnimationFrameArgb.length < length) {
             reusableAnimationFrameArgb = new int[length];
         }
         return reusableAnimationFrameArgb;
