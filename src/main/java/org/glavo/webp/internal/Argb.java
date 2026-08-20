@@ -139,10 +139,15 @@ public final class Argb {
             return 0;
         }
 
-        int red = (red(argb) * alpha + 0x7F) / 0xFF;
-        int green = (green(argb) * alpha + 0x7F) / 0xFF;
-        int blue = (blue(argb) * alpha + 0x7F) / 0xFF;
-        return pack(alpha, red, green, blue);
+        // The 16-bit lanes keep the red and blue products independent. Adding each rounded
+        // product's high byte implements exact division by 255 without integer division.
+        long redBlue = (argb & 0x00FF_00FFL) * alpha + 0x0080_0080L;
+        redBlue += (redBlue >>> 8) & 0x00FF_00FFL;
+        redBlue = (redBlue >>> 8) & 0x00FF_00FFL;
+
+        int green = green(argb) * alpha + 0x80;
+        green = (green + (green >>> 8)) >>> 8;
+        return (alpha << 24) | (int) redBlue | (green << 8);
     }
 
     /// Converts a premultiplied pixel to non-premultiplied `ARGB`.

@@ -31,6 +31,25 @@ final class ArgbTest {
         assertEquals(0x80FF_8040, Argb.unpremultiply(0x8080_4020));
     }
 
+    /// Verifies exact premultiplication rounding for every alpha and channel value.
+    @Test
+    void premultipliesChannelsWithExactRounding() {
+        for (int alpha = 0; alpha <= 0xFF; alpha++) {
+            for (int channel = 0; channel <= 0xFF; channel++) {
+                int red = channel;
+                int green = (channel + 0x55) & 0xFF;
+                int blue = (channel + 0xAA) & 0xFF;
+                int expected = Argb.pack(
+                        alpha,
+                        (red * alpha + 0x7F) / 0xFF,
+                        (green * alpha + 0x7F) / 0xFF,
+                        (blue * alpha + 0x7F) / 0xFF
+                );
+                assertEquals(expected, Argb.premultiply(Argb.pack(alpha, red, green, blue)));
+            }
+        }
+    }
+
     /// Verifies in-place array premultiplication and opacity reporting.
     @Test
     void premultipliesPixelArrays() {
