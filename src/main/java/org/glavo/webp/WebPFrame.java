@@ -111,11 +111,7 @@ public final class WebPFrame {
         int[] output = copyArgb ? argbPixels.clone() : argbPixels;
         boolean opaque = false;
         if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
-            int opaquePrefix = Argb.countOpaquePrefix(output);
-            opaque = opaquePrefix == output.length;
-            for (int index = opaquePrefix; index < output.length; index++) {
-                output[index] = Argb.premultiply(output[index]);
-            }
+            opaque = Argb.premultiply(output);
         }
         this.opaque = opaque;
         this.pixels = IntBuffer.wrap(output).asReadOnlyBuffer();

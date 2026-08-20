@@ -95,6 +95,34 @@ public final class Argb {
         if (alpha == 0xFF) {
             return argb;
         }
+
+        return premultiplyNonOpaque(argb, alpha);
+    }
+
+    /// Premultiplies an array in place and reports whether all input pixels were opaque.
+    ///
+    /// Fully opaque pixels are not written. The empty array is considered fully opaque.
+    ///
+    /// @param argb the non-premultiplied pixels to convert
+    /// @return `true` if every input pixel was fully opaque; otherwise `false`
+    public static boolean premultiply(int[] argb) {
+        int opaquePrefix = countOpaquePrefix(argb);
+        for (int index = opaquePrefix; index < argb.length; index++) {
+            int pixel = argb[index];
+            int alpha = alpha(pixel);
+            if (alpha != 0xFF) {
+                argb[index] = premultiplyNonOpaque(pixel, alpha);
+            }
+        }
+        return opaquePrefix == argb.length;
+    }
+
+    /// Premultiplies a pixel whose alpha channel is known not to be opaque.
+    ///
+    /// @param argb the non-premultiplied pixel
+    /// @param alpha the pixel's alpha channel in the range 0 through 254
+    /// @return the premultiplied pixel
+    private static int premultiplyNonOpaque(int argb, int alpha) {
         if (alpha == 0) {
             return 0;
         }

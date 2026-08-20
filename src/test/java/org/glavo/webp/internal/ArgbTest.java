@@ -10,7 +10,10 @@ import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.Random;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Tests packed `ARGB` channel arithmetic.
 @NotNullByDefault
@@ -26,6 +29,21 @@ final class ArgbTest {
         assertEquals(0x0000_0000, Argb.unpremultiply(0x0000_0000));
         assertEquals(0xFF11_2233, Argb.unpremultiply(0xFF11_2233));
         assertEquals(0x80FF_8040, Argb.unpremultiply(0x8080_4020));
+    }
+
+    /// Verifies in-place array premultiplication and opacity reporting.
+    @Test
+    void premultipliesPixelArrays() {
+        int[] empty = new int[0];
+        assertTrue(Argb.premultiply(empty));
+
+        int[] opaque = {0xFF11_2233, 0xFF44_5566};
+        assertTrue(Argb.premultiply(opaque));
+        assertArrayEquals(new int[]{0xFF11_2233, 0xFF44_5566}, opaque);
+
+        int[] mixed = {0xFF11_2233, 0x80FF_8040, 0x0011_2233, 0xFF44_5566};
+        assertFalse(Argb.premultiply(mixed));
+        assertArrayEquals(new int[]{0xFF11_2233, 0x8080_4020, 0, 0xFF44_5566}, mixed);
     }
 
     /// Verifies opaque-prefix detection across empty, opaque, and translucent arrays.
