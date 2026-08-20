@@ -556,10 +556,15 @@ public final class LosslessDecoder {
             bitReader.fill();
 
             if (index >= nextBlockStart) {
-                int x = index % width;
-                int y = index / width;
-                nextBlockStart = Math.min(x | huffmanInfo.mask, width - 1) + y * width + 1;
-                tree = huffmanInfo.huffmanCodeGroups[huffmanInfo.getHuffIndex(x, y)];
+                // Without an entropy image, one Huffman group covers the entire output.
+                if (huffmanInfo.bits == 0) {
+                    nextBlockStart = numValues;
+                } else {
+                    int x = index % width;
+                    int y = index / width;
+                    nextBlockStart = Math.min(x | huffmanInfo.mask, width - 1) + y * width + 1;
+                    tree = huffmanInfo.huffmanCodeGroups[huffmanInfo.getHuffIndex(x, y)];
+                }
 
                 boolean allSingle = true;
                 for (int channel = 0; channel < 4; channel++) {
@@ -671,10 +676,15 @@ public final class LosslessDecoder {
             bitReader.fill();
 
             if (index >= nextBlockStart) {
-                int x = index % width;
-                int y = index / width;
-                nextBlockStart = Math.min(x | huffmanInfo.mask, width - 1) + y * width + 1;
-                tree = huffmanInfo.huffmanCodeGroups[huffmanInfo.getHuffIndex(x, y)];
+                // Without an entropy image, one Huffman group covers the entire output.
+                if (huffmanInfo.bits == 0) {
+                    nextBlockStart = numValues;
+                } else {
+                    int x = index % width;
+                    int y = index / width;
+                    nextBlockStart = Math.min(x | huffmanInfo.mask, width - 1) + y * width + 1;
+                    tree = huffmanInfo.huffmanCodeGroups[huffmanInfo.getHuffIndex(x, y)];
+                }
 
                 boolean allSingle = true;
                 for (int channel = 0; channel < 4; channel++) {
