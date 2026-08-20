@@ -49,8 +49,8 @@ final class WebPSwingUtilsTest {
                 80,
                 WebPMetadata.empty(),
                 List.of(
-                        new WebPFrame(2, 1, 40, new int[]{0x80FF0000, 0xFF00FF00}),
-                        new WebPFrame(2, 1, 40, new int[]{0xFF0000FF, 0xFFFFFFFF})
+                        frame(2, 1, 40, 0x80FF0000, 0xFF00FF00),
+                        frame(2, 1, 40, 0xFF0000FF, 0xFFFFFFFF)
                 )
         );
 
@@ -74,7 +74,7 @@ final class WebPSwingUtilsTest {
                 1,
                 0,
                 WebPMetadata.empty(),
-                List.of(new WebPFrame(1, 2, 0, new int[]{0x11223344, 0xFFEEDDCC}))
+                List.of(frame(1, 2, 0, 0x11223344, 0xFFEEDDCC))
         );
         BufferedImage destination = new BufferedImage(1, 2, BufferedImage.TYPE_INT_ARGB);
 
@@ -96,7 +96,7 @@ final class WebPSwingUtilsTest {
                 1,
                 0,
                 WebPMetadata.empty(),
-                List.of(new WebPFrame(1, 1, 0, new int[]{0xAA112233}))
+                List.of(frame(1, 1, 0, 0xAA112233))
         );
         BufferedImage destination = new BufferedImage(2, 2, BufferedImage.TYPE_INT_ARGB);
         destination.setRGB(1, 1, 0xFFFFFFFF);
@@ -121,7 +121,7 @@ final class WebPSwingUtilsTest {
                 1,
                 0,
                 WebPMetadata.empty(),
-                List.of(new WebPFrame(1, 1, 0, new int[]{0x7F010203}))
+                List.of(frame(1, 1, 0, 0x7F010203))
         );
         BufferedImage destination = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB);
 
@@ -132,6 +132,28 @@ final class WebPSwingUtilsTest {
         assertEquals(0x7F010203, converted.getRGB(0, 0));
     }
 
+    /// Creates a synthetic non-premultiplied frame for conversion tests.
+    ///
+    /// @param width the frame width
+    /// @param height the frame height
+    /// @param durationMillis the frame duration
+    /// @param argb the tightly packed frame pixels
+    /// @return the synthetic frame
+    private static WebPFrame frame(int width, int height, int durationMillis, int... argb) {
+        return WebPImageReader.frameFromOwnedArgb(
+                width,
+                height,
+                durationMillis,
+                argb,
+                WebPPixelFormat.INT_ARGB
+        );
+    }
+
+    /// Verifies that a converted image matches a reference image pixel for pixel.
+    ///
+    /// @param actual the converted image
+    /// @param expectedPath the reference image resource
+    /// @throws Exception if the reference image cannot be read
     private static void assertBufferedImageEquals(BufferedImage actual, String expectedPath) throws Exception {
         BufferedImage expected;
         try (InputStream input = resource(expectedPath)) {
@@ -147,6 +169,10 @@ final class WebPSwingUtilsTest {
         }
     }
 
+    /// Opens a required test resource.
+    ///
+    /// @param path the class-path resource name
+    /// @return the opened resource stream
     private static InputStream resource(String path) {
         InputStream input = WebPSwingUtilsTest.class.getClassLoader().getResourceAsStream(path);
         if (input == null) {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.webp;
 
+import org.glavo.webp.internal.Argb;
 import org.glavo.webp.internal.codec.ExtendedWebP;
 import org.glavo.webp.internal.codec.ParsedFrameDescriptor;
 import org.glavo.webp.internal.codec.ParsedWebPImage;
@@ -255,22 +256,20 @@ public final class WebPImageReader implements AutoCloseable {
             if (image.animated()) {
                 compositeAnimatedFrame(descriptor, frameArgb, framePixelCount());
                 assert animationCanvas != null;
-                frame = new WebPFrame(
+                frame = frameFromOwnedArgb(
                         image.sourceWidth(),
                         image.sourceHeight(),
                         descriptor.durationMillis(),
-                        animationCanvas,
-                        pixelFormat,
-                        true
+                        animationCanvas.clone(),
+                        pixelFormat
                 );
             } else {
-                frame = new WebPFrame(
+                frame = frameFromOwnedArgb(
                         descriptor.width(),
                         descriptor.height(),
                         descriptor.durationMillis(),
                         frameArgb,
-                        pixelFormat,
-                        false
+                        pixelFormat
                 );
             }
 
@@ -351,7 +350,7 @@ public final class WebPImageReader implements AutoCloseable {
                 compositeAnimatedFrame(descriptor, decodedArgb, pixelCount);
                 assert animationCanvas != null;
                 frameArgb.put(0, animationCanvas, 0, pixelCount);
-                frame = new WebPFrame(
+                frame = frameFromCustomArgb(
                         image.sourceWidth(),
                         image.sourceHeight(),
                         descriptor.durationMillis(),
@@ -361,7 +360,7 @@ public final class WebPImageReader implements AutoCloseable {
                 );
             } else {
                 decodeFrameArgb(descriptor, frameArgb);
-                frame = new WebPFrame(
+                frame = frameFromCustomArgb(
                         descriptor.width(),
                         descriptor.height(),
                         descriptor.durationMillis(),
@@ -378,6 +377,76 @@ public final class WebPImageReader implements AutoCloseable {
             resetAfterDecodeFailure();
             throw ex;
         }
+    }
+
+    /// Creates a heap-backed frame by taking ownership of decoded `ARGB` pixels.
+    ///
+    /// The array must contain exactly `width * height` pixels. It may be converted in place when
+    /// `pixelFormat` requires premultiplication.
+    ///
+    /// @param width the frame width in pixels
+    /// @param height the frame height in pixels
+    /// @param durationMillis the display duration in milliseconds
+    /// @param argb tightly packed non-premultiplied pixels to retain
+    /// @param pixelFormat the requested stored pixel representation
+    /// @return the prepared frame
+    static WebPFrame frameFromOwnedArgb(
+            int width,
+            int height,
+            int durationMillis,
+            int[] argb,
+            WebPPixelFormat pixelFormat
+    ) {
+        boolean opaque = pixelFormat == WebPPixelFormat.INT_ARGB_PRE && Argb.premultiply(argb);
+        return new WebPFrame(
+                width,
+                height,
+                durationMillis,
+                pixelFormat,
+                false,
+                opaque,
+                IntBuffer.wrap(argb).asReadOnlyBuffer()
+        );
+    }
+
+    /// Creates a frame by converting and retaining caller-provided pixel storage.
+    ///
+    /// The buffer must be writable, and its remaining region must contain exactly `width * height`
+    /// non-premultiplied pixels. Its position and limit are not changed.
+    ///
+    /// @param width the frame width in pixels
+    /// @param height the frame height in pixels
+    /// @param durationMillis the display duration in milliseconds
+    /// @param pixelFormat the requested stored pixel representation
+    /// @param pixels the writable pixel region to retain
+    /// @param opaque whether every source pixel is known to be fully opaque
+    /// @return the prepared frame
+    static WebPFrame frameFromCustomArgb(
+            int width,
+            int height,
+            int durationMillis,
+            WebPPixelFormat pixelFormat,
+            IntBuffer pixels,
+            boolean opaque
+    ) {
+        boolean allOpaque = pixelFormat == WebPPixelFormat.INT_ARGB_PRE && opaque;
+        if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE && !opaque) {
+            int opaquePrefix = Argb.countOpaquePrefix(pixels);
+            allOpaque = opaquePrefix == pixels.remaining();
+            for (int index = pixels.position() + opaquePrefix; index < pixels.limit(); index++) {
+                pixels.put(index, Argb.premultiply(pixels.get(index)));
+            }
+        }
+
+        return new WebPFrame(
+                width,
+                height,
+                durationMillis,
+                pixelFormat,
+                true,
+                allOpaque,
+                pixels.slice().asReadOnlyBuffer()
+        );
     }
 
     /// Discards reusable codec state that may contain a partially decoded frame.

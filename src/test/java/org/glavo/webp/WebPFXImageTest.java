@@ -492,7 +492,13 @@ final class WebPFXImageTest {
     /// @param durationMillis the presentation duration
     /// @return the synthetic frame
     private static WebPFrame frame(int argb, int durationMillis) {
-        return new WebPFrame(1, 1, durationMillis, new int[]{argb});
+        return WebPImageReader.frameFromOwnedArgb(
+                1,
+                1,
+                durationMillis,
+                new int[]{argb},
+                WebPPixelFormat.INT_ARGB
+        );
     }
 
     /// Creates a synthetic frame from tightly packed pixels.
@@ -503,7 +509,13 @@ final class WebPFXImageTest {
     /// @param argb the tightly packed non-premultiplied pixels
     /// @return the synthetic frame
     private static WebPFrame frame(int width, int height, int durationMillis, int... argb) {
-        return new WebPFrame(width, height, durationMillis, argb);
+        return WebPImageReader.frameFromOwnedArgb(
+                width,
+                height,
+                durationMillis,
+                argb,
+                WebPPixelFormat.INT_ARGB
+        );
     }
 
     /// Compares adapter dimensions with JavaFX loading of the matching reference image.

@@ -7,7 +7,6 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.UnmodifiableView;
 
 import java.nio.IntBuffer;
-import java.nio.ReadOnlyBufferException;
 import java.util.Objects;
 
 /// An immutable decoded presentation frame.
@@ -45,142 +44,35 @@ public final class WebPFrame {
     /// Read-only, position-zero view of the frame's tightly packed pixels.
     private final @UnmodifiableView IntBuffer pixels;
 
-    /// Creates a heap-backed non-premultiplied frame and takes ownership of its pixel array.
+    /// Creates a frame from fully prepared state.
     ///
-    /// @param width the frame width in pixels
-    /// @param height the frame height in pixels
-    /// @param durationMillis the display duration in milliseconds, or `0` for a still image
-    /// @param argbPixels tightly packed non-premultiplied `ARGB` pixels
-    WebPFrame(int width, int height, int durationMillis, int[] argbPixels) {
-        this(
-                width,
-                height,
-                durationMillis,
-                argbPixels,
-                WebPPixelFormat.INT_ARGB,
-                false
-        );
-    }
-
-    /// Creates a frame from non-premultiplied decoder output.
-    ///
-    /// If `copyArgb` is `false`, construction takes ownership of `argbPixels` and may convert its
-    /// contents in place. If it is `true`, the source array remains unmodified.
-    ///
-    /// @param width the frame width in pixels
-    /// @param height the frame height in pixels
-    /// @param durationMillis the display duration in milliseconds, or `0` for a still image
-    /// @param argbPixels tightly packed non-premultiplied `ARGB` source pixels
-    /// @param pixelFormat the requested stored pixel representation
-    /// @param copyArgb whether heap output must copy the source array before conversion
-    /// @throws IllegalArgumentException if dimensions, duration, or source length are invalid
-    WebPFrame(
-            int width,
-            int height,
-            int durationMillis,
-            int[] argbPixels,
-            WebPPixelFormat pixelFormat,
-            boolean copyArgb
-    ) {
-        Objects.requireNonNull(argbPixels, "argbPixels");
-        Objects.requireNonNull(pixelFormat, "pixelFormat");
-        if (width <= 0 || height <= 0) {
-            throw new IllegalArgumentException("Frame dimensions must be positive: " + width + "x" + height);
-        }
-        if (durationMillis < 0) {
-            throw new IllegalArgumentException("durationMillis < 0: " + durationMillis);
-        }
-        int pixelCount;
-        try {
-            pixelCount = Math.multiplyExact(width, height);
-        } catch (ArithmeticException ex) {
-            throw new IllegalArgumentException("Frame dimensions are too large: " + width + "x" + height, ex);
-        }
-        if (argbPixels.length != pixelCount) {
-            throw new IllegalArgumentException(
-                    "Pixel buffer length does not match frame dimensions: "
-                            + argbPixels.length + " != " + pixelCount
-            );
-        }
-        this.width = width;
-        this.height = height;
-        this.scanlineStride = width;
-        this.durationMillis = durationMillis;
-        this.pixelFormat = pixelFormat;
-        this.customPixelBuffer = false;
-        int[] output = copyArgb ? argbPixels.clone() : argbPixels;
-        boolean opaque = false;
-        if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
-            opaque = Argb.premultiply(output);
-        }
-        this.opaque = opaque;
-        this.pixels = IntBuffer.wrap(output).asReadOnlyBuffer();
-    }
-
-    /// Creates a frame by converting and retaining caller-provided pixel storage.
-    ///
-    /// The remaining buffer region must contain exactly one tightly packed non-premultiplied
-    /// `ARGB` pixel per frame pixel. The pixels are converted in place when `pixelFormat` requires
-    /// premultiplication. The caller must not modify the retained region while the frame remains in
-    /// use.
+    /// The supplied values must already satisfy all frame invariants. In particular, `pixels` must
+    /// be a position-zero, read-only view containing exactly `width * height` pixels.
     ///
     /// @param width the frame width in pixels
     /// @param height the frame height in pixels
     /// @param durationMillis the display duration in milliseconds, or `0` for a still image
     /// @param pixelFormat the stored pixel representation
-    /// @param pixels writable, tightly packed non-premultiplied `ARGB` storage to retain
-    /// @param opaque whether every source pixel is known to be fully opaque
-    /// @throws IllegalArgumentException if dimensions, duration, or buffer size are invalid
-    /// @throws ReadOnlyBufferException if `pixels` is read-only
+    /// @param customPixelBuffer whether the storage was supplied by the reader's caller
+    /// @param opaque whether every stored premultiplied pixel is known to be fully opaque
+    /// @param pixels the prepared read-only pixel view
     WebPFrame(
             int width,
             int height,
             int durationMillis,
             WebPPixelFormat pixelFormat,
-            IntBuffer pixels,
-            boolean opaque
+            boolean customPixelBuffer,
+            boolean opaque,
+            @UnmodifiableView IntBuffer pixels
     ) {
-        Objects.requireNonNull(pixelFormat, "pixelFormat");
-        Objects.requireNonNull(pixels, "pixels");
-        if (width <= 0 || height <= 0) {
-            throw new IllegalArgumentException("Frame dimensions must be positive: " + width + "x" + height);
-        }
-        if (durationMillis < 0) {
-            throw new IllegalArgumentException("durationMillis < 0: " + durationMillis);
-        }
-        int pixelCount;
-        try {
-            pixelCount = Math.multiplyExact(width, height);
-        } catch (ArithmeticException ex) {
-            throw new IllegalArgumentException("Frame dimensions are too large: " + width + "x" + height, ex);
-        }
-        if (pixels.remaining() != pixelCount) {
-            throw new IllegalArgumentException(
-                    "Pixel buffer size does not match frame dimensions: "
-                            + pixels.remaining() + " != " + pixelCount
-            );
-        }
-        if (pixels.isReadOnly()) {
-            throw new ReadOnlyBufferException();
-        }
-        boolean allOpaque = pixelFormat == WebPPixelFormat.INT_ARGB_PRE && opaque;
-        if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
-            if (!opaque) {
-                int opaquePrefix = Argb.countOpaquePrefix(pixels);
-                allOpaque = opaquePrefix == pixels.remaining();
-                for (int index = pixels.position() + opaquePrefix; index < pixels.limit(); index++) {
-                    pixels.put(index, Argb.premultiply(pixels.get(index)));
-                }
-            }
-        }
         this.width = width;
         this.height = height;
         this.scanlineStride = width;
         this.durationMillis = durationMillis;
         this.pixelFormat = pixelFormat;
-        this.customPixelBuffer = true;
-        this.opaque = allOpaque;
-        this.pixels = pixels.slice().asReadOnlyBuffer();
+        this.customPixelBuffer = customPixelBuffer;
+        this.opaque = opaque;
+        this.pixels = pixels;
     }
 
     /// Returns the frame width.

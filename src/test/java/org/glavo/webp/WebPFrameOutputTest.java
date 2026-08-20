@@ -35,7 +35,7 @@ final class WebPFrameOutputTest {
         };
 
         for (WebPPixelFormat pixelFormat : WebPPixelFormat.values()) {
-            WebPFrame frame = new WebPFrame(2, 2, 17, argb, pixelFormat, true);
+            WebPFrame frame = WebPImageReader.frameFromOwnedArgb(2, 2, 17, argb.clone(), pixelFormat);
 
             assertEquals(pixelFormat, frame.getPixelFormat());
             assertFalse(frame.getPixels().isDirect());
@@ -70,7 +70,7 @@ final class WebPFrameOutputTest {
                 .asIntBuffer();
         storage.put(0xFF11_2233).put(0xFF44_5566).flip();
 
-        WebPFrame frame = new WebPFrame(
+        WebPFrame frame = WebPImageReader.frameFromCustomArgb(
                 2,
                 1,
                 0,
@@ -96,7 +96,7 @@ final class WebPFrameOutputTest {
                 .asIntBuffer();
         storage.put(0x8080_4020).flip();
 
-        WebPFrame frame = new WebPFrame(
+        WebPFrame frame = WebPImageReader.frameFromCustomArgb(
                 1,
                 1,
                 0,
