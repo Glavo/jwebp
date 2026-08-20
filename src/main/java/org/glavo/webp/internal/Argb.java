@@ -39,9 +39,9 @@ public final class Argb {
     /// @param argb the packed `ARGB` pixels to inspect
     /// @return the number of consecutive pixels from index zero whose alpha channel is `255`
     public static int countOpaquePrefix(int[] argb) {
-        int index = 0;
-        int blockLimit = argb.length - 3;
-        for (; index < blockLimit; index += 4) {
+        int index;
+        int blockEnd = argb.length & ~3;
+        for (index = 0; index < blockEnd; index += 4) {
             int all = argb[index]
                     & argb[index + 1]
                     & argb[index + 2]
