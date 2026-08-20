@@ -65,11 +65,15 @@ public final class LosslessBitReader {
             bits |= next << count;
             count += loadedBytes * Byte.SIZE;
             position += loadedBytes;
-        } else if (count <= 32 && endPosition - position >= Integer.BYTES) {
+        } else if (count <= 40 && endPosition - position >= Integer.BYTES) {
+            int loadedBytes = Math.min((Long.SIZE - count) / Byte.SIZE, Integer.BYTES);
             long next = ArrayUtils.getUnsignedIntLE(data, position);
+            if (loadedBytes < Integer.BYTES) {
+                next &= (1L << (loadedBytes * Byte.SIZE)) - 1L;
+            }
             bits |= next << count;
-            count += Integer.SIZE;
-            position += Integer.BYTES;
+            count += loadedBytes * Byte.SIZE;
+            position += loadedBytes;
         }
         while (count < 56 && position < endPosition) {
             bits |= ((long) data[position++] & 0xFFL) << count;

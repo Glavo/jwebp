@@ -120,6 +120,9 @@ public final class WebPImageReader implements AutoCloseable {
     /// Parsed container metadata and encoded frame payloads.
     private final ParsedWebPImage image;
 
+    /// Immutable metadata that owns the parser-exclusive payload arrays.
+    private final WebPMetadata metadata;
+
     /// Immutable output configuration captured when this reader was opened.
     private final WebPDecoder decoder;
 
@@ -161,6 +164,11 @@ public final class WebPImageReader implements AutoCloseable {
     private WebPImageReader(AutoCloseable ownedInput, ParsedWebPImage image, WebPDecoder decoder) {
         this.ownedInput = ownedInput;
         this.image = image;
+        this.metadata = WebPMetadata.fromOwnedPayloads(
+                image.iccProfile(),
+                image.exifMetadata(),
+                image.xmpMetadata()
+        );
         this.decoder = decoder;
     }
 
@@ -230,7 +238,7 @@ public final class WebPImageReader implements AutoCloseable {
     ///
     /// @return the metadata container
     public WebPMetadata getMetadata() {
-        return image.metadata();
+        return metadata;
     }
 
     /// Returns whether all frames have already been consumed.

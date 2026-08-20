@@ -5,14 +5,12 @@ package org.glavo.webp.internal.codec;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import org.glavo.webp.WebPException;
-import org.glavo.webp.WebPMetadata;
 import org.glavo.webp.internal.ArrayUtils;
 import org.glavo.webp.internal.io.BufferedInput;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /// Sequential WebP container parser that buffers encoded frame payloads but does not rely on
@@ -75,7 +73,8 @@ public final class WebPSequentialParser {
                 true,
                 1,
                 0,
-                WebPMetadata.empty(),
+                null,
+                null,
                 null,
                 List.of(new ParsedFrameDescriptor(
                         0,
@@ -102,7 +101,8 @@ public final class WebPSequentialParser {
                 false,
                 1,
                 0,
-                WebPMetadata.empty(),
+                null,
+                null,
                 null,
                 List.of(new ParsedFrameDescriptor(
                         0,
@@ -134,7 +134,6 @@ public final class WebPSequentialParser {
         byte @Nullable [] iccProfile = null;
         byte @Nullable [] exifMetadata = null;
         byte @Nullable [] xmpMetadata = null;
-        byte @Nullable [] backgroundColorHint = null;
         int loopCount = 1;
         long loopDurationMillis = 0;
         List<ParsedFrameDescriptor> frames = new ArrayList<>();
@@ -173,29 +172,43 @@ public final class WebPSequentialParser {
                 continue;
             }
 
+            if (type == FourCC.VP8X) {
+                throw new WebPException("VP8X chunk must be the first chunk in the WebP container");
+            }
+
+            if (type == FourCC.ANIM) {
+                if (chunkSize < 6) {
+                    throw new WebPException("ANIM chunk is too small");
+                }
+                input.skip(Integer.BYTES);
+                loopCount = input.readUnsignedShortLE();
+                input.skip(paddedChunkSize - 6L);
+                continue;
+            }
+
+            boolean retainPayload = switch (type) {
+                case FourCC.ICCP -> (flags & FLAG_ICC) != 0;
+                case FourCC.EXIF -> (flags & FLAG_EXIF) != 0;
+                case FourCC.XMP -> (flags & FLAG_XMP) != 0;
+                case FourCC.ALPH -> alpha;
+                case FourCC.VP8, FourCC.VP8L -> true;
+                default -> false;
+            };
+            if (!retainPayload) {
+                input.skip(paddedChunkSize);
+                continue;
+            }
+
             byte[] chunkPayload = input.readByteArray((int) chunkSize);
             if ((chunkSize & 1L) != 0L) {
                 input.skip(1);
             }
 
             switch (type) {
-                case FourCC.VP8X ->
-                        throw new WebPException("VP8X chunk must be the first chunk in the WebP container");
                 case FourCC.ICCP -> iccProfile = chunkPayload;
                 case FourCC.EXIF -> exifMetadata = chunkPayload;
                 case FourCC.XMP -> xmpMetadata = chunkPayload;
-                case FourCC.ANIM -> {
-                    if (chunkPayload.length < 6) {
-                        throw new WebPException("ANIM chunk is too small");
-                    }
-                    backgroundColorHint = Arrays.copyOf(chunkPayload, 4);
-                    loopCount = ArrayUtils.getUnsignedShortLE(chunkPayload, 4);
-                }
-                case FourCC.ALPH -> {
-                    if (alpha) {
-                        pendingAlphaChunk = chunkPayload;
-                    }
-                }
+                case FourCC.ALPH -> pendingAlphaChunk = chunkPayload;
                 case FourCC.VP8 -> {
                     Dimensions dimensions = parseVp8Dimensions(chunkPayload);
                     validateStaticFrameDimensions(
@@ -254,16 +267,6 @@ public final class WebPSequentialParser {
             loopDurationMillis = 0;
         }
 
-        if ((flags & FLAG_ICC) == 0) {
-            iccProfile = null;
-        }
-        if ((flags & FLAG_EXIF) == 0) {
-            exifMetadata = null;
-        }
-        if ((flags & FLAG_XMP) == 0) {
-            xmpMetadata = null;
-        }
-
         return new ParsedWebPImage(
                 canvasWidth,
                 canvasHeight,
@@ -272,8 +275,9 @@ public final class WebPSequentialParser {
                 lossy,
                 loopCount,
                 loopDurationMillis,
-                new WebPMetadata(iccProfile, exifMetadata, xmpMetadata),
-                backgroundColorHint,
+                iccProfile,
+                exifMetadata,
+                xmpMetadata,
                 List.copyOf(frames)
         );
     }
@@ -332,6 +336,11 @@ public final class WebPSequentialParser {
                 throw new WebPException("Animated frame chunk extends beyond the ANMF payload");
             }
             remainingBytes -= 8L + paddedChunkSize;
+
+            if (type != FourCC.ALPH && type != FourCC.VP8 && type != FourCC.VP8L) {
+                frame.skip(paddedChunkSize);
+                continue;
+            }
 
             byte[] chunkPayload = frame.readByteArray((int) chunkSize);
             if ((chunkSize & 1L) != 0L) {

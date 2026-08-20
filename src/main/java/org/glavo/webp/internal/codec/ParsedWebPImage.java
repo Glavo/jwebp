@@ -5,7 +5,6 @@ package org.glavo.webp.internal.codec;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import org.glavo.webp.WebPMetadata;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
@@ -19,8 +18,9 @@ import java.util.List;
 /// @param lossy whether any frame uses VP8 lossy compression
 /// @param loopCount the animation loop count; `0` means infinite looping
 /// @param loopDurationMillis the total duration of one animation loop
-/// @param metadata raw ICC/EXIF/XMP metadata
-/// @param backgroundColorHint the animation background color hint, or `null`
+/// @param iccProfile the exclusively owned ICC payload, or `null`
+/// @param exifMetadata the exclusively owned EXIF payload, or `null`
+/// @param xmpMetadata the exclusively owned XMP payload, or `null`
 /// @param frames encoded frame descriptors in presentation order
 @NotNullByDefault
 public record ParsedWebPImage(
@@ -31,8 +31,9 @@ public record ParsedWebPImage(
         boolean lossy,
         int loopCount,
         long loopDurationMillis,
-        WebPMetadata metadata,
-        byte @Nullable [] backgroundColorHint,
+        byte @Nullable @Unmodifiable [] iccProfile,
+        byte @Nullable @Unmodifiable [] exifMetadata,
+        byte @Nullable @Unmodifiable [] xmpMetadata,
         @Unmodifiable List<ParsedFrameDescriptor> frames
 ) {
 }

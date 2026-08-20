@@ -4,6 +4,7 @@ package org.glavo.webp;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 /// Raw metadata chunks extracted from a WebP container.
 ///
@@ -13,11 +14,17 @@ import org.jetbrains.annotations.Nullable;
 @NotNullByDefault
 public final class WebPMetadata {
 
+    /// Shared metadata container with no payloads.
     private static final WebPMetadata EMPTY = new WebPMetadata(null, null, null);
 
-    private final byte @Nullable [] iccProfile;
-    private final byte @Nullable [] exifMetadata;
-    private final byte @Nullable [] xmpMetadata;
+    /// Immutable ICC profile payload, or `null` when absent.
+    private final byte @Nullable @Unmodifiable [] iccProfile;
+
+    /// Immutable EXIF payload, or `null` when absent.
+    private final byte @Nullable @Unmodifiable [] exifMetadata;
+
+    /// Immutable XMP payload, or `null` when absent.
+    private final byte @Nullable @Unmodifiable [] xmpMetadata;
 
     /// Returns an empty metadata container.
     ///
@@ -28,13 +35,50 @@ public final class WebPMetadata {
 
     /// Creates a metadata container from raw chunk payloads.
     ///
+    /// Each non-null payload is copied; subsequent changes to the supplied arrays do not affect
+    /// this container.
+    ///
     /// @param iccProfile the ICC payload, or `null`
     /// @param exifMetadata the EXIF payload, or `null`
     /// @param xmpMetadata the XMP payload, or `null`
     public WebPMetadata(byte @Nullable [] iccProfile, byte @Nullable [] exifMetadata, byte @Nullable [] xmpMetadata) {
-        this.iccProfile = copyOrNull(iccProfile);
-        this.exifMetadata = copyOrNull(exifMetadata);
-        this.xmpMetadata = copyOrNull(xmpMetadata);
+        this(iccProfile, exifMetadata, xmpMetadata, true);
+    }
+
+    /// Creates a metadata container with selectable defensive copying.
+    ///
+    /// @param iccProfile the ICC payload, or `null`
+    /// @param exifMetadata the EXIF payload, or `null`
+    /// @param xmpMetadata the XMP payload, or `null`
+    /// @param copy whether to copy non-null payload arrays
+    private WebPMetadata(
+            byte @Nullable [] iccProfile,
+            byte @Nullable [] exifMetadata,
+            byte @Nullable [] xmpMetadata,
+            boolean copy
+    ) {
+        this.iccProfile = copy ? copyOrNull(iccProfile) : iccProfile;
+        this.exifMetadata = copy ? copyOrNull(exifMetadata) : exifMetadata;
+        this.xmpMetadata = copy ? copyOrNull(xmpMetadata) : xmpMetadata;
+    }
+
+    /// Creates metadata by taking ownership of parser-exclusive payload arrays.
+    ///
+    /// The caller must not retain or modify any non-null array after this call.
+    ///
+    /// @param iccProfile the exclusively owned ICC payload, or `null`
+    /// @param exifMetadata the exclusively owned EXIF payload, or `null`
+    /// @param xmpMetadata the exclusively owned XMP payload, or `null`
+    /// @return an immutable metadata container
+    static WebPMetadata fromOwnedPayloads(
+            byte @Nullable [] iccProfile,
+            byte @Nullable [] exifMetadata,
+            byte @Nullable [] xmpMetadata
+    ) {
+        if (iccProfile == null && exifMetadata == null && xmpMetadata == null) {
+            return EMPTY;
+        }
+        return new WebPMetadata(iccProfile, exifMetadata, xmpMetadata, false);
     }
 
     /// Returns the ICC profile chunk payload.
@@ -58,6 +102,10 @@ public final class WebPMetadata {
         return copyOrNull(xmpMetadata);
     }
 
+    /// Returns a defensive copy of an optional byte array.
+    ///
+    /// @param value the source array, or `null`
+    /// @return the copied array, or `null`
     private static byte @Nullable [] copyOrNull(byte @Nullable [] value) {
         return value == null ? null : value.clone();
     }
@@ -69,6 +117,10 @@ public final class WebPMetadata {
                 + ", xmp=" + lengthOf(xmpMetadata) + "]";
     }
 
+    /// Returns the length of an optional byte array.
+    ///
+    /// @param value the array, or `null`
+    /// @return the array length, or zero when absent
     private static int lengthOf(byte @Nullable [] value) {
         return value == null ? 0 : value.length;
     }

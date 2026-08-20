@@ -210,8 +210,7 @@ public final class LosslessTransforms {
             int[] tableData
     ) {
         if (tableSize > 16) {
-            int[] table = new int[256];
-            System.arraycopy(tableData, 0, table, 0, tableSize);
+            int[] table = expandColorTable(tableData, tableSize);
             for (int index = 0; index < imageData.limit(); index++) {
                 imageData.put(index, table[Argb.green(imageData.get(index))]);
             }
@@ -338,8 +337,7 @@ public final class LosslessTransforms {
     /// Applies the color indexing transform.
     public static void applyColorIndexingTransform(int[] imageData, int width, int height, int tableSize, int[] tableData) {
         if (tableSize > 16) {
-            int[] table = new int[256];
-            System.arraycopy(tableData, 0, table, 0, tableSize);
+            int[] table = expandColorTable(tableData, tableSize);
             for (int index = 0; index < imageData.length; index++) {
                 imageData[index] = table[Argb.green(imageData[index])];
             }
@@ -370,6 +368,24 @@ public final class LosslessTransforms {
                 }
             }
         }
+    }
+
+    /// Returns a 256-entry lookup table for byte-wide color indexes.
+    ///
+    /// A table already expanded by the decoder is returned directly. Other callers may supply
+    /// only the encoded entries, which are copied into a zero-filled lookup table.
+    ///
+    /// @param tableData the encoded or expanded color table
+    /// @param tableSize the encoded color count
+    /// @return a table addressable by every unsigned byte value
+    private static int[] expandColorTable(int[] tableData, int tableSize) {
+        if (tableData.length >= 256) {
+            return tableData;
+        }
+
+        int[] table = new int[256];
+        System.arraycopy(tableData, 0, table, 0, tableSize);
+        return table;
     }
 
     /// Applies constant-black prediction to an integer-buffer pixel range.

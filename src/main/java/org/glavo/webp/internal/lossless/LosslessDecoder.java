@@ -299,9 +299,9 @@ public final class LosslessDecoder {
                 case LosslessTransforms.SUBTRACT_GREEN -> transform = LosslessTransforms.Transform.subtractGreen();
                 case LosslessTransforms.COLOR_INDEXING -> {
                     int colorTableSize = bitReader.readBits(8) + 1;
-                    int[] colorMap = new int[colorTableSize];
+                    int[] colorMap = new int[colorTableSize > 16 ? 256 : colorTableSize];
                     IntBuffer decoded = decodeMetadataImage(colorTableSize, 1, scratch);
-                    decoded.get(0, colorMap);
+                    decoded.get(0, colorMap, 0, colorTableSize);
 
                     int bits;
                     if (colorTableSize <= 2) {
@@ -314,7 +314,7 @@ public final class LosslessDecoder {
                         bits = 0;
                     }
                     xsize = LosslessTransforms.subsampleSize(xsize, bits);
-                    adjustColorMap(colorMap);
+                    adjustColorMap(colorMap, colorTableSize);
                     transform = LosslessTransforms.Transform.colorIndexing(colorTableSize, colorMap);
                 }
                 default -> throw new WebPException("Invalid VP8L transform type");
@@ -348,8 +348,12 @@ public final class LosslessDecoder {
         return decoded;
     }
 
-    private void adjustColorMap(int[] colorMap) {
-        for (int i = 1; i < colorMap.length; i++) {
+    /// Converts delta-coded color entries to absolute colors in place.
+    ///
+    /// @param colorMap the color-table storage
+    /// @param colorCount the number of encoded entries to adjust
+    private void adjustColorMap(int[] colorMap, int colorCount) {
+        for (int i = 1; i < colorCount; i++) {
             colorMap[i] = Argb.add(colorMap[i], colorMap[i - 1]);
         }
     }
@@ -509,6 +513,13 @@ public final class LosslessDecoder {
         return codeLengths;
     }
 
+    /// Decodes entropy-coded pixels into an integer array.
+    ///
+    /// @param width the current transformed width
+    /// @param height the image height
+    /// @param huffmanInfo the decoded Huffman metadata
+    /// @param data the exact-sized destination array
+    /// @throws WebPException if the stream is malformed
     private void decodeImageData(int width, int height, HuffmanInfo huffmanInfo, int[] data) throws WebPException {
         int numValues = width * height;
         LosslessHuffmanTree[] tree = huffmanInfo.huffmanCodeGroups[huffmanInfo.getHuffIndex(0, 0)];
@@ -773,14 +784,32 @@ public final class LosslessDecoder {
 
     @NotNullByDefault
     private static final class HuffmanInfo {
+        /// Width of the entropy-group image.
         final int xsize;
+
+        /// Optional color cache used by literal cache references.
         final @Nullable ColorCache colorCache;
+
+        /// Entropy-group indexes in subsampled raster order.
         final char @Unmodifiable [] image;
+
+        /// Log2 entropy-group tile size, or zero when one group covers the image.
         final int bits;
+
+        /// Pixel-coordinate mask for finding the next entropy-group boundary.
         final int mask;
+
         /// Huffman trees indexed first by entropy group and then by channel.
         final LosslessHuffmanTree @Unmodifiable [] @Unmodifiable [] huffmanCodeGroups;
 
+        /// Creates immutable Huffman metadata for one image stream.
+        ///
+        /// @param xsize the entropy-group image width
+        /// @param colorCache the optional color cache
+        /// @param image entropy-group indexes in raster order
+        /// @param bits the log2 entropy-group tile size
+        /// @param mask the pixel-coordinate tile mask
+        /// @param huffmanCodeGroups trees indexed first by entropy group and then by channel
         private HuffmanInfo(int xsize, @Nullable ColorCache colorCache, char @Unmodifiable [] image, int bits, int mask,
                             LosslessHuffmanTree @Unmodifiable [] @Unmodifiable [] huffmanCodeGroups) {
             this.xsize = xsize;
@@ -791,6 +820,11 @@ public final class LosslessDecoder {
             this.huffmanCodeGroups = huffmanCodeGroups;
         }
 
+        /// Returns the entropy-group index for a pixel.
+        ///
+        /// @param x the pixel x coordinate
+        /// @param y the pixel y coordinate
+        /// @return the selected entropy-group index
         int getHuffIndex(int x, int y) {
             if (bits == 0) {
                 return 0;
