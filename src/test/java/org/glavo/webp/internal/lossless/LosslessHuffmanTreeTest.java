@@ -67,4 +67,27 @@ final class LosslessHuffmanTreeTest {
 
         assertEquals(0, tree.readSymbol(reader));
     }
+
+    /// Verifies that codes longer than the primary lookup width retain their symbol and length.
+    @Test
+    void readsSymbolsFromSecondaryTable() throws WebPException {
+        byte[] codeLengths = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10};
+        LosslessHuffmanTree tree = LosslessHuffmanTree.implicit(
+                codeLengths,
+                codeLengths.length,
+                new LosslessHuffmanTree.BuildWorkspace()
+        );
+
+        LosslessBitReader reader = new LosslessBitReader(new byte[]{(byte) 0xFF, 0x01});
+        reader.fill();
+
+        assertEquals(9, tree.readSymbol(reader));
+        assertEquals(6, reader.bitCount());
+
+        reader = new LosslessBitReader(new byte[]{(byte) 0xFF, 0x03});
+        reader.fill();
+
+        assertEquals(10, tree.readSymbol(reader));
+        assertEquals(6, reader.bitCount());
+    }
 }

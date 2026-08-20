@@ -184,7 +184,7 @@ public final class LosslessHuffmanTree {
                     }
 
                     int symbol = sortedSymbols[i++];
-                    secondaryTable[subtableStart + (codeword >> tableBits)] = (char) ((symbol << 4) | length);
+                    secondaryTable[subtableStart + (codeword >> tableBits)] = (char) ((length << 12) | symbol);
                     codeword = nextCodeword(codeword, 1 << length);
                 }
 
@@ -245,16 +245,13 @@ public final class LosslessHuffmanTree {
         int value = (int) bitReader.peekFull();
         int entry = primaryTable[value & symbolOrTableMask];
         int length = entry >>> 12;
-        if (length <= MAX_TABLE_BITS) {
-            bitReader.consume(length);
-            return entry & 0xFFF;
+        if (length > MAX_TABLE_BITS) {
+            int mask = (1 << (length - MAX_TABLE_BITS)) - 1;
+            int secondaryIndex = (entry & 0xFFF) + ((value >>> MAX_TABLE_BITS) & mask);
+            entry = secondaryTable[secondaryIndex];
         }
-
-        int mask = (1 << (length - MAX_TABLE_BITS)) - 1;
-        int secondaryIndex = (entry & 0xFFF) + ((value >>> MAX_TABLE_BITS) & mask);
-        int secondaryEntry = secondaryTable[secondaryIndex];
-        bitReader.consume(secondaryEntry & 0xF);
-        return secondaryEntry >>> 4;
+        bitReader.consume(entry >>> 12);
+        return entry & 0xFFF;
     }
 
     /// Peeks at the next symbol if it can be resolved entirely from the primary table.
