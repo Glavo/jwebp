@@ -7,6 +7,7 @@
 - Change the project license from Apache-2.0 to MPL-2.0 for version 0.3.0
 - Remove `WebPImageLoadOptions`, the scale-aware `WebPImage#read` and `WebPImageReader#open` overloads, and the `getSourceWidth()` / `getSourceHeight()` methods; core images are now always decoded at their intrinsic canvas size, with presentation scaling available through `WebPFXImage#of(...)` and `WebPFXImageOptions`
 - Replace the public `WebPFXImage` constructors and positional configuration overloads with `WebPFXImage#of(...)` factory methods using `WebPFXImageOptions`
+- Replace `WebPImageReader#readNextFrame(boolean)` with `WebPImageReader#readNextFrame(IntBuffer)`, which retains a caller-provided pixel-buffer region for the decoded frame
 - `WebPFXImage#getPixelWriter()` is now unsupported because `WebPFXImage` is backed by a `PixelBuffer`
 
 ### Added
@@ -14,7 +15,8 @@
 - New API: `WebPFrame#getArgb(int, int)`
 - New API: `WebPSwingUtils`
 - New immutable `WebPDecoder` API for configuring decoded pixel format and the default frame buffer location
-- Heap-backed and direct frame buffers for `INT_ARGB` and `INT_ARGB_PRE` pixels, with per-frame overrides during streaming decode
+- Heap-backed and direct frame buffers for `INT_ARGB` and `INT_ARGB_PRE` pixels, with caller-provided `IntBuffer` storage during streaming decode
+- New API: `WebPFrame#usesCustomPixelBuffer()`
 - New immutable `WebPFXImageOptions` API for JavaFX presentation scaling, filtering, and animation autoplay
 
 ### Changed

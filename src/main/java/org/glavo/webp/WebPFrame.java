@@ -16,6 +16,9 @@ import java.util.Objects;
 /// Pixels are tightly packed as `0xAARRGGBB` integers in the representation reported by
 /// [#getPixelFormat()]. For animated images, each frame contains the fully composited canvas for
 /// that presentation step. Static images contain one frame whose duration is zero.
+///
+/// A frame created with caller-provided pixel storage may have aliases outside this object. The
+/// caller must not modify that storage while the frame remains in use.
 @NotNullByDefault
 public final class WebPFrame {
 
@@ -33,6 +36,9 @@ public final class WebPFrame {
 
     /// Pixel representation used by [#pixels].
     private final WebPPixelFormat pixelFormat;
+
+    /// Whether the pixel storage was supplied through the custom-buffer reader overload.
+    private final boolean customPixelBuffer;
 
     /// Read-only, position-zero view of the frame's tightly packed pixels.
     private final @UnmodifiableView IntBuffer pixels;
@@ -102,27 +108,30 @@ public final class WebPFrame {
         this.scanlineStride = width;
         this.durationMillis = durationMillis;
         this.pixelFormat = pixelFormat;
+        this.customPixelBuffer = false;
         this.pixels = createPixels(argbPixels, pixelFormat, direct, copyArgb);
     }
 
-    /// Creates a frame by taking ownership of prepared pixel storage.
+    /// Creates a frame by retaining prepared pixel storage.
     ///
     /// The remaining buffer region must contain exactly one tightly packed pixel per frame pixel
-    /// in `pixelFormat`. The caller must not access or modify the buffer after this constructor is
-    /// invoked.
+    /// in `pixelFormat`. The caller must not modify the retained region while the frame remains in
+    /// use.
     ///
     /// @param width the frame width in pixels
     /// @param height the frame height in pixels
     /// @param durationMillis the display duration in milliseconds, or `0` for a still image
     /// @param pixelFormat the stored pixel representation
-    /// @param pixels the prepared pixel storage whose ownership is transferred
+    /// @param pixels the prepared pixel storage to retain
+    /// @param customPixelBuffer whether the storage was supplied by the reader's caller
     /// @throws IllegalArgumentException if dimensions, duration, or buffer size are invalid
     WebPFrame(
             int width,
             int height,
             int durationMillis,
             WebPPixelFormat pixelFormat,
-            IntBuffer pixels
+            IntBuffer pixels,
+            boolean customPixelBuffer
     ) {
         Objects.requireNonNull(pixelFormat, "pixelFormat");
         Objects.requireNonNull(pixels, "pixels");
@@ -149,6 +158,7 @@ public final class WebPFrame {
         this.scanlineStride = width;
         this.durationMillis = durationMillis;
         this.pixelFormat = pixelFormat;
+        this.customPixelBuffer = customPixelBuffer;
         this.pixels = pixels.slice().asReadOnlyBuffer();
     }
 
@@ -187,6 +197,17 @@ public final class WebPFrame {
     /// @return the pixel format
     public WebPPixelFormat getPixelFormat() {
         return pixelFormat;
+    }
+
+    /// Returns whether this frame retains caller-provided pixel storage.
+    ///
+    /// A custom pixel buffer may have writable aliases outside this frame. A `true` result does
+    /// not permit modifying the pixel region while this frame remains in use.
+    ///
+    /// @return `true` if the pixel storage was supplied to
+    ///         [WebPImageReader#readNextFrame(IntBuffer)]
+    public boolean usesCustomPixelBuffer() {
+        return customPixelBuffer;
     }
 
     /// Returns the non-premultiplied `ARGB` pixel at the supplied coordinates.

@@ -18,10 +18,11 @@ import java.util.Objects;
 /// creates an independent stateful [WebPImageReader]. Configuration methods return a new decoder
 /// and never change the receiver.
 ///
-/// The direct setting applies only to buffers retained by returned [WebPFrame] instances. Decoder
-/// workspaces and animation compositing buffers may still use heap memory. Direct allocations are
-/// subject to the JVM's direct-memory limit and may remain allocated until their frame and all
-/// derived buffer views become unreachable.
+/// The direct setting applies only to storage allocated for returned [WebPFrame] instances. A
+/// caller-provided buffer passed to [WebPImageReader#readNextFrame(IntBuffer)] overrides that
+/// setting for its frame. Decoder workspaces and animation compositing buffers may still use heap
+/// memory. Direct allocations are subject to the JVM's direct-memory limit and may remain allocated
+/// until their frame and all derived buffer views become unreachable.
 ///
 /// @implNote Static direct frames are decoded into their final direct pixel storage without a
 ///           full-size heap `ARGB` staging array. Codec planes, metadata, and animation composition
@@ -59,8 +60,8 @@ public final class WebPDecoder {
 
     /// Returns whether decoded frames use direct buffers by default.
     ///
-    /// A [WebPImageReader] may override this value for an individual frame through
-    /// [WebPImageReader#readNextFrame(boolean)].
+    /// A caller-provided buffer passed to [WebPImageReader#readNextFrame(IntBuffer)] determines the
+    /// storage location of that frame independently of this value.
     ///
     /// @return `true` if the default output is direct
     public boolean isDirect() {
@@ -189,27 +190,29 @@ public final class WebPDecoder {
         );
     }
 
-    /// Creates a decoded frame by taking ownership of prepared direct `ARGB` storage.
+    /// Creates a decoded frame by retaining prepared `ARGB` storage.
     ///
-    /// Premultiplication, when requested by this decoder, is performed in place before ownership is
-    /// transferred to the returned frame. The caller must not access the buffer afterward.
+    /// Premultiplication, when requested by this decoder, is performed in place before the storage
+    /// is retained by the returned frame. The caller must not modify the retained region while the
+    /// frame remains in use.
     ///
     /// @param width the frame width in pixels
     /// @param height the frame height in pixels
     /// @param durationMillis the frame presentation duration
-    /// @param argbPixels the writable non-premultiplied direct pixel storage
+    /// @param argbPixels the writable non-premultiplied pixel storage
     /// @param opaque whether every source pixel is known to be fully opaque
+    /// @param customPixelBuffer whether the storage was supplied by the reader's caller
     /// @return a frame using this decoder's pixel format and the supplied storage
     /// @throws NullPointerException if `argbPixels` is `null`
-    /// @throws IllegalArgumentException if the dimensions, duration, or buffer size are invalid, or
-    ///                                  the buffer is not direct
+    /// @throws IllegalArgumentException if the dimensions, duration, or buffer size are invalid
     /// @throws ReadOnlyBufferException if the buffer is read-only
     WebPFrame createFrame(
             int width,
             int height,
             int durationMillis,
             IntBuffer argbPixels,
-            boolean opaque
+            boolean opaque,
+            boolean customPixelBuffer
     ) {
         Objects.requireNonNull(argbPixels, "argbPixels");
         if (width <= 0 || height <= 0) {
@@ -223,9 +226,6 @@ public final class WebPDecoder {
             expectedLength = Math.multiplyExact(width, height);
         } catch (ArithmeticException ex) {
             throw new IllegalArgumentException("Frame dimensions are too large: " + width + "x" + height, ex);
-        }
-        if (!argbPixels.isDirect()) {
-            throw new IllegalArgumentException("Prepared frame storage must be direct");
         }
         if (argbPixels.isReadOnly()) {
             throw new ReadOnlyBufferException();
@@ -241,6 +241,13 @@ public final class WebPDecoder {
                 argbPixels.put(index, Argb.premultiply(argbPixels.get(index)));
             }
         }
-        return new WebPFrame(width, height, durationMillis, pixelFormat, argbPixels);
+        return new WebPFrame(
+                width,
+                height,
+                durationMillis,
+                pixelFormat,
+                argbPixels,
+                customPixelBuffer
+        );
     }
 }

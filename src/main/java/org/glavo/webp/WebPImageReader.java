@@ -15,9 +15,11 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.IntBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 
 /// Forward-only reader for WebP content.
 ///
@@ -252,77 +254,166 @@ public final class WebPImageReader implements AutoCloseable {
     ///
     /// Each returned animation frame is already composited to the full source canvas. Its pixel
     /// format and buffer location use the defaults of the [WebPDecoder] that created this reader.
+    /// The returned frame owns storage allocated by the reader.
     ///
     /// @return the next frame, or `null` when the stream is exhausted
     /// @throws WebPException if decoding fails
     public @Nullable WebPFrame readNextFrame() throws WebPException {
-        return readNextFrame(decoder.isDirect());
-    }
-
-    /// Decodes the next frame with an explicit buffer-location override.
-    ///
-    /// The `direct` argument applies only to the frame returned by this invocation. It does not
-    /// modify the default used by later calls to [#readNextFrame()]. The pixel format remains the
-    /// format configured by the [WebPDecoder] that created this reader.
-    ///
-    /// @param direct `true` to return a direct pixel buffer, or `false` for a heap buffer
-    /// @return the next frame, or `null` when the stream is exhausted
-    /// @throws WebPException if decoding fails
-    public @Nullable WebPFrame readNextFrame(boolean direct) throws WebPException {
         ensureOpen();
         if (nextFrameIndex >= image.frames().size()) {
             return null;
         }
 
-        ParsedFrameDescriptor descriptor = image.frames().get(nextFrameIndex++);
-        if (!image.animated() && direct) {
-            return decodeDirectStaticFrame(descriptor);
-        }
+        ParsedFrameDescriptor descriptor = image.frames().get(nextFrameIndex);
+        try {
+            WebPFrame frame;
+            if (!image.animated() && decoder.isDirect()) {
+                int pixelCount = framePixelCount();
+                IntBuffer frameArgb = WebPFrame.allocateDirectPixels(pixelCount);
+                decodeFrameArgb(descriptor, frameArgb);
+                frame = decoder.createFrame(
+                        descriptor.width(),
+                        descriptor.height(),
+                        descriptor.durationMillis(),
+                        frameArgb,
+                        !descriptor.lossless() && descriptor.alphaChunk() == null,
+                        false
+                );
+            } else {
+                int[] frameArgb = decodeFrameArgb(descriptor);
+                if (image.animated()) {
+                    compositeAnimatedFrame(descriptor, frameArgb, framePixelCount());
+                    assert animationCanvas != null;
+                    frame = decoder.createFrame(
+                            image.sourceWidth(),
+                            image.sourceHeight(),
+                            descriptor.durationMillis(),
+                            animationCanvas,
+                            true
+                    );
+                } else {
+                    frame = decoder.createFrame(
+                            descriptor.width(),
+                            descriptor.height(),
+                            descriptor.durationMillis(),
+                            frameArgb,
+                            false
+                    );
+                }
+            }
 
-        int[] frameArgb = decodeFrameArgb(descriptor);
-        if (image.animated()) {
-            compositeAnimatedFrame(descriptor, frameArgb);
-            assert animationCanvas != null;
-            return decoder.createFrame(
-                    image.sourceWidth(),
-                    image.sourceHeight(),
-                    descriptor.durationMillis(),
-                    animationCanvas,
-                    direct,
-                    true
-            );
+            nextFrameIndex++;
+            return frame;
+        } catch (WebPException ex) {
+            resetAfterDecodeFailure();
+            throw ex;
         }
-        return decoder.createFrame(
-                descriptor.width(),
-                descriptor.height(),
-                descriptor.durationMillis(),
-                frameArgb,
-                direct,
-                false
-        );
     }
 
-    /// Decodes a static frame directly into the storage retained by the returned frame.
+    /// Decodes the next frame into caller-provided pixel storage, if a frame is available.
     ///
-    /// @param descriptor the parsed static-frame descriptor
-    /// @return the decoded direct frame
-    /// @throws WebPException if VP8, VP8L, or ALPH decoding fails
-    private WebPFrame decodeDirectStaticFrame(ParsedFrameDescriptor descriptor) throws WebPException {
-        int pixelCount;
-        try {
-            pixelCount = Math.multiplyExact(descriptor.width(), descriptor.height());
-        } catch (ArithmeticException ex) {
-            throw new WebPException("Frame dimensions are too large", ex);
+    /// The next canvas-width times canvas-height elements beginning at `storage.position()` receive
+    /// tightly packed pixels in the format configured by the [WebPDecoder] that created this
+    /// reader. The storage may be heap-backed or direct and may use either byte order. On success,
+    /// its position advances past that region and the returned frame retains the region without
+    /// copying. The storage limit is not changed. The caller must not modify the retained region
+    /// while the frame remains in use.
+    ///
+    /// When no frame remains, this method returns `null` without inspecting or changing a non-null
+    /// storage buffer's state. If decoding fails, the storage position and reader frame index
+    /// remain unchanged, but any pixels already written to the destination region are unspecified.
+    ///
+    /// @param storage the writable pixel storage to retain on successful decode
+    /// @return the next frame, or `null` when the stream is exhausted
+    /// @throws WebPException if decoding fails
+    /// @throws NullPointerException if `storage` is `null`
+    /// @throws ReadOnlyBufferException if a frame remains and `storage` is read-only
+    /// @throws IllegalArgumentException if a frame remains and the storage has insufficient
+    ///                                  remaining elements
+    public @Nullable WebPFrame readNextFrame(IntBuffer storage) throws WebPException {
+        Objects.requireNonNull(storage, "storage");
+        ensureOpen();
+        if (nextFrameIndex >= image.frames().size()) {
+            return null;
         }
-        IntBuffer frameArgb = WebPFrame.allocateDirectPixels(pixelCount);
-        decodeFrameArgb(descriptor, frameArgb);
-        return decoder.createFrame(
-                descriptor.width(),
-                descriptor.height(),
-                descriptor.durationMillis(),
-                frameArgb,
-                !descriptor.lossless() && descriptor.alphaChunk() == null
-        );
+        return decodeNextFrame(storage, framePixelCount());
+    }
+
+    /// Decodes one known-to-exist frame into caller-provided storage.
+    ///
+    /// @param storage the destination whose current region will be retained by the frame
+    /// @param pixelCount the full-canvas pixel count
+    /// @return the decoded frame
+    /// @throws WebPException if decoding fails
+    /// @throws ReadOnlyBufferException if `storage` is read-only
+    /// @throws IllegalArgumentException if the storage has insufficient remaining elements
+    private WebPFrame decodeNextFrame(IntBuffer storage, int pixelCount) throws WebPException {
+        if (storage.isReadOnly()) {
+            throw new ReadOnlyBufferException();
+        }
+        if (storage.remaining() < pixelCount) {
+            throw new IllegalArgumentException(
+                    "Pixel buffer has insufficient remaining elements: "
+                            + storage.remaining() + " < " + pixelCount
+            );
+        }
+
+        int initialPosition = storage.position();
+        IntBuffer frameArgb = storage.slice();
+        frameArgb.limit(pixelCount);
+        ParsedFrameDescriptor descriptor = image.frames().get(nextFrameIndex);
+
+        try {
+            WebPFrame frame;
+            if (image.animated()) {
+                int[] decodedArgb = decodeFrameArgb(descriptor);
+                compositeAnimatedFrame(descriptor, decodedArgb, pixelCount);
+                assert animationCanvas != null;
+                frameArgb.put(0, animationCanvas, 0, pixelCount);
+                frame = decoder.createFrame(
+                        image.sourceWidth(),
+                        image.sourceHeight(),
+                        descriptor.durationMillis(),
+                        frameArgb,
+                        false,
+                        true
+                );
+            } else {
+                decodeFrameArgb(descriptor, frameArgb);
+                frame = decoder.createFrame(
+                        descriptor.width(),
+                        descriptor.height(),
+                        descriptor.durationMillis(),
+                        frameArgb,
+                        !descriptor.lossless() && descriptor.alphaChunk() == null,
+                        true
+                );
+            }
+
+            storage.position(initialPosition + pixelCount);
+            nextFrameIndex++;
+            return frame;
+        } catch (WebPException ex) {
+            resetAfterDecodeFailure();
+            throw ex;
+        }
+    }
+
+    /// Discards reusable codec state that may contain a partially decoded frame.
+    private void resetAfterDecodeFailure() {
+        vp8Decoder = null;
+    }
+
+    /// Returns the full-canvas pixel count.
+    ///
+    /// @return the number of pixels required by every presentation frame
+    /// @throws WebPException if the canvas dimensions exceed an integer-sized buffer
+    private int framePixelCount() throws WebPException {
+        try {
+            return Math.multiplyExact(image.sourceWidth(), image.sourceHeight());
+        } catch (ArithmeticException ex) {
+            throw new WebPException("Image dimensions are too large for a pixel buffer", ex);
+        }
     }
 
     /// Closes the owned input resource.
@@ -350,9 +441,10 @@ public final class WebPImageReader implements AutoCloseable {
     ///
     /// @param descriptor the parsed animation-frame descriptor
     /// @param frameArgb the decoded non-premultiplied subframe pixels
-    private void compositeAnimatedFrame(ParsedFrameDescriptor descriptor, int[] frameArgb) {
+    /// @param pixelCount the full animation-canvas pixel count
+    private void compositeAnimatedFrame(ParsedFrameDescriptor descriptor, int[] frameArgb, int pixelCount) {
         if (animationCanvas == null) {
-            animationCanvas = new int[image.sourceWidth() * image.sourceHeight()];
+            animationCanvas = new int[pixelCount];
         }
 
         Integer clearColor = null;
@@ -418,7 +510,7 @@ public final class WebPImageReader implements AutoCloseable {
     /// Decodes one raw frame payload directly to tightly packed non-premultiplied `ARGB` pixels.
     ///
     /// @param descriptor the parsed frame descriptor and encoded payload
-    /// @param argb the exact-sized direct destination
+    /// @param argb the exact-sized destination
     /// @throws WebPException if VP8, VP8L, or ALPH decoding fails
     private void decodeFrameArgb(ParsedFrameDescriptor descriptor, IntBuffer argb) throws WebPException {
         if (descriptor.lossless()) {

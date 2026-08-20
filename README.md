@@ -89,8 +89,10 @@ try (InputStream input = Files.newInputStream(Path.of("/animated.webp"));
 }
 ```
 
-`readNextFrame(boolean direct)` can override the `WebPDecoder` default buffer location for one frame
-without changing the default used by later calls.
+`readNextFrame(IntBuffer)` decodes a frame into the buffer region beginning at its current position
+and retains that region without copying. The buffer may be heap-backed or direct and may use either
+byte order. A successful call advances its position by the canvas pixel count; the caller must not
+modify the retained region while the frame remains in use.
 
 ### JavaFX Integration
 
