@@ -40,6 +40,17 @@ public final class Argb {
     /// @return the number of consecutive pixels from index zero whose alpha channel is `255`
     public static int countOpaquePrefix(int[] argb) {
         int index = 0;
+        int blockLimit = argb.length - 3;
+        while (index < blockLimit) {
+            int all = argb[index]
+                    & argb[index + 1]
+                    & argb[index + 2]
+                    & argb[index + 3];
+            if ((all & 0xFF00_0000) != 0xFF00_0000) {
+                break;
+            }
+            index += 4;
+        }
         while (index < argb.length && alpha(argb[index]) == 0xFF) {
             index++;
         }

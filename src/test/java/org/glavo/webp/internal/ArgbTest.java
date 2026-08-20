@@ -67,7 +67,7 @@ final class ArgbTest {
     /// Verifies opaque-prefix detection around aggregate scan boundaries.
     @Test
     void countsOpaquePrefixesAcrossScanBoundaries() {
-        for (int prefixLength : new int[]{0, 1, 7, 8, 9, 15, 16, 17, 31, 32, 33}) {
+        for (int prefixLength : new int[]{0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33}) {
             int[] pixels = new int[prefixLength + 1];
             Arrays.fill(pixels, 0xFF12_3456);
             pixels[prefixLength] = 0xFE12_3456;
