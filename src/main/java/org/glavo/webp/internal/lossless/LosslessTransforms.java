@@ -667,7 +667,7 @@ public final class LosslessTransforms {
     }
 
     private static int clampAddSubtractFullPixel(int left, int top, int topLeft) {
-        return Argb.pack(
+        return Argb.packUnchecked(
                 clampAddSubtractFull(Argb.alpha(left), Argb.alpha(top), Argb.alpha(topLeft)),
                 clampAddSubtractFull(Argb.red(left), Argb.red(top), Argb.red(topLeft)),
                 clampAddSubtractFull(Argb.green(left), Argb.green(top), Argb.green(topLeft)),
@@ -676,7 +676,7 @@ public final class LosslessTransforms {
     }
 
     private static int clampAddSubtractHalfPixel(int averaged, int topLeft) {
-        return Argb.pack(
+        return Argb.packUnchecked(
                 clampAddSubtractHalf(Argb.alpha(averaged), Argb.alpha(topLeft)),
                 clampAddSubtractHalf(Argb.red(averaged), Argb.red(topLeft)),
                 clampAddSubtractHalf(Argb.green(averaged), Argb.green(topLeft)),

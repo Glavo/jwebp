@@ -20,6 +20,14 @@ public final class Argb {
     }
 
     /// Packs one non-premultiplied pixel.
+    ///
+    /// Only the low eight bits of each channel value are retained.
+    ///
+    /// @param alpha the alpha channel
+    /// @param red the red channel
+    /// @param green the green channel
+    /// @param blue the blue channel
+    /// @return the packed `ARGB` pixel
     public static int pack(int alpha, int red, int green, int blue) {
         return ((alpha & 0xFF) << 24)
                 | ((red & 0xFF) << 16)
@@ -27,7 +35,25 @@ public final class Argb {
                 | (blue & 0xFF);
     }
 
+    /// Packs one non-premultiplied pixel from channels already known to be eight-bit values.
+    ///
+    /// @param alpha the alpha channel; must be in the range `0` through `255`
+    /// @param red the red channel; must be in the range `0` through `255`
+    /// @param green the green channel; must be in the range `0` through `255`
+    /// @param blue the blue channel; must be in the range `0` through `255`
+    /// @return the packed `ARGB` pixel
+    public static int packUnchecked(int alpha, int red, int green, int blue) {
+        return (alpha << 24) | (red << 16) | (green << 8) | blue;
+    }
+
     /// Packs one opaque non-premultiplied pixel.
+    ///
+    /// Only the low eight bits of each channel value are retained.
+    ///
+    /// @param red the red channel
+    /// @param green the green channel
+    /// @param blue the blue channel
+    /// @return the packed opaque `ARGB` pixel
     public static int opaque(int red, int green, int blue) {
         return pack(0xFF, red, green, blue);
     }

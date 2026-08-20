@@ -586,7 +586,7 @@ public final class LosslessDecoder {
                         int red = tree[RED].readSymbol(bitReader);
                         int blue = tree[BLUE].readSymbol(bitReader);
                         int alpha = tree[ALPHA].readSymbol(bitReader);
-                        int value = Argb.pack(alpha, red, code, blue);
+                        int value = Argb.packUnchecked(alpha, red, code, blue);
 
                         Arrays.fill(data, index, index + count, value);
                         if (huffmanInfo.colorCache != null) {
@@ -608,7 +608,7 @@ public final class LosslessDecoder {
                 }
                 int alpha = tree[ALPHA].readSymbol(bitReader);
 
-                int value = Argb.pack(alpha, red, green, blue);
+                int value = Argb.packUnchecked(alpha, red, green, blue);
                 data[index] = value;
 
                 if (huffmanInfo.colorCache != null) {
@@ -706,7 +706,7 @@ public final class LosslessDecoder {
                         int red = tree[RED].readSymbol(bitReader);
                         int blue = tree[BLUE].readSymbol(bitReader);
                         int alpha = tree[ALPHA].readSymbol(bitReader);
-                        int value = Argb.pack(alpha, red, code, blue);
+                        int value = Argb.packUnchecked(alpha, red, code, blue);
 
                         for (int offset = 0; offset < count; offset++) {
                             data.put(index + offset, value);
@@ -730,7 +730,7 @@ public final class LosslessDecoder {
                 }
                 int alpha = tree[ALPHA].readSymbol(bitReader);
 
-                int value = Argb.pack(alpha, red, green, blue);
+                int value = Argb.packUnchecked(alpha, red, green, blue);
                 data.put(index, value);
 
                 if (huffmanInfo.colorCache != null) {

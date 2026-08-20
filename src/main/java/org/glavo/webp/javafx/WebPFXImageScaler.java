@@ -216,7 +216,7 @@ final class WebPFXImageScaler {
                         xFraction,
                         yFraction
                 ));
-                target.put(Argb.pack(alpha, red, green, blue));
+                target.put(Argb.packUnchecked(alpha, red, green, blue));
             }
         }
     }
