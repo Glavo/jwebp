@@ -12,13 +12,18 @@ import org.glavo.webp.javafx.WebPFXImageOptions;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -55,6 +60,12 @@ final class WebPFXImageTest {
     /// Verifies that every public factory rejects a null decoded source.
     @Test
     void factoryMethodsRejectNullSources() {
+        assertThrows(NullPointerException.class, () -> WebPFXImage.read((InputStream) null));
+        assertThrows(NullPointerException.class, () -> WebPFXImage.read((Path) null));
+        assertThrows(
+                NullPointerException.class,
+                () -> WebPFXImage.read(InputStream.nullInputStream(), null)
+        );
         assertThrows(NullPointerException.class, () -> WebPFXImage.of((WebPFrame) null));
         assertThrows(
                 NullPointerException.class,
@@ -126,6 +137,54 @@ final class WebPFXImageTest {
 
         assertNull(callOnFxThread(image::getAnimation));
         assertJavaFxImageEquals(image, "reference/regression-tiny.png");
+    }
+
+    /// Verifies direct static decoding from an owned stream and close propagation.
+    @Test
+    void readsStaticImageFromInputStreamAndClosesIt() throws Exception {
+        CloseTrackingInputStream input = new CloseTrackingInputStream(
+                resource("images/regression-tiny.webp")
+        );
+
+        WebPFXImage image = callOnFxThread(() -> WebPFXImage.read(input));
+
+        assertTrue(input.isClosed());
+        assertFalse(image.isAnimated());
+        assertJavaFxImageEquals(image, "reference/regression-tiny.png");
+    }
+
+    /// Verifies scaled static decoding through the file overload.
+    @Test
+    void readsScaledStaticImageFromPath(@TempDir Path tempDirectory) throws Exception {
+        Path path = tempDirectory.resolve("scaled-static.webp");
+        try (InputStream input = resource("images/regression-tiny.webp")) {
+            Files.copy(input, path);
+        }
+        WebPFXImageOptions scaled = options(37, 29, false, false);
+        WebPImage decoded = WebPImage.read(path);
+
+        WebPFXImage expected = callOnFxThread(() -> WebPFXImage.of(decoded, scaled));
+        WebPFXImage actual = callOnFxThread(() -> WebPFXImage.read(path, scaled));
+
+        assertJavaFxImagesEqual(expected, actual);
+    }
+
+    /// Verifies that scaled animation decoding reuses streaming source storage and closes input.
+    @Test
+    void readsScaledAnimationFromInputStreamAndClosesIt() throws Exception {
+        WebPFXImageOptions scaled = options(48, 32, false, false);
+        WebPImage decoded = WebPImage.read(resource("images/animated-random_lossless.webp"));
+        CloseTrackingInputStream input = new CloseTrackingInputStream(
+                resource("images/animated-random_lossless.webp")
+        );
+
+        WebPFXImage expected = callOnFxThread(() -> WebPFXImage.of(decoded, scaled));
+        WebPFXImage actual = callOnFxThread(() -> WebPFXImage.read(input, scaled));
+
+        assertTrue(input.isClosed());
+        assertTrue(actual.isAnimated());
+        assertNotNull(callOnFxThread(actual::getAnimation));
+        assertJavaFxImagesEqual(expected, actual);
     }
 
     @Test
@@ -523,12 +582,68 @@ final class WebPFXImageTest {
         });
     }
 
+    /// Verifies dimensions and every currently presented pixel of two JavaFX images.
+    ///
+    /// @param expected the expected image
+    /// @param actual the image under test
+    private static void assertJavaFxImagesEqual(Image expected, Image actual) throws Exception {
+        callOnFxThread(() -> {
+            assertEquals((int) expected.getWidth(), (int) actual.getWidth());
+            assertEquals((int) expected.getHeight(), (int) actual.getHeight());
+            PixelReader expectedPixels = expected.getPixelReader();
+            PixelReader actualPixels = actual.getPixelReader();
+            assertNotNull(expectedPixels);
+            assertNotNull(actualPixels);
+            for (int y = 0; y < (int) expected.getHeight(); y++) {
+                for (int x = 0; x < (int) expected.getWidth(); x++) {
+                    assertEquals(
+                            expectedPixels.getArgb(x, y),
+                            actualPixels.getArgb(x, y),
+                            "Pixel mismatch at (" + x + ", " + y + ")"
+                    );
+                }
+            }
+            return null;
+        });
+    }
+
     private static InputStream resource(String path) {
         InputStream input = WebPFXImageTest.class.getClassLoader().getResourceAsStream(path);
         if (input == null) {
             throw new IllegalArgumentException("Missing test resource: " + path);
         }
         return input;
+    }
+
+    /// Input stream wrapper that records close propagation.
+    @NotNullByDefault
+    private static final class CloseTrackingInputStream extends FilterInputStream {
+
+        /// Whether [#close()] has been invoked.
+        private boolean closed;
+
+        /// Creates a close-tracking wrapper.
+        ///
+        /// @param input the wrapped input stream
+        private CloseTrackingInputStream(InputStream input) {
+            super(input);
+        }
+
+        /// Closes the wrapped stream and records the invocation.
+        ///
+        /// @throws IOException if the wrapped stream cannot be closed
+        @Override
+        public void close() throws IOException {
+            closed = true;
+            super.close();
+        }
+
+        /// Returns whether this stream has been closed.
+        ///
+        /// @return `true` after [#close()] has been invoked
+        private boolean isClosed() {
+            return closed;
+        }
     }
 
     private static void waitForCondition(ThrowingBooleanSupplier condition, long timeoutMillis) throws Exception {

@@ -18,6 +18,7 @@
 - Heap-backed and caller-provided frame buffers for `INT_ARGB` and `INT_ARGB_PRE` pixels during streaming decode
 - New API: `WebPFrame#usesCustomPixelBuffer()`
 - New immutable `WebPFXImageOptions` API for JavaFX presentation scaling, filtering, and animation autoplay
+- New `WebPFXImage#read(Path, ...)` and `WebPFXImage#read(InputStream, ...)` APIs for direct JavaFX-oriented decoding
 
 ### Changed
 
@@ -29,6 +30,7 @@
 - Improve VP8 and VP8L decoding throughput and substantially reduce temporary allocations, especially for animated WebP images
 - Decode static frames directly into caller-provided storage, avoiding a full-size heap `ARGB` staging array and the subsequent copy
 - Pack scaled animation frames into bounded direct-memory chunks, reducing native allocations and Cleaner objects
+- Decode JavaFX images without constructing an intermediate heap-backed `WebPImage`
 
 ### Fixed
 

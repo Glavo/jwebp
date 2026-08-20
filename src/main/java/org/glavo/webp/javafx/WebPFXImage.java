@@ -9,8 +9,10 @@ import javafx.scene.image.PixelBuffer;
 import javafx.scene.image.PixelFormat;
 import javafx.scene.image.WritableImage;
 import javafx.util.Duration;
+import org.glavo.webp.WebPException;
 import org.glavo.webp.WebPFrame;
 import org.glavo.webp.WebPImage;
+import org.glavo.webp.WebPImageReader;
 import org.glavo.webp.WebPPixelFormat;
 import org.glavo.webp.javafx.WebPFXImageScaler.ScalePlan;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -18,7 +20,10 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 import org.jetbrains.annotations.UnmodifiableView;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.IntBuffer;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -35,8 +40,9 @@ import java.util.Objects;
 /// Because the superclass is constructed from a `PixelBuffer`, the inherited
 /// [#getPixelWriter()] operation is unsupported.
 ///
-/// Use [#of(WebPFrame)] or [#of(WebPImage)] for the default presentation, or pass
-/// [WebPFXImageOptions] to configure scaling, filtering, and animation playback.
+/// Use [#read(Path)] or [#read(InputStream)] to decode a source directly for JavaFX presentation.
+/// Use [#of(WebPFrame)] or [#of(WebPImage)] to adapt already decoded content. Presentation options
+/// configure scaling, filtering, and animation playback.
 @NotNullByDefault
 public final class WebPFXImage extends WritableImage {
 
@@ -63,6 +69,75 @@ public final class WebPFXImage extends WritableImage {
 
     /// Index of the animation frame most recently written to this image.
     private int renderedFrameIndex = -1;
+
+    /// Reads a WebP stream into an intrinsic-size JavaFX image.
+    ///
+    /// Ownership of `input` transfers to this method. The stream is closed before this method
+    /// returns, including when decoding or JavaFX image construction fails.
+    ///
+    /// @param input the WebP byte stream
+    /// @return the decoded JavaFX image
+    /// @throws WebPException if parsing, decoding, or closing fails
+    /// @throws NullPointerException if `input` is `null`
+    public static WebPFXImage read(InputStream input) throws WebPException {
+        return read(input, WebPFXImageOptions.DEFAULT);
+    }
+
+    /// Reads a WebP stream into a JavaFX image using immutable presentation options.
+    ///
+    /// Once both arguments have been validated, ownership of `input` transfers to this method. The
+    /// stream is closed before this method returns, including when decoding or JavaFX image
+    /// construction fails.
+    ///
+    /// @param input the WebP byte stream
+    /// @param options the scaling, filtering, and playback options
+    /// @return the decoded JavaFX image
+    /// @throws WebPException if parsing, decoding, or closing fails
+    /// @throws NullPointerException if `input` or `options` is `null`
+    public static WebPFXImage read(
+            InputStream input,
+            WebPFXImageOptions options
+    ) throws WebPException {
+        Objects.requireNonNull(options, "options");
+        Objects.requireNonNull(input, "input");
+        try (WebPImageReader reader = WebPImageReader.open(input)) {
+            return read(reader, options);
+        } catch (IOException ex) {
+            if (ex instanceof WebPException webPException) {
+                throw webPException;
+            }
+            throw new WebPException("Failed to decode WebP stream", ex);
+        }
+    }
+
+    /// Reads a WebP file into an intrinsic-size JavaFX image.
+    ///
+    /// @param path the WebP file path
+    /// @return the decoded JavaFX image
+    /// @throws WebPException if the file cannot be opened, parsed, decoded, or closed
+    /// @throws NullPointerException if `path` is `null`
+    public static WebPFXImage read(Path path) throws WebPException {
+        return read(path, WebPFXImageOptions.DEFAULT);
+    }
+
+    /// Reads a WebP file into a JavaFX image using immutable presentation options.
+    ///
+    /// @param path the WebP file path
+    /// @param options the scaling, filtering, and playback options
+    /// @return the decoded JavaFX image
+    /// @throws WebPException if the file cannot be opened, parsed, decoded, or closed
+    /// @throws NullPointerException if `path` or `options` is `null`
+    public static WebPFXImage read(Path path, WebPFXImageOptions options) throws WebPException {
+        Objects.requireNonNull(path, "path");
+        Objects.requireNonNull(options, "options");
+        try (WebPImageReader reader = WebPImageReader.open(path)) {
+            return read(reader, options);
+        } catch (WebPException ex) {
+            throw ex;
+        } catch (IOException ex) {
+            throw new WebPException("Failed to decode WebP file: " + path, ex);
+        }
+    }
 
     /// Creates an intrinsic-size JavaFX image from one decoded frame.
     ///
@@ -135,21 +210,180 @@ public final class WebPFXImage extends WritableImage {
                 image.getFrames(),
                 scalePlan
         );
+        return createAnimatedImage(
+                preparedAnimation,
+                scalePlan.targetWidth(),
+                scalePlan.targetHeight(),
+                image.getLoopCount(),
+                options.isAutoPlay()
+        );
+    }
+
+    /// Decodes an opened reader directly into JavaFX presentation storage.
+    ///
+    /// The caller remains responsible for closing `reader`.
+    ///
+    /// @param reader the opened WebP reader
+    /// @param options the scaling, filtering, and playback options
+    /// @return the decoded JavaFX image
+    /// @throws WebPException if frame decoding fails
+    private static WebPFXImage read(
+            WebPImageReader reader,
+            WebPFXImageOptions options
+    ) throws WebPException {
+        ScalePlan scalePlan = ScalePlan.create(
+                reader.getWidth(),
+                reader.getHeight(),
+                options
+        );
+        if (!reader.isAnimated()) {
+            return readStaticImage(reader, scalePlan);
+        }
+
+        PreparedAnimation preparedAnimation = readAnimation(reader, scalePlan);
+        return createAnimatedImage(
+                preparedAnimation,
+                scalePlan.targetWidth(),
+                scalePlan.targetHeight(),
+                reader.getLoopCount(),
+                options.isAutoPlay()
+        );
+    }
+
+    /// Decodes one static frame using the cheapest storage path for its scale plan.
+    ///
+    /// Intrinsic-size pixels are decoded directly into the final JavaFX backing storage. Scaled
+    /// images use a temporary heap frame and retain only their scaled direct pixels.
+    ///
+    /// @param reader the opened static-image reader
+    /// @param scalePlan the target dimensions and filtering mode
+    /// @return the decoded static JavaFX image
+    /// @throws WebPException if frame decoding fails
+    private static WebPFXImage readStaticImage(
+            WebPImageReader reader,
+            ScalePlan scalePlan
+    ) throws WebPException {
+        if (!scalePlan.scalingRequired()) {
+            IntBuffer pixels = WebPFXImageScaler.allocateDirectBuffer(
+                    scalePlan.targetWidth(),
+                    scalePlan.targetHeight()
+            );
+            requireFrame(reader.readNextFrame(WebPPixelFormat.INT_ARGB_PRE, pixels));
+            pixels.rewind();
+            return new WebPFXImage(createPixelBuffer(
+                    scalePlan.targetWidth(),
+                    scalePlan.targetHeight(),
+                    pixels
+            ));
+        }
+
+        WebPFrame frame = requireFrame(reader.readNextFrame(WebPPixelFormat.INT_ARGB));
+        return createStaticImage(frame, scalePlan);
+    }
+
+    /// Decodes animation frames directly into packed JavaFX preparation storage.
+    ///
+    /// Scaled animations reuse one heap canvas-sized destination while each decoded frame is
+    /// immediately scaled into its retained target slice. Intrinsic-size animations decode their
+    /// premultiplied pixels directly into retained slices.
+    ///
+    /// @param reader the opened animated-image reader
+    /// @param scalePlan the target dimensions and filtering mode
+    /// @return the retained frames and mutable presentation region
+    /// @throws WebPException if any frame cannot be decoded
+    private static PreparedAnimation readAnimation(
+            WebPImageReader reader,
+            ScalePlan scalePlan
+    ) throws WebPException {
+        int targetPixelCount;
+        int regionCount;
+        try {
+            targetPixelCount = Math.multiplyExact(scalePlan.targetWidth(), scalePlan.targetHeight());
+            regionCount = Math.addExact(reader.getFrameCount(), 1);
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("Animation dimensions are too large", ex);
+        }
+
+        IntBuffer[] regions = allocatePackedAnimationRegions(regionCount, targetPixelCount);
+        ArrayList<AnimationFrame> frames = new ArrayList<>(reader.getFrameCount());
+        if (scalePlan.scalingRequired()) {
+            int sourcePixelCount;
+            try {
+                sourcePixelCount = Math.multiplyExact(reader.getWidth(), reader.getHeight());
+            } catch (ArithmeticException ex) {
+                throw new IllegalArgumentException("Animation canvas is too large", ex);
+            }
+            IntBuffer sourcePixels = IntBuffer.allocate(sourcePixelCount);
+            for (int frameIndex = 0; frameIndex < reader.getFrameCount(); frameIndex++) {
+                sourcePixels.clear();
+                WebPFrame frame = requireFrame(reader.readNextFrame(WebPPixelFormat.INT_ARGB, sourcePixels));
+                IntBuffer targetPixels = regions[frameIndex];
+                WebPFXImageScaler.scaleAsArgbPre(frame, scalePlan, targetPixels);
+                frames.add(new AnimationFrame(
+                        targetPixels,
+                        WebPPixelFormat.INT_ARGB_PRE,
+                        frame.getDurationMillis()
+                ));
+            }
+        } else {
+            for (int frameIndex = 0; frameIndex < reader.getFrameCount(); frameIndex++) {
+                IntBuffer framePixels = regions[frameIndex];
+                WebPFrame frame = requireFrame(reader.readNextFrame(
+                        WebPPixelFormat.INT_ARGB_PRE,
+                        framePixels
+                ));
+                framePixels.rewind();
+                frames.add(new AnimationFrame(
+                        framePixels,
+                        WebPPixelFormat.INT_ARGB_PRE,
+                        frame.getDurationMillis()
+                ));
+            }
+        }
+        return new PreparedAnimation(
+                List.copyOf(frames),
+                regions[reader.getFrameCount()]
+        );
+    }
+
+    /// Returns a decoded frame or reports an inconsistent exhausted reader.
+    ///
+    /// @param frame the result of a frame read expected to succeed
+    /// @return the non-null decoded frame
+    /// @throws WebPException if the reader unexpectedly has no frame
+    private static WebPFrame requireFrame(@Nullable WebPFrame frame) throws WebPException {
+        if (frame == null) {
+            throw new WebPException("WebP reader ended before all declared frames were decoded");
+        }
+        return frame;
+    }
+
+    /// Creates an animated JavaFX image from prepared frame and presentation storage.
+    ///
+    /// @param preparedAnimation retained frame data and mutable presentation pixels
+    /// @param width the presentation width in pixels
+    /// @param height the presentation height in pixels
+    /// @param loopCount the animation loop count, or `0` for indefinite playback
+    /// @param autoPlay whether to start playback during construction
+    /// @return the animated JavaFX image
+    private static WebPFXImage createAnimatedImage(
+            PreparedAnimation preparedAnimation,
+            int width,
+            int height,
+            int loopCount,
+            boolean autoPlay
+    ) {
         @Unmodifiable List<AnimationFrame> animationFrames = preparedAnimation.frames();
         AnimationFrame firstFrame = animationFrames.get(0);
         IntBuffer animationBuffer = preparedAnimation.presentationPixels();
         WebPFXImageScaler.copyAsArgbPre(firstFrame.pixels(), firstFrame.pixelFormat(), animationBuffer);
-        PixelBuffer<IntBuffer> pixelBuffer = createPixelBuffer(
-                scalePlan.targetWidth(),
-                scalePlan.targetHeight(),
-                animationBuffer
-        );
+        PixelBuffer<IntBuffer> pixelBuffer = createPixelBuffer(width, height, animationBuffer);
         return new WebPFXImage(
                 pixelBuffer,
                 animationBuffer,
                 animationFrames,
-                image.getLoopCount(),
-                options.isAutoPlay()
+                loopCount,
+                autoPlay
         );
     }
 

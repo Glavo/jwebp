@@ -96,15 +96,18 @@ frames are always heap-backed, so direct storage must be supplied explicitly thr
 JWebP's core part only depends on the `java.base` module, which can work normally on the Android platform.
 
 However, JWebP also provides optional components for JavaFX, located in the `org.glavo.webp.javafx` package,
-which can easily convert `WebPImage` to JavaFX `Image`:
+which can decode or convert WebP content to JavaFX `Image`:
 
 ```java
+// Decode directly into JavaFX-oriented presentation storage.
+javafx.scene.image.Image image = WebPFXImage.read(Path.of("sample.webp"));
+
 WebPImage decoded = WebPImage.read(..., WebPPixelFormat.INT_ARGB_PRE);
 
 // Create a JavaFX image from a WebPImage.
 // If it is an animated WebP, it will automatically play the animation.
 // You can control its presentation by passing WebPFXImageOptions.
-javafx.scene.image.Image image = WebPFXImage.of(decoded);
+javafx.scene.image.Image convertedImage = WebPFXImage.of(decoded);
 
 // Create a JavaFX image from a WebPFrame.
 javafx.scene.image.Image frameImage = WebPFXImage.of(decoded.getFirstFrame());
@@ -114,8 +117,8 @@ WebPFXImageOptions fxOptions = WebPFXImageOptions.DEFAULT
         .withRequestedSize(640, 480)
         .withPreserveRatio(true)
         .withSmooth(true);
-javafx.scene.image.Image scaledImage = WebPFXImage.of(
-        decoded,
+javafx.scene.image.Image scaledImage = WebPFXImage.read(
+        Path.of("sample.webp"),
         fxOptions
 );
 ```
@@ -126,6 +129,10 @@ JavaFX presentation; decoded `WebPFrame` and `WebPImage` objects retain their in
 Intrinsic-size static direct `INT_ARGB_PRE` frames are used directly as the JavaFX `PixelBuffer`
 backing store. Heap frames, format conversion, and scaling use newly allocated direct presentation
 storage.
+
+The `InputStream` read overloads take ownership of the supplied stream and close it before
+returning. Direct `read` calls avoid constructing an intermediate `WebPImage` and are preferred when
+the decoded frames are needed only for JavaFX presentation.
 
 ### Swing Integration
 
