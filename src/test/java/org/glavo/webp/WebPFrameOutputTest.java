@@ -247,10 +247,22 @@ final class WebPFrameOutputTest {
                 try (WebPImageReader reader = WebPImageReader.open(resource(path))) {
                     int pixelCount = Math.multiplyExact(reader.getWidth(), reader.getHeight());
                     IntBuffer storage = ByteBuffer
-                            .allocateDirect(Math.multiplyExact(pixelCount, Integer.BYTES))
+                            .allocateDirect(Math.multiplyExact(pixelCount + 2, Integer.BYTES))
                             .order(ByteOrder.nativeOrder())
                             .asIntBuffer();
+                    int sentinel = 0x1357_9BDF;
+                    storage.put(0, sentinel);
+                    storage.put(pixelCount + 1, sentinel);
+                    storage.position(1);
+                    storage.limit(pixelCount + 1);
                     direct = reader.readNextFrame(pixelFormat, storage);
+
+                    assertEquals(pixelCount + 1, storage.position(), path);
+                    assertEquals(pixelCount + 1, storage.limit(), path);
+                    IntBuffer inspection = storage.duplicate();
+                    inspection.clear();
+                    assertEquals(sentinel, inspection.get(0), path);
+                    assertEquals(sentinel, inspection.get(pixelCount + 1), path);
                 }
 
                 assertFalse(heap.getPixels().isDirect(), path);

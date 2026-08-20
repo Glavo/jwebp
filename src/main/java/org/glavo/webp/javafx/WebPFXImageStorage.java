@@ -106,7 +106,35 @@ final class WebPFXImageStorage {
             throw new IllegalArgumentException("pixelCount <= 0: " + pixelCount);
         }
 
-        boolean directPreferred = prefersDirect(pixelCount, regionCount);
+        return allocateRegions(
+                regionCount,
+                pixelCount,
+                prefersDirect(pixelCount, regionCount)
+        );
+    }
+
+    /// Allocates equal-sized regions in bounded chunks using the requested storage location.
+    ///
+    /// A direct preference applies to every chunk and falls back to heap storage when one region
+    /// cannot be represented by a direct [ByteBuffer].
+    ///
+    /// @param regionCount the positive number of regions
+    /// @param pixelCount the positive number of integer pixels in each region
+    /// @param directPreferred whether direct storage is preferred
+    /// @return position-zero region slices in allocation order
+    /// @throws IllegalArgumentException if either numeric argument is not positive
+    static IntBuffer[] allocateRegions(
+            int regionCount,
+            int pixelCount,
+            boolean directPreferred
+    ) {
+        if (regionCount <= 0) {
+            throw new IllegalArgumentException("regionCount <= 0: " + regionCount);
+        }
+        if (pixelCount <= 0) {
+            throw new IllegalArgumentException("pixelCount <= 0: " + pixelCount);
+        }
+
         int maxChunkPixels = MAX_PACKED_CHUNK_BYTES / Integer.BYTES;
         int regionsPerChunk = Math.max(1, maxChunkPixels / pixelCount);
         IntBuffer[] regions = new IntBuffer[regionCount];

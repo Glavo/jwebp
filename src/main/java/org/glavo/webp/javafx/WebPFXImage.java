@@ -533,14 +533,12 @@ public final class WebPFXImage extends WritableImage {
             throw new IllegalArgumentException("Animation dimensions are too large", ex);
         }
 
-        @Nullable PreparedAnimation reusable = tryReuseAnimationFrames(
-                sourceFrames,
-                scalePlan,
-                pixelCount,
-                regionCount
-        );
-        if (reusable != null) {
-            return reusable;
+        if (!scalePlan.scalingRequired()) {
+            return prepareIntrinsicAnimation(
+                    sourceFrames,
+                    pixelCount,
+                    regionCount
+            );
         }
 
         IntBuffer[] regions = WebPFXImageStorage.allocateRegions(regionCount, pixelCount);
@@ -548,15 +546,7 @@ public final class WebPFXImage extends WritableImage {
         for (int frameIndex = 0; frameIndex < sourceFrames.size(); frameIndex++) {
             WebPFrame frame = sourceFrames.get(frameIndex);
             IntBuffer framePixels = regions[frameIndex];
-            if (scalePlan.scalingRequired()) {
-                WebPFXImageScaler.scaleAsArgbPre(frame, scalePlan, framePixels);
-            } else {
-                WebPFXImageScaler.copyAsArgbPre(
-                        frame.getPixels(),
-                        frame.getPixelFormat(),
-                        framePixels
-                );
-            }
+            WebPFXImageScaler.scaleAsArgbPre(frame, scalePlan, framePixels);
             preparedFrames.add(new AnimationFrame(framePixels, frame.getDurationMillis()));
         }
         return new PreparedAnimation(
@@ -565,44 +555,62 @@ public final class WebPFXImage extends WritableImage {
         );
     }
 
-    /// Retains compatible intrinsic-size frames without copying their pixels.
+    /// Prepares intrinsic-size frames while retaining each compatible source region directly.
     ///
-    /// When the combined animation size selects direct storage, every source frame must already be
-    /// direct; otherwise this method declines reuse so [#prepareAnimation(List, ScalePlan)] can
-    /// migrate the complete retained sequence off heap.
+    /// Incompatible frames and the mutable presentation region share packed adaptive storage. When
+    /// the combined animation size selects direct storage, heap-backed source frames are migrated
+    /// while compatible direct frames remain reusable.
     ///
     /// @param sourceFrames the decoded presentation frames
-    /// @param scalePlan the target dimensions and filtering mode
     /// @param pixelCount the number of pixels in each target frame
     /// @param regionCount the frame count plus one mutable presentation region
-    /// @return prepared animation storage, or `null` when conversion or migration is required
-    private static @Nullable PreparedAnimation tryReuseAnimationFrames(
+    /// @return retained frame data and mutable presentation storage
+    private static PreparedAnimation prepareIntrinsicAnimation(
             @Unmodifiable List<WebPFrame> sourceFrames,
-            ScalePlan scalePlan,
             int pixelCount,
             int regionCount
     ) {
-        if (scalePlan.scalingRequired()) {
-            return null;
+        boolean directPreferred = WebPFXImageStorage.prefersDirect(pixelCount, regionCount);
+        ArrayList<@UnmodifiableView IntBuffer> sourcePixels = new ArrayList<>(sourceFrames.size());
+        boolean[] reusable = new boolean[sourceFrames.size()];
+        int convertedFrameCount = 0;
+        for (int frameIndex = 0; frameIndex < sourceFrames.size(); frameIndex++) {
+            WebPFrame frame = sourceFrames.get(frameIndex);
+            @UnmodifiableView IntBuffer pixels = frame.getPixels();
+            sourcePixels.add(pixels);
+            reusable[frameIndex] = (!directPreferred || pixels.isDirect())
+                    && (frame.getPixelFormat() == WebPPixelFormat.INT_ARGB_PRE
+                        || Argb.countOpaquePrefix(pixels) == pixelCount);
+            if (!reusable[frameIndex]) {
+                convertedFrameCount++;
+            }
         }
 
-        boolean directPreferred = WebPFXImageStorage.prefersDirect(pixelCount, regionCount);
+        IntBuffer[] convertedRegions = WebPFXImageStorage.allocateRegions(
+                convertedFrameCount + 1,
+                pixelCount,
+                directPreferred
+        );
         ArrayList<AnimationFrame> frames = new ArrayList<>(sourceFrames.size());
-        for (WebPFrame frame : sourceFrames) {
-            @UnmodifiableView IntBuffer pixels = frame.getPixels();
-            if (directPreferred && !pixels.isDirect()) {
-                return null;
+        int convertedFrameIndex = 0;
+        for (int frameIndex = 0; frameIndex < sourceFrames.size(); frameIndex++) {
+            WebPFrame frame = sourceFrames.get(frameIndex);
+            IntBuffer framePixels = sourcePixels.get(frameIndex);
+            if (!reusable[frameIndex]) {
+                framePixels = convertedRegions[convertedFrameIndex++];
+                WebPFXImageScaler.copyAsArgbPre(
+                        sourcePixels.get(frameIndex),
+                        frame.getPixelFormat(),
+                        framePixels
+                );
             }
-            if (frame.getPixelFormat() != WebPPixelFormat.INT_ARGB_PRE
-                    && Argb.countOpaquePrefix(pixels) != pixelCount) {
-                return null;
-            }
-            frames.add(new AnimationFrame(pixels, frame.getDurationMillis()));
+            frames.add(new AnimationFrame(framePixels, frame.getDurationMillis()));
         }
+        assert convertedFrameIndex == convertedFrameCount;
 
         return new PreparedAnimation(
                 List.copyOf(frames),
-                WebPFXImageStorage.allocatePixels(pixelCount, directPreferred)
+                convertedRegions[convertedFrameCount]
         );
     }
 

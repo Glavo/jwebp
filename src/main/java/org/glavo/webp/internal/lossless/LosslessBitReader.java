@@ -16,10 +16,10 @@ import java.util.Objects;
 public final class LosslessBitReader {
 
     /// Array containing the selected VP8L byte range.
-    private final byte[] data;
+    private byte[] data = ArrayUtils.EMPTY_BYTE_ARRAY;
 
     /// Exclusive array index of the selected VP8L byte range.
-    private final int endPosition;
+    private int endPosition;
 
     /// Index of the next encoded byte to buffer.
     private int bytePosition;
@@ -44,10 +44,22 @@ public final class LosslessBitReader {
     /// @param length the encoded byte count
     /// @throws IndexOutOfBoundsException if the range lies outside the array
     public LosslessBitReader(byte[] data, int offset, int length) {
+        reset(data, offset, length);
+    }
+
+    /// Resets this reader to the selected range and discards all buffered bits.
+    ///
+    /// @param data the array containing the encoded bytes
+    /// @param offset the first encoded byte
+    /// @param length the encoded byte count
+    /// @throws IndexOutOfBoundsException if the range lies outside the array
+    void reset(byte[] data, int offset, int length) {
         Objects.checkFromIndexSize(offset, length, data.length);
         this.data = data;
         this.bytePosition = offset;
         this.endPosition = offset + length;
+        this.buffer = 0L;
+        this.bitCount = 0;
     }
 
     /// Refills the local buffer until at least 56 bits are available or the input is exhausted.

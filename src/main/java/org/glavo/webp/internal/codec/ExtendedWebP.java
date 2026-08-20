@@ -40,6 +40,29 @@ public final class ExtendedWebP {
     ///                                  not match them
     /// @throws WebPException if the alpha payload is malformed
     public static void decodeAlpha(byte[] payload, int width, int height, int[] argb) throws WebPException {
+        decodeAlpha(payload, width, height, argb, null);
+    }
+
+    /// Decodes an ALPH payload while reusing a supplied VP8L decoder for compressed samples.
+    ///
+    /// The decoder is reset to the compressed portion of `payload` when VP8L compression is used.
+    /// It is not accessed for an uncompressed payload. Lower 24 destination bits are discarded.
+    ///
+    /// @param payload the ALPH chunk payload
+    /// @param width the frame width
+    /// @param height the frame height
+    /// @param argb the exact-sized writable destination
+    /// @param losslessDecoder the decoder whose workspaces may be reused, or `null` to allocate one
+    /// @throws IllegalArgumentException if the dimensions are invalid or the destination size does
+    ///                                  not match them
+    /// @throws WebPException if the alpha payload is malformed
+    public static void decodeAlpha(
+            byte[] payload,
+            int width,
+            int height,
+            int[] argb,
+            @Nullable LosslessDecoder losslessDecoder
+    ) throws WebPException {
         int expectedLength = pixelCount(width, height);
         if (argb.length != expectedLength) {
             throw new IllegalArgumentException(
@@ -52,8 +75,8 @@ public final class ExtendedWebP {
         int compression = parameters & 0b11;
         FilteringMethod filteringMethod = filteringMethod((parameters >>> 2) & 0b11);
         if (compression == 1) {
-            new LosslessDecoder(payload, 1, payload.length - 1)
-                    .decodeFrame(width, height, true, argb);
+            LosslessDecoder decoder = prepareAlphaDecoder(payload, losslessDecoder);
+            decoder.decodeFrame(width, height, true, argb);
         }
 
         for (int y = 0; y < height; y++) {
@@ -82,6 +105,31 @@ public final class ExtendedWebP {
     /// @throws ReadOnlyBufferException if the destination is read-only
     /// @throws WebPException if the alpha payload is malformed
     public static void decodeAlpha(byte[] payload, int width, int height, IntBuffer argb) throws WebPException {
+        decodeAlpha(payload, width, height, argb, null);
+    }
+
+    /// Decodes an ALPH payload into an integer buffer while reusing a supplied VP8L decoder.
+    ///
+    /// The decoder is reset to the compressed portion of `payload` when VP8L compression is used.
+    /// It is not accessed for an uncompressed payload. The destination position and limit are not
+    /// changed.
+    ///
+    /// @param payload the ALPH chunk payload
+    /// @param width the frame width
+    /// @param height the frame height
+    /// @param argb the exact-sized writable destination region
+    /// @param losslessDecoder the decoder whose workspaces may be reused, or `null` to allocate one
+    /// @throws IllegalArgumentException if the dimensions are invalid or the destination size does
+    ///                                  not match them
+    /// @throws ReadOnlyBufferException if the destination is read-only
+    /// @throws WebPException if the alpha payload is malformed
+    public static void decodeAlpha(
+            byte[] payload,
+            int width,
+            int height,
+            IntBuffer argb,
+            @Nullable LosslessDecoder losslessDecoder
+    ) throws WebPException {
         if (argb.isReadOnly()) {
             throw new ReadOnlyBufferException();
         }
@@ -96,10 +144,12 @@ public final class ExtendedWebP {
         int parameters = parseAlphaParameters(payload, expectedLength);
         int compression = parameters & 0b11;
         FilteringMethod filteringMethod = filteringMethod((parameters >>> 2) & 0b11);
-        IntBuffer output = argb.slice();
+        IntBuffer output = argb.position() == 0 && argb.limit() == argb.capacity()
+                ? argb
+                : argb.slice();
         if (compression == 1) {
-            new LosslessDecoder(payload, 1, payload.length - 1)
-                    .decodeFrame(width, height, true, output);
+            LosslessDecoder decoder = prepareAlphaDecoder(payload, losslessDecoder);
+            decoder.decodeFrame(width, height, true, output);
         }
 
         for (int y = 0; y < height; y++) {
@@ -112,6 +162,22 @@ public final class ExtendedWebP {
                 output.put(pixelIndex, ((sample + predictor) & 0xFF) << 24);
             }
         }
+    }
+
+    /// Returns a decoder reset to the compressed ALPH payload bytes.
+    ///
+    /// @param payload the ALPH payload including its control byte
+    /// @param reusableDecoder the decoder to reuse, or `null` to allocate one
+    /// @return the prepared decoder
+    private static LosslessDecoder prepareAlphaDecoder(
+            byte[] payload,
+            @Nullable LosslessDecoder reusableDecoder
+    ) {
+        if (reusableDecoder == null) {
+            return new LosslessDecoder(payload, 1, payload.length - 1);
+        }
+        reusableDecoder.resetInput(payload, 1, payload.length - 1);
+        return reusableDecoder;
     }
 
     /// Returns the validated number of pixels for ALPH dimensions.

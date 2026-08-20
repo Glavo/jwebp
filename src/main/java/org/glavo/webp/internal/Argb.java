@@ -5,6 +5,7 @@ package org.glavo.webp.internal;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.nio.IntBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.util.Objects;
 
 /// Packed `ARGB` pixel helpers.
@@ -83,8 +84,20 @@ public final class Argb {
         int position = argb.position();
         int index = position;
         int limit = argb.limit();
-        while (index < limit && alpha(argb.get(index)) == 0xFF) {
-            index++;
+        int blockEnd = limit - ((limit - position) & 3);
+        for (; index < blockEnd; index += 4) {
+            int all = argb.get(index)
+                    & argb.get(index + 1)
+                    & argb.get(index + 2)
+                    & argb.get(index + 3);
+            if ((all & 0xFF00_0000) != 0xFF00_0000) {
+                break;
+            }
+        }
+        for (; index < limit; index++) {
+            if (alpha(argb.get(index)) != 0xFF) {
+                break;
+            }
         }
         return index - position;
     }
@@ -162,6 +175,104 @@ public final class Argb {
             }
         }
         return opaquePrefix == limit - position;
+    }
+
+    /// Copies non-premultiplied pixels into a premultiplied destination.
+    ///
+    /// The destination's remaining region must contain exactly one element per source pixel. Its
+    /// position and limit are not changed. Source and destination storage must not overlap.
+    ///
+    /// @param source the non-premultiplied source pixels
+    /// @param target the writable destination region
+    /// @return `true` if every source pixel was fully opaque; otherwise `false`
+    /// @throws IllegalArgumentException if the destination size differs from the source length or
+    ///                                  its storage overlaps the source array
+    /// @throws ReadOnlyBufferException if the destination is read-only
+    public static boolean copyPremultiplied(int[] source, IntBuffer target) {
+        if (target.isReadOnly()) {
+            throw new ReadOnlyBufferException();
+        }
+        if (target.remaining() != source.length) {
+            throw new IllegalArgumentException(
+                    "Target size does not match source length: "
+                            + target.remaining() + " != " + source.length
+            );
+        }
+
+        // The JVM's bulk array-to-direct-buffer copy followed by a sequential
+        // conversion is faster than interleaved scalar direct-buffer writes.
+        if (target.isDirect()) {
+            target.put(target.position(), source, 0, source.length);
+            return premultiply(target);
+        }
+
+        if (target.hasArray()) {
+            if (target.array() == source) {
+                throw new IllegalArgumentException("Source and target storage overlap");
+            }
+            return copyPremultiplied(
+                    source,
+                    target.array(),
+                    target.arrayOffset() + target.position()
+            );
+        }
+
+        int targetPosition = target.position();
+        int opaquePrefix = countOpaquePrefix(source);
+        if (opaquePrefix > 0) {
+            target.put(targetPosition, source, 0, opaquePrefix);
+        }
+        for (int index = opaquePrefix; index < source.length; index++) {
+            int pixel = source[index];
+            int alpha = alpha(pixel);
+            target.put(
+                    targetPosition + index,
+                    alpha == 0xFF ? pixel : premultiplyNonOpaque(pixel, alpha)
+            );
+        }
+        return opaquePrefix == source.length;
+    }
+
+    /// Copies non-premultiplied pixels into a distinct premultiplied array.
+    ///
+    /// The arrays must have equal lengths and must not be the same array.
+    ///
+    /// @param source the non-premultiplied source pixels
+    /// @param target the destination pixels
+    /// @return `true` if every source pixel was fully opaque; otherwise `false`
+    /// @throws IllegalArgumentException if the arrays differ in length or are the same array
+    public static boolean copyPremultiplied(int[] source, int[] target) {
+        if (source == target) {
+            throw new IllegalArgumentException("Source and target arrays must be distinct");
+        }
+        if (source.length != target.length) {
+            throw new IllegalArgumentException(
+                    "Target length does not match source length: "
+                            + target.length + " != " + source.length
+            );
+        }
+        return copyPremultiplied(source, target, 0);
+    }
+
+    /// Copies non-premultiplied pixels into an array region while premultiplying them.
+    ///
+    /// @param source the non-premultiplied source pixels
+    /// @param target the destination array
+    /// @param targetOffset the first destination index
+    /// @return `true` if every source pixel was fully opaque; otherwise `false`
+    private static boolean copyPremultiplied(int[] source, int[] target, int targetOffset) {
+        int opaquePrefix = countOpaquePrefix(source);
+        if (opaquePrefix > 0) {
+            System.arraycopy(source, 0, target, targetOffset, opaquePrefix);
+        }
+        for (int index = opaquePrefix; index < source.length; index++) {
+            int pixel = source[index];
+            int alpha = alpha(pixel);
+            target[targetOffset + index] = alpha == 0xFF
+                    ? pixel
+                    : premultiplyNonOpaque(pixel, alpha);
+        }
+        return opaquePrefix == source.length;
     }
 
     /// Premultiplies an array range in place and reports whether every input pixel was opaque.

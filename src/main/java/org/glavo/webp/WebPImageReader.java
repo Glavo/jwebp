@@ -105,6 +105,9 @@ public final class WebPImageReader implements AutoCloseable {
     /// Stateful VP8 decoder created on demand and reused across lossy frame decodes.
     private @Nullable Vp8Decoder vp8Decoder;
 
+    /// Stateful VP8L decoder created on demand and reused across lossless frame decodes.
+    private @Nullable LosslessDecoder losslessDecoder;
+
     /// Index of the next presentation frame to decode.
     private int nextFrameIndex;
 
@@ -256,12 +259,21 @@ public final class WebPImageReader implements AutoCloseable {
             if (image.animated()) {
                 compositeAnimatedFrame(descriptor, frameArgb, framePixelCount());
                 assert animationCanvas != null;
-                frame = frameFromOwnedArgb(
+                int[] pixels;
+                boolean opaque = false;
+                if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
+                    pixels = new int[animationCanvas.length];
+                    opaque = Argb.copyPremultiplied(animationCanvas, pixels);
+                } else {
+                    pixels = animationCanvas.clone();
+                }
+                frame = frameFromPreparedOwnedPixels(
                         image.sourceWidth(),
                         image.sourceHeight(),
                         descriptor.durationMillis(),
-                        animationCanvas.clone(),
-                        pixelFormat
+                        pixelFormat,
+                        pixels,
+                        opaque
                 );
             } else {
                 frame = frameFromOwnedArgb(
@@ -349,14 +361,19 @@ public final class WebPImageReader implements AutoCloseable {
                 int[] decodedArgb = decodeFrameArgb(descriptor);
                 compositeAnimatedFrame(descriptor, decodedArgb, pixelCount);
                 assert animationCanvas != null;
-                frameArgb.put(0, animationCanvas, 0, pixelCount);
-                frame = frameFromCustomArgb(
+                boolean opaque = false;
+                if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
+                    opaque = Argb.copyPremultiplied(animationCanvas, frameArgb);
+                } else {
+                    frameArgb.put(0, animationCanvas, 0, pixelCount);
+                }
+                frame = frameFromPreparedCustomPixels(
                         image.sourceWidth(),
                         image.sourceHeight(),
                         descriptor.durationMillis(),
                         pixelFormat,
                         frameArgb,
-                        false
+                        opaque
                 );
             } else {
                 decodeFrameArgb(descriptor, frameArgb);
@@ -398,6 +415,33 @@ public final class WebPImageReader implements AutoCloseable {
             WebPPixelFormat pixelFormat
     ) {
         boolean opaque = pixelFormat == WebPPixelFormat.INT_ARGB_PRE && Argb.premultiply(argb);
+        return frameFromPreparedOwnedPixels(
+                width,
+                height,
+                durationMillis,
+                pixelFormat,
+                argb,
+                opaque
+        );
+    }
+
+    /// Creates a heap-backed frame from owned pixels already stored in their final format.
+    ///
+    /// @param width the frame width in pixels
+    /// @param height the frame height in pixels
+    /// @param durationMillis the display duration in milliseconds
+    /// @param pixelFormat the stored pixel representation
+    /// @param pixels tightly packed pixels to retain
+    /// @param opaque whether every stored premultiplied pixel is fully opaque
+    /// @return the prepared frame
+    private static WebPFrame frameFromPreparedOwnedPixels(
+            int width,
+            int height,
+            int durationMillis,
+            WebPPixelFormat pixelFormat,
+            int[] pixels,
+            boolean opaque
+    ) {
         return new WebPFrame(
                 width,
                 height,
@@ -405,7 +449,7 @@ public final class WebPImageReader implements AutoCloseable {
                 pixelFormat,
                 false,
                 opaque,
-                IntBuffer.wrap(argb).asReadOnlyBuffer()
+                IntBuffer.wrap(pixels).asReadOnlyBuffer()
         );
     }
 
@@ -434,13 +478,43 @@ public final class WebPImageReader implements AutoCloseable {
             allOpaque = Argb.premultiply(pixels);
         }
 
+        return frameFromPreparedCustomPixels(
+                width,
+                height,
+                durationMillis,
+                pixelFormat,
+                pixels,
+                allOpaque
+        );
+    }
+
+    /// Creates a frame that retains caller-provided pixels already stored in their final format.
+    ///
+    /// The buffer's remaining region must contain exactly `width * height` pixels. Its position and
+    /// limit are not changed.
+    ///
+    /// @param width the frame width in pixels
+    /// @param height the frame height in pixels
+    /// @param durationMillis the display duration in milliseconds
+    /// @param pixelFormat the stored pixel representation
+    /// @param pixels the prepared pixel region to retain
+    /// @param opaque whether every stored premultiplied pixel is fully opaque
+    /// @return the prepared frame
+    private static WebPFrame frameFromPreparedCustomPixels(
+            int width,
+            int height,
+            int durationMillis,
+            WebPPixelFormat pixelFormat,
+            IntBuffer pixels,
+            boolean opaque
+    ) {
         return new WebPFrame(
                 width,
                 height,
                 durationMillis,
                 pixelFormat,
                 true,
-                allOpaque,
+                opaque,
                 pixels.slice().asReadOnlyBuffer()
         );
     }
@@ -448,6 +522,7 @@ public final class WebPImageReader implements AutoCloseable {
     /// Discards reusable codec state that may contain a partially decoded frame.
     private void resetAfterDecodeFailure() {
         vp8Decoder = null;
+        losslessDecoder = null;
     }
 
     /// Returns the full-canvas pixel count.
@@ -473,6 +548,10 @@ public final class WebPImageReader implements AutoCloseable {
             return;
         }
         closed = true;
+        vp8Decoder = null;
+        losslessDecoder = null;
+        animationCanvas = null;
+        reusableAnimationFrameArgb = null;
         try {
             ownedInput.close();
         } catch (Exception ex) {
@@ -546,16 +625,23 @@ public final class WebPImageReader implements AutoCloseable {
         }
 
         if (descriptor.lossless()) {
-            new LosslessDecoder(descriptor.imageChunk()).decodeFrame(descriptor.width(), descriptor.height(), false, argb);
+            acquireLosslessDecoder(descriptor.imageChunk()).decodeFrame(
+                    descriptor.width(),
+                    descriptor.height(),
+                    false,
+                    argb
+            );
             return argb;
         }
 
         if (descriptor.alphaChunk() != null) {
+            byte[] alphaChunk = descriptor.alphaChunk();
             ExtendedWebP.decodeAlpha(
-                    descriptor.alphaChunk(),
+                    alphaChunk,
                     descriptor.width(),
                     descriptor.height(),
-                    argb
+                    argb,
+                    reusableLosslessDecoderForAlpha(alphaChunk)
             );
             acquireVp8Decoder().decodeRgbPreservingAlpha(descriptor.imageChunk(), argb);
         } else {
@@ -571,7 +657,7 @@ public final class WebPImageReader implements AutoCloseable {
     /// @throws WebPException if VP8, VP8L, or ALPH decoding fails
     private void decodeFrameArgb(ParsedFrameDescriptor descriptor, IntBuffer argb) throws WebPException {
         if (descriptor.lossless()) {
-            new LosslessDecoder(descriptor.imageChunk()).decodeFrame(
+            acquireLosslessDecoder(descriptor.imageChunk()).decodeFrame(
                     descriptor.width(),
                     descriptor.height(),
                     false,
@@ -579,11 +665,13 @@ public final class WebPImageReader implements AutoCloseable {
             );
         } else {
             if (descriptor.alphaChunk() != null) {
+                byte[] alphaChunk = descriptor.alphaChunk();
                 ExtendedWebP.decodeAlpha(
-                        descriptor.alphaChunk(),
+                        alphaChunk,
                         descriptor.width(),
                         descriptor.height(),
-                        argb
+                        argb,
+                        reusableLosslessDecoderForAlpha(alphaChunk)
                 );
                 acquireVp8Decoder().decodeRgbPreservingAlpha(descriptor.imageChunk(), argb);
             } else {
@@ -613,6 +701,41 @@ public final class WebPImageReader implements AutoCloseable {
         if (result == null) {
             result = new Vp8Decoder();
             vp8Decoder = result;
+        }
+        return result;
+    }
+
+    /// Returns the reader-local VP8L decoder reset to the supplied payload.
+    ///
+    /// @param input the raw VP8L frame payload
+    /// @return the reusable decoder
+    private LosslessDecoder acquireLosslessDecoder(byte[] input) {
+        LosslessDecoder result = losslessDecoder;
+        if (result == null) {
+            result = new LosslessDecoder(input);
+            losslessDecoder = result;
+        } else {
+            result.resetInput(input);
+        }
+        return result;
+    }
+
+    /// Returns a reusable decoder only when an ALPH control byte selects VP8L compression.
+    ///
+    /// The ALPH decoder performs full validation and resets the returned decoder to the compressed
+    /// payload range before use.
+    ///
+    /// @param payload the ALPH chunk payload
+    /// @return the reusable decoder, or `null` when no VP8L decoding is required
+    private @Nullable LosslessDecoder reusableLosslessDecoderForAlpha(byte[] payload) {
+        if (payload.length == 0 || (payload[0] & 0b11) != 1) {
+            return null;
+        }
+
+        LosslessDecoder result = losslessDecoder;
+        if (result == null) {
+            result = new LosslessDecoder(payload);
+            losslessDecoder = result;
         }
         return result;
     }

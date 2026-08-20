@@ -36,6 +36,19 @@ final class LosslessBitReaderTest {
         assertThrows(WebPException.class, () -> bitReader.readBits(4));
     }
 
+    /// Verifies that resetting changes the input range and discards buffered bits.
+    @Test
+    void resetsInputRangeAndBufferedState() throws Exception {
+        LosslessBitReader bitReader = new LosslessBitReader(new byte[]{0x6A, 0x55});
+        assertEquals(2, bitReader.readBits(3));
+
+        byte[] replacement = {(byte) 0xFF, 0x34, 0x12, (byte) 0x80};
+        bitReader.reset(replacement, 1, 2);
+
+        assertEquals(0x1234, bitReader.readBits(16));
+        assertThrows(WebPException.class, () -> bitReader.readBits(1));
+    }
+
     /// Verifies mixed-width reads across unaligned array ranges and refill boundaries.
     @Test
     void readsRandomUnalignedRangesAcrossRefills() throws Exception {

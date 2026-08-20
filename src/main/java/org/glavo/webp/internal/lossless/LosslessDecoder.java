@@ -62,6 +62,30 @@ public final class LosslessDecoder {
         this.bitReader = new LosslessBitReader(data, offset, length);
     }
 
+    /// Resets this decoder for another VP8L payload.
+    ///
+    /// Decoder-owned workspaces are retained for reuse. State derived from the previous payload is
+    /// discarded before the next frame is decoded.
+    ///
+    /// @param data the encoded VP8L bytes
+    public void resetInput(byte[] data) {
+        resetInput(data, 0, data.length);
+    }
+
+    /// Resets this decoder for a VP8L payload range.
+    ///
+    /// Decoder-owned workspaces are retained for reuse. State derived from the previous payload is
+    /// discarded before the next frame is decoded.
+    ///
+    /// @param data the array containing the encoded VP8L bytes
+    /// @param offset the first encoded byte
+    /// @param length the encoded byte count
+    /// @throws IndexOutOfBoundsException if the range lies outside the array
+    public void resetInput(byte[] data, int offset, int length) {
+        bitReader.reset(data, offset, length);
+        resetState();
+    }
+
     /// Decodes a VP8L frame into `ARGB` pixels.
     ///
     /// @param width the expected width
@@ -105,6 +129,7 @@ public final class LosslessDecoder {
                 default -> throw new WebPException("Unknown VP8L transform kind");
             }
         }
+        resetState();
     }
 
     /// Decodes a VP8L frame directly into a writable `ARGB` buffer.
@@ -142,7 +167,9 @@ public final class LosslessDecoder {
             );
         }
 
-        IntBuffer output = buffer.slice();
+        IntBuffer output = buffer.position() == 0 && buffer.limit() == buffer.capacity()
+                ? buffer
+                : buffer.slice();
         int transformedWidth = prepareFrame(width, height, implicitDimensions, output);
         decodeImageStream(transformedWidth, this.height, true, output);
 
@@ -178,6 +205,7 @@ public final class LosslessDecoder {
                 default -> throw new WebPException("Unknown VP8L transform kind");
             }
         }
+        resetState();
     }
 
     /// Reads and validates the frame header and its transform descriptions.
@@ -194,8 +222,6 @@ public final class LosslessDecoder {
             boolean implicitDimensions,
             IntBuffer scratch
     ) throws WebPException {
-        resetState();
-
         if (implicitDimensions) {
             this.width = width;
             this.height = height;

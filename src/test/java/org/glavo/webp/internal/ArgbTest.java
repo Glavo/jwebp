@@ -7,12 +7,14 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.util.Arrays;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Tests packed `ARGB` channel arithmetic.
@@ -89,6 +91,65 @@ final class ArgbTest {
                 0,
                 0xFF77_8899
         }, pixels);
+    }
+
+    /// Verifies fused copy and premultiplication without changing destination buffer state.
+    @Test
+    void copiesPremultipliedPixelsIntoBufferRanges() {
+        int sentinel = 0x1357_9BDF;
+        int[] source = {0xFF11_2233, 0x80FF_8040, 0x0011_2233, 0xFF44_5566};
+        IntBuffer target = IntBuffer.allocate(source.length + 2);
+        target.put(0, sentinel);
+        target.put(source.length + 1, sentinel);
+        target.position(1);
+        target.limit(source.length + 1);
+
+        assertFalse(Argb.copyPremultiplied(source, target));
+        assertEquals(1, target.position());
+        assertEquals(source.length + 1, target.limit());
+        assertArrayEquals(new int[]{
+                sentinel,
+                0xFF11_2233,
+                0x8080_4020,
+                0,
+                0xFF44_5566,
+                sentinel
+        }, target.array());
+
+        IntBuffer opaque = ByteBuffer.allocateDirect(2 * Integer.BYTES).asIntBuffer();
+        assertTrue(Argb.copyPremultiplied(
+                new int[]{0xFF77_8899, 0xFFAA_BBCC},
+                opaque
+        ));
+        assertEquals(0xFF77_8899, opaque.get(0));
+        assertEquals(0xFFAA_BBCC, opaque.get(1));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> Argb.copyPremultiplied(source, IntBuffer.allocate(source.length - 1))
+        );
+        assertThrows(
+                ReadOnlyBufferException.class,
+                () -> Argb.copyPremultiplied(source, IntBuffer.allocate(source.length).asReadOnlyBuffer())
+        );
+    }
+
+    /// Verifies fused copying into arrays and its argument checks.
+    @Test
+    void copiesPremultipliedPixelsIntoArrays() {
+        int[] source = {0xFF11_2233, 0x8010_2030, 0x0011_2233};
+        int[] target = new int[source.length];
+
+        assertFalse(Argb.copyPremultiplied(source, target));
+        assertArrayEquals(new int[]{0xFF11_2233, 0x8008_1018, 0}, target);
+        assertArrayEquals(new int[]{0xFF11_2233, 0x8010_2030, 0x0011_2233}, source);
+
+        assertTrue(Argb.copyPremultiplied(
+                new int[]{0xFF44_5566},
+                new int[1]
+        ));
+        assertThrows(IllegalArgumentException.class, () -> Argb.copyPremultiplied(source, source));
+        assertThrows(IllegalArgumentException.class, () -> Argb.copyPremultiplied(source, new int[1]));
     }
 
     /// Verifies opaque-prefix detection across empty, opaque, and translucent arrays.

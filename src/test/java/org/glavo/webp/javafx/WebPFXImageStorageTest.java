@@ -79,4 +79,21 @@ final class WebPFXImageStorageTest {
         assertEquals(2, regions[1].get(0));
         assertEquals(3, regions[2].get(0));
     }
+
+    /// Verifies that partial animation preparation can preserve a preselected storage location.
+    @Test
+    void packsAnimationRegionsAtRequestedLocation() {
+        IntBuffer[] heapRegions = WebPFXImageStorage.allocateRegions(2, 3, false);
+        IntBuffer[] directRegions = WebPFXImageStorage.allocateRegions(2, 3, true);
+
+        for (IntBuffer region : heapRegions) {
+            assertFalse(region.isDirect());
+            assertEquals(3, region.capacity());
+        }
+        for (IntBuffer region : directRegions) {
+            assertTrue(region.isDirect());
+            assertEquals(ByteOrder.nativeOrder(), region.order());
+            assertEquals(3, region.capacity());
+        }
+    }
 }
