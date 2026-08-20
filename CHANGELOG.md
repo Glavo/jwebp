@@ -31,6 +31,7 @@
 - Decode static frames directly into caller-provided storage, avoiding a full-size heap `ARGB` staging array and the subsequent copy
 - Pack scaled animation frames into bounded direct-memory chunks, reducing native allocations and Cleaner objects
 - Decode JavaFX images without constructing an intermediate heap-backed `WebPImage`
+- Reuse compatible premultiplied frame storage for non-premultiplied pixel access
 
 ### Fixed
 

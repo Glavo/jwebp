@@ -39,6 +39,9 @@ public final class WebPFrame {
     /// Whether the pixel storage was supplied by the reader's caller.
     private final boolean customPixelBuffer;
 
+    /// Whether every stored premultiplied pixel is known to be fully opaque.
+    private final boolean opaque;
+
     /// Read-only, position-zero view of the frame's tightly packed pixels.
     private final @UnmodifiableView IntBuffer pixels;
 
@@ -105,7 +108,17 @@ public final class WebPFrame {
         this.durationMillis = durationMillis;
         this.pixelFormat = pixelFormat;
         this.customPixelBuffer = false;
-        this.pixels = createPixels(argbPixels, pixelFormat, copyArgb);
+        int[] output = copyArgb ? argbPixels.clone() : argbPixels;
+        boolean opaque = true;
+        if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
+            for (int index = 0; index < output.length; index++) {
+                int pixel = output[index];
+                opaque &= (pixel >>> 24) == 0xFF;
+                output[index] = Argb.premultiply(pixel);
+            }
+        }
+        this.opaque = pixelFormat == WebPPixelFormat.INT_ARGB_PRE && opaque;
+        this.pixels = IntBuffer.wrap(output).asReadOnlyBuffer();
     }
 
     /// Creates a frame by converting and retaining caller-provided pixel storage.
@@ -154,9 +167,15 @@ public final class WebPFrame {
         if (pixels.isReadOnly()) {
             throw new ReadOnlyBufferException();
         }
-        if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE && !opaque) {
-            for (int index = pixels.position(); index < pixels.limit(); index++) {
-                pixels.put(index, Argb.premultiply(pixels.get(index)));
+        boolean allOpaque = opaque;
+        if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
+            if (!opaque) {
+                allOpaque = true;
+                for (int index = pixels.position(); index < pixels.limit(); index++) {
+                    int pixel = pixels.get(index);
+                    allOpaque &= (pixel >>> 24) == 0xFF;
+                    pixels.put(index, Argb.premultiply(pixel));
+                }
             }
         }
         this.width = width;
@@ -165,6 +184,7 @@ public final class WebPFrame {
         this.durationMillis = durationMillis;
         this.pixelFormat = pixelFormat;
         this.customPixelBuffer = true;
+        this.opaque = pixelFormat == WebPPixelFormat.INT_ARGB_PRE && allOpaque;
         this.pixels = pixels.slice().asReadOnlyBuffer();
     }
 
@@ -229,7 +249,7 @@ public final class WebPFrame {
         Objects.checkIndex(x, width);
         Objects.checkIndex(y, height);
         int pixel = pixels.get(y * scanlineStride + x);
-        return pixelFormat.isPremultiplied() ? Argb.unpremultiply(pixel) : pixel;
+        return pixelFormat.isPremultiplied() && !opaque ? Argb.unpremultiply(pixel) : pixel;
     }
 
     /// Returns a read-only view of the pixels in [#getPixelFormat()] representation.
@@ -245,13 +265,13 @@ public final class WebPFrame {
 
     /// Returns non-premultiplied `ARGB` pixels in a read-only buffer.
     ///
-    /// For [WebPPixelFormat#INT_ARGB] this is a view of the frame storage. For
-    /// [WebPPixelFormat#INT_ARGB_PRE] this method allocates and converts a snapshot. Use
-    /// [#getPixels()] when the stored representation is acceptable and allocation must be avoided.
+    /// Each invocation returns a buffer with position zero and limit `width * height`. Callers must
+    /// not rely on whether the returned buffer shares storage with this frame or another returned
+    /// buffer. Use [#getPixels()] when the stored representation is acceptable.
     ///
     /// @return a position-zero, read-only non-premultiplied `ARGB` buffer
     public @UnmodifiableView IntBuffer getArgbPixels() {
-        if (pixelFormat == WebPPixelFormat.INT_ARGB) {
+        if (pixelFormat == WebPPixelFormat.INT_ARGB || opaque) {
             return getPixels();
         }
         return IntBuffer.wrap(getArgbArray()).asReadOnlyBuffer();
@@ -267,7 +287,7 @@ public final class WebPFrame {
         int[] argb = new int[pixels.capacity()];
         IntBuffer source = pixels.asReadOnlyBuffer();
         source.get(argb);
-        if (pixelFormat.isPremultiplied()) {
+        if (pixelFormat.isPremultiplied() && !opaque) {
             for (int index = 0; index < argb.length; index++) {
                 argb[index] = Argb.unpremultiply(argb[index]);
             }
@@ -275,23 +295,4 @@ public final class WebPFrame {
         return argb;
     }
 
-    /// Creates immutable pixel storage from non-premultiplied decoder output.
-    ///
-    /// @param argbPixels the source non-premultiplied pixels
-    /// @param pixelFormat the destination representation
-    /// @param copyArgb whether heap output must copy its source before conversion
-    /// @return a read-only, position-zero buffer
-    private static @UnmodifiableView IntBuffer createPixels(
-            int[] argbPixels,
-            WebPPixelFormat pixelFormat,
-            boolean copyArgb
-    ) {
-        int[] output = copyArgb ? argbPixels.clone() : argbPixels;
-        if (pixelFormat == WebPPixelFormat.INT_ARGB_PRE) {
-            for (int index = 0; index < argbPixels.length; index++) {
-                output[index] = Argb.premultiply(output[index]);
-            }
-        }
-        return IntBuffer.wrap(output).asReadOnlyBuffer();
-    }
 }

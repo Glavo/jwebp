@@ -62,6 +62,55 @@ final class WebPFrameOutputTest {
         }
     }
 
+    /// Verifies that non-premultiplied access can retain compatible premultiplied storage.
+    @Test
+    void argbPixelsReuseCompatiblePremultipliedStorage() {
+        IntBuffer storage = ByteBuffer.allocateDirect(2 * Integer.BYTES)
+                .order(ByteOrder.nativeOrder())
+                .asIntBuffer();
+        storage.put(0xFF11_2233).put(0xFF44_5566).flip();
+
+        WebPFrame frame = new WebPFrame(
+                2,
+                1,
+                0,
+                WebPPixelFormat.INT_ARGB_PRE,
+                storage,
+                false
+        );
+        IntBuffer argb = frame.getArgbPixels();
+
+        assertTrue(argb.isDirect());
+        assertTrue(argb.isReadOnly());
+        assertEquals(0, argb.position());
+        assertEquals(2, argb.limit());
+        assertEquals(0xFF11_2233, argb.get(0));
+        assertEquals(0xFF44_5566, argb.get(1));
+    }
+
+    /// Verifies that translucent premultiplied pixels are converted for ARGB access.
+    @Test
+    void argbPixelsConvertIncompatiblePremultipliedStorage() {
+        IntBuffer storage = ByteBuffer.allocateDirect(Integer.BYTES)
+                .order(ByteOrder.nativeOrder())
+                .asIntBuffer();
+        storage.put(0x8080_4020).flip();
+
+        WebPFrame frame = new WebPFrame(
+                1,
+                1,
+                0,
+                WebPPixelFormat.INT_ARGB_PRE,
+                storage,
+                false
+        );
+        IntBuffer argb = frame.getArgbPixels();
+
+        assertFalse(argb.isDirect());
+        assertTrue(argb.isReadOnly());
+        assertEquals(Argb.unpremultiply(Argb.premultiply(0x8080_4020)), argb.get(0));
+    }
+
     /// Verifies that caller-provided heap and direct buffers are retained for individual frames.
     @Test
     void readerCanUseCustomPixelBuffers() throws Exception {
