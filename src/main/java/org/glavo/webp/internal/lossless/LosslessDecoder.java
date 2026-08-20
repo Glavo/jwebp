@@ -465,11 +465,19 @@ public final class LosslessDecoder {
         for (int i = 0; i < numCodeLengths; i++) {
             codeLengthCodeLengths[LosslessConstants.CODE_LENGTH_CODE_ORDER[i]] = (byte) bitReader.readBits(3);
         }
-        byte[] codeLengths = readHuffmanCodeLengths(codeLengthCodeLengths, alphabetSize);
-        return LosslessHuffmanTree.implicit(codeLengths, alphabetSize, huffmanBuildWorkspace);
+        return readHuffmanCodeLengths(codeLengthCodeLengths, alphabetSize);
     }
 
-    private byte[] readHuffmanCodeLengths(byte[] codeLengthCodeLengths, int numSymbols) throws WebPException {
+    /// Reads complex Huffman code lengths and builds the represented tree.
+    ///
+    /// @param codeLengthCodeLengths the code lengths for the code-length alphabet
+    /// @param numSymbols the maximum symbol count of the represented alphabet
+    /// @return the decoded Huffman tree
+    /// @throws WebPException if the encoded code lengths are invalid
+    private LosslessHuffmanTree readHuffmanCodeLengths(
+            byte[] codeLengthCodeLengths,
+            int numSymbols
+    ) throws WebPException {
         LosslessHuffmanTree table = LosslessHuffmanTree.implicit(
                 codeLengthCodeLengths,
                 codeLengthCodeLengths.length,
@@ -489,8 +497,6 @@ public final class LosslessDecoder {
 
         if (codeLengths.length < numSymbols) {
             codeLengths = new byte[numSymbols];
-        } else {
-            Arrays.fill(codeLengths, 0, numSymbols, (byte) 0);
         }
         int previousCodeLength = 8;
         int symbol = 0;
@@ -536,7 +542,7 @@ public final class LosslessDecoder {
                 }
             }
         }
-        return codeLengths;
+        return LosslessHuffmanTree.implicit(codeLengths, symbol, huffmanBuildWorkspace);
     }
 
     /// Decodes entropy-coded pixels into an integer array.
