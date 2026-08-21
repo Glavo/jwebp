@@ -68,8 +68,6 @@ WebPImage image = WebPImage.read(
 );
 ```
 
-Frames returned by `WebPImage.read(...)` are heap-backed.
-
 Stream frames from an animated WebP:
 
 ```java
@@ -85,12 +83,6 @@ try (InputStream input = Files.newInputStream(Path.of("/animated.webp"));
 }
 ```
 
-`readNextFrame(WebPPixelFormat, IntBuffer)` decodes a frame into the buffer region beginning at its
-current position and retains that region without copying. The buffer may be heap-backed or direct
-and may use either byte order. A successful call advances its position by the canvas pixel count;
-the caller must not modify the retained region while the frame remains in use. Reader-allocated
-frames are always heap-backed, so direct storage must be supplied explicitly through this overload.
-
 ### JavaFX Integration
 
 JWebP's core part only depends on the `java.base` module, which can work normally on the Android platform.
@@ -99,10 +91,10 @@ However, JWebP also provides optional components for JavaFX, located in the `org
 which can decode or convert WebP content to JavaFX `Image`:
 
 ```java
-// Decode directly into JavaFX-oriented presentation storage.
+// Decode WebP content as a JavaFX image.
 javafx.scene.image.Image image = WebPFXImage.read(Path.of("sample.webp"));
 
-WebPImage decoded = WebPImage.read(..., WebPPixelFormat.INT_ARGB_PRE);
+WebPImage decoded = WebPImage.read(...);
 
 // Create a JavaFX image from a WebPImage.
 // If it is an animated WebP, it will automatically play the animation.
@@ -122,17 +114,6 @@ javafx.scene.image.Image scaledImage = WebPFXImage.read(
         fxOptions
 );
 ```
-
-`WebPFXImageOptions` configures the requested size, aspect-ratio preservation, smooth filtering,
-and animation autoplay without ambiguous positional boolean arguments. Scaling affects only the
-JavaFX presentation; decoded `WebPFrame` and `WebPImage` objects retain their intrinsic dimensions.
-Intrinsic-size static direct `INT_ARGB_PRE` frames are used directly as the JavaFX `PixelBuffer`
-backing store. Heap frames, format conversion, and scaling use newly allocated direct presentation
-storage.
-
-The `InputStream` read overloads take ownership of the supplied stream and close it before
-returning. Direct `read` calls avoid constructing an intermediate `WebPImage` and are preferred when
-the decoded frames are needed only for JavaFX presentation.
 
 ### Swing Integration
 
@@ -166,27 +147,6 @@ Run all tests:
 ```powershell
 ./gradlew test
 ```
-
-The test suite includes:
-
-- project-local decoder regression tests
-- tests ported from `image-rs`
-- tests ported from `libwebp`
-- tests backed by the downloaded `libwebp-test-data` corpus
-- regression and conformance fixtures downloaded from pinned Chromium, Firefox, and Go image
-  commits
-
-The browser and Go image fixture sets are supplied by three explicit Gradle download tasks:
-
-- `downloadChromiumWebPTestData` selects fixtures from Chromium commit
-  [`8f4baaae073181e7e0fea1807f8db6ad720dbcb7`](https://github.com/chromium/chromium/tree/8f4baaae073181e7e0fea1807f8db6ad720dbcb7/third_party/blink/web_tests/images/resources)
-- `downloadFirefoxWebPTestData` selects fixtures from Firefox commit
-  [`4272397b835a480b1be6cee142d0fa39e166dbc6`](https://github.com/mozilla-firefox/firefox/tree/4272397b835a480b1be6cee142d0fa39e166dbc6/image/test)
-- `downloadGoImageWebPTestData` selects fixtures from Go image commit
-  [`3ebddc7c54bd879f8d84d11db82892726f5192fd`](https://github.com/golang/image/tree/3ebddc7c54bd879f8d84d11db82892726f5192fd/testdata)
-
-The selected files and archives are cached under `build/downloads` and only enter the test
-resource set; they are not packaged in the library artifacts.
 
 ## License
 

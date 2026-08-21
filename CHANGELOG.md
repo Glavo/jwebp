@@ -4,11 +4,8 @@
 
 ### Breaking Changes
 
-- Change the project license from Apache-2.0 to MPL-2.0 for version 0.3.0
 - Remove `WebPImageLoadOptions`, the scale-aware `WebPImage#read` and `WebPImageReader#open` overloads, and the `getSourceWidth()` / `getSourceHeight()` methods; core images are now always decoded at their intrinsic canvas size, with presentation scaling available through `WebPFXImage#of(...)` and `WebPFXImageOptions`
-- Replace the public `WebPFXImage` constructors and positional configuration overloads with `WebPFXImage#of(...)` factory methods using `WebPFXImageOptions`
-- Remove `WebPDecoder`; `WebPImage` now accepts only a pixel format and always uses heap-backed frames, while `WebPImageReader` selects the format per frame and requires a caller-provided `IntBuffer` for direct storage
-- Replace `WebPImageReader#readNextFrame(boolean)` with `readNextFrame(WebPPixelFormat)` and `readNextFrame(WebPPixelFormat, IntBuffer)`
+- Replace the public `WebPFXImage` constructors with `WebPFXImage#of(...)` factory methods; use `WebPFXImageOptions` to configure animation playback and presentation scaling
 - `WebPFXImage#getPixelWriter()` is now unsupported because `WebPFXImage` is backed by a `PixelBuffer`
 
 ### Added
@@ -39,6 +36,10 @@
 - Reject invalid WebP containers containing a non-leading `VP8X` chunk
 - Reject static extended WebP containers whose VP8 or VP8L dimensions differ from the `VP8X` canvas
 - Avoid large eager allocations when a truncated input stream declares an oversized chunk payload
+
+### License
+
+- Change the project license from Apache-2.0 to MPL-2.0 for version 0.3.0
 
 ## 0.2.0 (2026-04-19)
 
