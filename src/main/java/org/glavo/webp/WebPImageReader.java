@@ -96,8 +96,29 @@ public final class WebPImageReader implements AutoCloseable {
     /// Input resource owned and closed by this reader.
     private final AutoCloseable ownedInput;
 
-    /// Parsed container metadata and encoded frame payloads.
-    private final ParsedWebPImage image;
+    /// Image canvas width in pixels.
+    private final int width;
+
+    /// Image canvas height in pixels.
+    private final int height;
+
+    /// Whether any decoded frame may carry alpha.
+    private final boolean alpha;
+
+    /// Whether the source contains animation.
+    private final boolean animated;
+
+    /// Whether any frame uses lossy VP8 compression.
+    private final boolean lossy;
+
+    /// Animation loop count, or zero for indefinite looping.
+    private final int loopCount;
+
+    /// Duration of one animation cycle in milliseconds.
+    private final long loopDurationMillis;
+
+    /// Encoded descriptors that have not yet been consumed successfully.
+    private final @Nullable ParsedFrameDescriptor[] frameDescriptors;
 
     /// Immutable metadata that owns the parser-exclusive payload arrays.
     private final WebPMetadata metadata;
@@ -141,7 +162,14 @@ public final class WebPImageReader implements AutoCloseable {
     /// @param image the parsed WebP container
     private WebPImageReader(AutoCloseable ownedInput, ParsedWebPImage image) {
         this.ownedInput = ownedInput;
-        this.image = image;
+        this.width = image.sourceWidth();
+        this.height = image.sourceHeight();
+        this.alpha = image.hasAlpha();
+        this.animated = image.animated();
+        this.lossy = image.lossy();
+        this.loopCount = image.loopCount();
+        this.loopDurationMillis = image.loopDurationMillis();
+        this.frameDescriptors = image.frames().toArray(ParsedFrameDescriptor[]::new);
         this.metadata = WebPMetadata.fromOwnedPayloads(
                 image.iccProfile(),
                 image.exifMetadata(),
@@ -153,35 +181,35 @@ public final class WebPImageReader implements AutoCloseable {
     ///
     /// @return the canvas width in pixels
     public int getWidth() {
-        return image.sourceWidth();
+        return width;
     }
 
     /// Returns the image canvas height.
     ///
     /// @return the canvas height in pixels
     public int getHeight() {
-        return image.sourceHeight();
+        return height;
     }
 
     /// Returns whether the source image contains transparency.
     ///
     /// @return `true` if any decoded frame may carry alpha
     public boolean hasAlpha() {
-        return image.hasAlpha();
+        return alpha;
     }
 
     /// Returns whether the source container is animated.
     ///
     /// @return `true` for animated WebP containers
     public boolean isAnimated() {
-        return image.animated();
+        return animated;
     }
 
     /// Returns whether the source contains lossy VP8 frame data.
     ///
     /// @return `true` if any frame is lossy
     public boolean isLossy() {
-        return image.lossy();
+        return lossy;
     }
 
     /// Returns the number of frames declared by the source container.
@@ -190,7 +218,7 @@ public final class WebPImageReader implements AutoCloseable {
     ///
     /// @return the number of presentation frames
     public int getFrameCount() {
-        return image.frames().size();
+        return frameDescriptors.length;
     }
 
     /// Returns the animation loop count.
@@ -199,7 +227,7 @@ public final class WebPImageReader implements AutoCloseable {
     ///
     /// @return the loop count
     public int getLoopCount() {
-        return image.loopCount();
+        return loopCount;
     }
 
     /// Returns the total duration of one animation cycle.
@@ -208,7 +236,7 @@ public final class WebPImageReader implements AutoCloseable {
     ///
     /// @return the total cycle duration in milliseconds
     public long getLoopDurationMillis() {
-        return image.loopDurationMillis();
+        return loopDurationMillis;
     }
 
     /// Returns the extracted metadata.
@@ -222,7 +250,7 @@ public final class WebPImageReader implements AutoCloseable {
     ///
     /// @return `true` when no more frames are available
     public boolean isComplete() {
-        return nextFrameIndex >= image.frames().size();
+        return nextFrameIndex >= frameDescriptors.length;
     }
 
     /// Decodes the next frame, if available.
@@ -248,15 +276,18 @@ public final class WebPImageReader implements AutoCloseable {
     public @Nullable WebPFrame readNextFrame(WebPPixelFormat pixelFormat) throws WebPException {
         Objects.requireNonNull(pixelFormat, "pixelFormat");
         ensureOpen();
-        if (nextFrameIndex >= image.frames().size()) {
+        if (nextFrameIndex >= frameDescriptors.length) {
             return null;
         }
 
-        ParsedFrameDescriptor descriptor = image.frames().get(nextFrameIndex);
+        ParsedFrameDescriptor descriptor = Objects.requireNonNull(
+                frameDescriptors[nextFrameIndex],
+                "Frame descriptor already consumed"
+        );
         try {
             int[] frameArgb = decodeFrameArgb(descriptor);
             WebPFrame frame;
-            if (image.animated()) {
+            if (animated) {
                 compositeAnimatedFrame(descriptor, frameArgb, framePixelCount());
                 assert animationCanvas != null;
                 int[] pixels;
@@ -268,8 +299,8 @@ public final class WebPImageReader implements AutoCloseable {
                     pixels = animationCanvas.clone();
                 }
                 frame = frameFromPreparedOwnedPixels(
-                        image.sourceWidth(),
-                        image.sourceHeight(),
+                        width,
+                        height,
                         descriptor.durationMillis(),
                         pixelFormat,
                         pixels,
@@ -285,6 +316,7 @@ public final class WebPImageReader implements AutoCloseable {
                 );
             }
 
+            frameDescriptors[nextFrameIndex] = null;
             nextFrameIndex++;
             return frame;
         } catch (WebPException ex) {
@@ -320,7 +352,7 @@ public final class WebPImageReader implements AutoCloseable {
         Objects.requireNonNull(pixelFormat, "pixelFormat");
         Objects.requireNonNull(storage, "storage");
         ensureOpen();
-        if (nextFrameIndex >= image.frames().size()) {
+        if (nextFrameIndex >= frameDescriptors.length) {
             return null;
         }
         return decodeNextFrame(pixelFormat, storage, framePixelCount());
@@ -353,11 +385,14 @@ public final class WebPImageReader implements AutoCloseable {
         int initialPosition = storage.position();
         IntBuffer frameArgb = storage.slice();
         frameArgb.limit(pixelCount);
-        ParsedFrameDescriptor descriptor = image.frames().get(nextFrameIndex);
+        ParsedFrameDescriptor descriptor = Objects.requireNonNull(
+                frameDescriptors[nextFrameIndex],
+                "Frame descriptor already consumed"
+        );
 
         try {
             WebPFrame frame;
-            if (image.animated()) {
+            if (animated) {
                 int[] decodedArgb = decodeFrameArgb(descriptor);
                 compositeAnimatedFrame(descriptor, decodedArgb, pixelCount);
                 assert animationCanvas != null;
@@ -368,8 +403,8 @@ public final class WebPImageReader implements AutoCloseable {
                     frameArgb.put(0, animationCanvas, 0, pixelCount);
                 }
                 frame = frameFromPreparedCustomPixels(
-                        image.sourceWidth(),
-                        image.sourceHeight(),
+                        width,
+                        height,
                         descriptor.durationMillis(),
                         pixelFormat,
                         frameArgb,
@@ -388,6 +423,7 @@ public final class WebPImageReader implements AutoCloseable {
             }
 
             storage.position(initialPosition + pixelCount);
+            frameDescriptors[nextFrameIndex] = null;
             nextFrameIndex++;
             return frame;
         } catch (WebPException ex) {
@@ -531,7 +567,7 @@ public final class WebPImageReader implements AutoCloseable {
     /// @throws WebPException if the canvas dimensions exceed an integer-sized buffer
     private int framePixelCount() throws WebPException {
         try {
-            return Math.multiplyExact(image.sourceWidth(), image.sourceHeight());
+            return Math.multiplyExact(width, height);
         } catch (ArithmeticException ex) {
             throw new WebPException("Image dimensions are too large for a pixel buffer", ex);
         }
@@ -552,6 +588,9 @@ public final class WebPImageReader implements AutoCloseable {
         losslessDecoder = null;
         animationCanvas = null;
         reusableAnimationFrameArgb = null;
+        for (int index = nextFrameIndex; index < frameDescriptors.length; index++) {
+            frameDescriptors[index] = null;
+        }
         try {
             ownedInput.close();
         } catch (Exception ex) {
@@ -584,8 +623,8 @@ public final class WebPImageReader implements AutoCloseable {
          */
         ExtendedWebP.compositeFrame(
                 animationCanvas,
-                image.sourceWidth(),
-                image.sourceHeight(),
+                width,
+                height,
                 clearColor,
                 frameArgb,
                 descriptor.x(),
@@ -745,7 +784,7 @@ public final class WebPImageReader implements AutoCloseable {
     /// @param length the required pixel count
     /// @return a mutable decode buffer whose length is at least `length`
     private int[] acquireFrameArgb(int length) {
-        if (!image.animated()) {
+        if (!animated) {
             return new int[length];
         }
         if (reusableAnimationFrameArgb == null || reusableAnimationFrameArgb.length < length) {

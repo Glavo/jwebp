@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.IntBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +19,9 @@ import java.util.Objects;
 /// frames and exposes the associated metadata and animation timing information in immutable form.
 @NotNullByDefault
 public final class WebPImage {
+
+    /// Maximum byte size targeted for one packed eager-animation allocation.
+    private static final int MAX_PACKED_CHUNK_BYTES = 128 * 1024 * 1024;
 
     /// Reads and fully decodes a WebP stream into heap-backed [WebPPixelFormat#INT_ARGB] frames.
     ///
@@ -237,13 +241,37 @@ public final class WebPImage {
             //noinspection DataFlowIssue
             frames = List.of(reader.readNextFrame(pixelFormat));
         } else {
-            frames = new ArrayList<>(Math.max(1, reader.getFrameCount()));
-            while (true) {
-                WebPFrame next = reader.readNextFrame(pixelFormat);
-                if (next == null) {
-                    break;
+            int frameCount = reader.getFrameCount();
+            int pixelCount;
+            try {
+                pixelCount = Math.multiplyExact(reader.getWidth(), reader.getHeight());
+            } catch (ArithmeticException ex) {
+                throw new WebPException("Image dimensions are too large for a pixel buffer", ex);
+            }
+
+            frames = new ArrayList<>(frameCount);
+            int maxChunkPixels = MAX_PACKED_CHUNK_BYTES / Integer.BYTES;
+            int framesPerChunk = Math.max(1, maxChunkPixels / pixelCount);
+            int frameIndex = 0;
+            while (frameIndex < frameCount) {
+                int chunkFrameCount = Math.min(framesPerChunk, frameCount - frameIndex);
+                int chunkPixelCount;
+                try {
+                    chunkPixelCount = Math.multiplyExact(pixelCount, chunkFrameCount);
+                } catch (ArithmeticException ex) {
+                    throw new WebPException("Packed pixel chunk is too large", ex);
                 }
-                frames.add(next);
+
+                IntBuffer chunk = IntBuffer.allocate(chunkPixelCount);
+                for (int chunkIndex = 0; chunkIndex < chunkFrameCount; chunkIndex++) {
+                    IntBuffer frameStorage = chunk.slice(chunkIndex * pixelCount, pixelCount);
+                    WebPFrame next = reader.readNextFrame(pixelFormat, frameStorage);
+                    if (next == null) {
+                        throw new WebPException("WebP reader ended before all declared frames were decoded");
+                    }
+                    frames.add(next.asOwned());
+                    frameIndex++;
+                }
             }
         }
 

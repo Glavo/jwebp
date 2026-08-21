@@ -123,6 +123,27 @@ public final class WebPFrame {
         return customPixelBuffer;
     }
 
+    /// Returns an equivalent frame whose pixel storage is owned by its enclosing decoded image.
+    ///
+    /// No pixel data is copied. This frame and the returned frame retain the same read-only pixel
+    /// region.
+    ///
+    /// @return this frame when its storage is already owned, otherwise an owned-storage view
+    WebPFrame asOwned() {
+        if (!customPixelBuffer) {
+            return this;
+        }
+        return new WebPFrame(
+                width,
+                height,
+                durationMillis,
+                pixelFormat,
+                false,
+                opaque,
+                pixels
+        );
+    }
+
     /// Returns the non-premultiplied `ARGB` pixel at the supplied coordinates.
     ///
     /// Premultiplied storage is converted on demand. That conversion cannot recover color data

@@ -120,6 +120,9 @@ final class WebPImageTest {
     @Test
     void animatedReaderKeepsPreviouslyReturnedFramesStable() throws Exception {
         WebPImage eager = WebPImage.read(resource("images/animated-random_lossless.webp"));
+        for (WebPFrame frame : eager.getFrames()) {
+            assertFalse(frame.usesCustomPixelBuffer());
+        }
 
         try (WebPImageReader reader = WebPImageReader.open(resource("images/animated-random_lossless.webp"))) {
             WebPFrame frame1 = reader.readNextFrame();
