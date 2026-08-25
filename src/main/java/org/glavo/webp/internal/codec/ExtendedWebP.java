@@ -26,23 +26,6 @@ public final class ExtendedWebP {
         GRADIENT
     }
 
-    /// Decodes an ALPH payload into the high byte of an integer pixel array.
-    ///
-    /// Lower 24 bits are discarded. Compressed samples use the destination itself as the nested
-    /// VP8L workspace, allowing subsequent VP8 color conversion to preserve the reconstructed alpha
-    /// channel without allocating a second full-size pixel array.
-    ///
-    /// @param payload the ALPH chunk payload
-    /// @param width the frame width
-    /// @param height the frame height
-    /// @param argb the exact-sized writable destination
-    /// @throws IllegalArgumentException if the dimensions are invalid or the destination size does
-    ///                                  not match them
-    /// @throws WebPException if the alpha payload is malformed
-    public static void decodeAlpha(byte[] payload, int width, int height, int[] argb) throws WebPException {
-        decodeAlpha(payload, width, height, argb, null);
-    }
-
     /// Decodes an ALPH payload while reusing a supplied VP8L decoder for compressed samples.
     ///
     /// The decoder is reset to the compressed portion of `payload` when VP8L compression is used.
@@ -89,23 +72,6 @@ public final class ExtendedWebP {
                 argb[pixelIndex] = ((sample + predictor) & 0xFF) << 24;
             }
         }
-    }
-
-    /// Decodes an ALPH payload into the high byte of an integer buffer.
-    ///
-    /// Lower 24 bits are discarded. The destination itself is used for compressed VP8L samples.
-    /// Its position and limit are not changed.
-    ///
-    /// @param payload the ALPH chunk payload
-    /// @param width the frame width
-    /// @param height the frame height
-    /// @param argb the exact-sized writable destination region
-    /// @throws IllegalArgumentException if the dimensions are invalid or the destination size does
-    ///                                  not match them
-    /// @throws ReadOnlyBufferException if the destination is read-only
-    /// @throws WebPException if the alpha payload is malformed
-    public static void decodeAlpha(byte[] payload, int width, int height, IntBuffer argb) throws WebPException {
-        decodeAlpha(payload, width, height, argb, null);
     }
 
     /// Decodes an ALPH payload into an integer buffer while reusing a supplied VP8L decoder.
