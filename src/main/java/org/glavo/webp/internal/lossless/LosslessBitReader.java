@@ -64,20 +64,23 @@ public final class LosslessBitReader {
 
     /// Refills the local buffer until at least 56 bits are available or the input is exhausted.
     public void fill() {
-        int position = bytePosition;
         int count = bitCount;
+        if (count >= 56) {
+            return;
+        }
+        int position = bytePosition;
         long bits = buffer;
         // Consume the largest whole-byte prefix that fits in the high end of the bit window.
         if (count <= 24 && endPosition - position >= Long.BYTES) {
             int loadedBytes = (Long.SIZE - count) / Byte.SIZE;
             long next = ArrayUtils.getLongLE(data, position);
             if ((count & (Byte.SIZE - 1)) != 0) {
-                next &= (1L << (loadedBytes * Byte.SIZE)) - 1L;
+                next &= -1L >>> (Long.SIZE - loadedBytes * Byte.SIZE);
             }
             bits |= next << count;
             count += loadedBytes * Byte.SIZE;
             position += loadedBytes;
-        } else if (count <= 40 && endPosition - position >= Integer.BYTES) {
+        } else if (endPosition - position >= Integer.BYTES) {
             int loadedBytes = Math.min((Long.SIZE - count) / Byte.SIZE, Integer.BYTES);
             long next = ArrayUtils.getUnsignedIntLE(data, position);
             if (loadedBytes < Integer.BYTES) {
@@ -86,10 +89,16 @@ public final class LosslessBitReader {
             bits |= next << count;
             count += loadedBytes * Byte.SIZE;
             position += loadedBytes;
-        }
-        while (count < 56 && position < endPosition) {
-            bits |= ((long) data[position++] & 0xFFL) << count;
-            count += Byte.SIZE;
+            // A short input can leave the window below the refill threshold.
+            while (count < 56 && position < endPosition) {
+                bits |= ((long) data[position++] & 0xFFL) << count;
+                count += Byte.SIZE;
+            }
+        } else {
+            while (count < 56 && position < endPosition) {
+                bits |= ((long) data[position++] & 0xFFL) << count;
+                count += Byte.SIZE;
+            }
         }
         buffer = bits;
         bitCount = count;

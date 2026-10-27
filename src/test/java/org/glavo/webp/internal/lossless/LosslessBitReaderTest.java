@@ -11,6 +11,7 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Ports of [lossless/decoder/mod.rs](https://github.com/image-rs/image-webp/blob/f4d80bd965df2c81e65b6f43c1f70e0750bd4b0f/src/lossless/decoder/mod.rs) bit-reader tests.
 @NotNullByDefault
@@ -68,6 +69,44 @@ final class LosslessBitReaderTest {
                     bitOffset += width;
                 }
                 assertThrows(WebPException.class, () -> bitReader.readBits(1));
+            }
+        }
+    }
+
+    /// Verifies refills for every buffered-bit count, including short tails and repeated fills.
+    @Test
+    void refillsEveryBitAlignmentWithoutReadingOutsideTheSelectedRange() throws WebPException {
+        Random random = new Random(0x524546494C4CL);
+        for (int offset = 0; offset < Long.BYTES; offset++) {
+            for (int length = 0; length <= 24; length++) {
+                byte[] data = new byte[offset + length + Long.BYTES];
+                random.nextBytes(data);
+                for (int consumed = 0; consumed <= Math.min(Long.SIZE, length * Byte.SIZE); consumed++) {
+                    LosslessBitReader reader = new LosslessBitReader(data, offset, length);
+                    reader.fill();
+                    if (consumed > reader.bitCount()) {
+                        continue;
+                    }
+                    int toConsume = consumed;
+                    while (toConsume > 0) {
+                        int count = Math.min(Integer.SIZE, toConsume);
+                        reader.consume(count);
+                        toConsume -= count;
+                    }
+                    reader.fill();
+                    int available = reader.bitCount();
+                    int remaining = length * Byte.SIZE - consumed;
+                    assertTrue(available >= Math.min(56, remaining));
+                    assertTrue(available <= Math.min(Long.SIZE, remaining));
+                    long expected = 0;
+                    for (int bit = 0; bit < available; bit++) {
+                        expected |= (long) readBits(data, offset * Byte.SIZE + consumed + bit, 1) << bit;
+                    }
+                    assertEquals(expected, reader.peekFull());
+                    reader.fill();
+                    assertEquals(available, reader.bitCount());
+                    assertEquals(expected, reader.peekFull());
+                }
             }
         }
     }
