@@ -5,7 +5,7 @@ package org.glavo.webp.internal.lossless;
 import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.Unmodifiable;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import org.glavo.webp.WebPException;
 
@@ -28,10 +28,10 @@ public final class LosslessHuffmanTree {
     private final int symbolOrTableMask;
 
     /// Primary lookup table, or `null` for a single-node tree.
-    private final char @Nullable @Unmodifiable [] primaryTable;
+    private final char @Nullable @UnmodifiableView [] primaryTable;
 
     /// Secondary lookup table, or `null` for a single-node tree.
-    private final char @Nullable @Unmodifiable [] secondaryTable;
+    private final char @Nullable @UnmodifiableView [] secondaryTable;
 
     /// Creates a single-node tree.
     ///
@@ -88,6 +88,23 @@ public final class LosslessHuffmanTree {
     /// @return the resulting tree
     /// @throws WebPException if the code lengths do not form a valid canonical tree
     static LosslessHuffmanTree implicit(byte[] codeLengths, int alphabetSize, BuildWorkspace workspace) throws WebPException {
+        return implicit(codeLengths, alphabetSize, workspace, null);
+    }
+
+    /// Builds a canonical tree with optional reusable lookup storage.
+    ///
+    /// When storage is supplied, the returned tree remains valid only until that storage is
+    /// passed to another build, including a build that fails. Construction scratch may be reused
+    /// immediately without invalidating the tree.
+    ///
+    /// @param codeLengths the code lengths indexed by symbol
+    /// @param alphabetSize the positive number of entries to inspect, at most the array length
+    /// @param workspace temporary construction arrays
+    /// @param storage lookup storage to reuse, or `null` for independently owned tables
+    /// @return the resulting tree
+    /// @throws WebPException if the code lengths do not form a valid canonical tree
+    static LosslessHuffmanTree implicit(byte[] codeLengths, int alphabetSize, BuildWorkspace workspace,
+                                        @Nullable TableStorage storage) throws WebPException {
         int[] histogram = workspace.histogram;
         Arrays.fill(histogram, 0);
         int symbolCount = 0;
@@ -130,7 +147,7 @@ public final class LosslessHuffmanTree {
 
         int tableBits = Math.min(maxLength, MAX_TABLE_BITS);
         int tableSize = 1 << tableBits;
-        char[] primaryTable = new char[tableSize];
+        char[] primaryTable = storage == null ? new char[tableSize] : storage.acquirePrimary(tableSize);
         char[] sortedSymbols = workspace.acquireSortedSymbols(symbolCount);
         for (int symbol = 0; symbol < alphabetSize; symbol++) {
             int length = codeLengths[symbol];
@@ -166,7 +183,7 @@ public final class LosslessHuffmanTree {
                     firstSecondaryCodeword,
                     primaryTableMask
             );
-            secondaryTable = new char[secondaryLength];
+            secondaryTable = storage == null ? new char[secondaryLength] : storage.acquireSecondary(secondaryLength);
 
             codeword = firstSecondaryCodeword;
             secondaryLength = 0;
@@ -198,6 +215,42 @@ public final class LosslessHuffmanTree {
         }
 
         return new LosslessHuffmanTree(primaryTableMask, primaryTable, secondaryTable);
+    }
+
+    /// Retains lookup arrays for trees whose decode lifetimes do not overlap.
+    @NotNullByDefault
+    static final class TableStorage {
+        /// Primary lookup capacity retained from previous builds.
+        private char[] primary = ArrayUtils.EMPTY_CHAR_ARRAY;
+
+        /// Secondary lookup capacity retained from previous builds.
+        private char[] secondary = ArrayUtils.EMPTY_CHAR_ARRAY;
+
+        /// Creates empty lookup storage.
+        TableStorage() {
+        }
+
+        /// Returns primary storage with at least the requested capacity.
+        ///
+        /// @param length the required number of entries
+        /// @return writable storage whose active entries are overwritten by a complete build
+        private char[] acquirePrimary(int length) {
+            if (primary.length < length) {
+                primary = new char[length];
+            }
+            return primary;
+        }
+
+        /// Returns secondary storage with at least the requested capacity.
+        ///
+        /// @param length the required number of entries
+        /// @return writable storage whose active entries are overwritten by a complete build
+        private char[] acquireSecondary(int length) {
+            if (secondary.length < length) {
+                secondary = new char[length];
+            }
+            return secondary;
+        }
     }
 
     /// Reusable temporary arrays for canonical-tree construction.

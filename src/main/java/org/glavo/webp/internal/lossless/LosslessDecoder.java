@@ -6,13 +6,16 @@ import org.glavo.webp.internal.ArrayUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import org.glavo.webp.WebPException;
 import org.glavo.webp.internal.Argb;
 
 import java.nio.IntBuffer;
 import java.nio.ReadOnlyBufferException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /// Pure-Java VP8L decoder.
 ///
@@ -37,6 +40,21 @@ public final class LosslessDecoder {
     /// Temporary arrays reused while constructing consecutive Huffman trees.
     private final LosslessHuffmanTree.BuildWorkspace huffmanBuildWorkspace =
             new LosslessHuffmanTree.BuildWorkspace();
+    /// Lookup storage for the temporary tree used to read one alphabet's code lengths.
+    private final LosslessHuffmanTree.TableStorage codeLengthTableStorage =
+            new LosslessHuffmanTree.TableStorage();
+    /// Lookup storage shared by successive metadata images and frames, but not by live trees.
+    private final List<LosslessHuffmanTree.TableStorage> huffmanTableStorage = new ArrayList<>();
+    /// Number of lookup-storage slots acquired for the current image stream.
+    private int nextHuffmanTable;
+    /// Predictor modes retained between frames and overwritten over the active metadata region.
+    private byte[] predictorData = ArrayUtils.EMPTY_BYTE_ARRAY;
+    /// Color-transform multipliers retained between frames.
+    private byte[] colorTransformData = ArrayUtils.EMPTY_BYTE_ARRAY;
+    /// Palette capacity retained between frames, with unused addressable entries cleared.
+    private int[] colorMap = ArrayUtils.EMPTY_INT_ARRAY;
+    /// Entropy-group indexes retained between frames; metadata images do not use this storage.
+    private char[] entropyImageData = ArrayUtils.EMPTY_CHAR_ARRAY;
     /// Code lengths for the code-length alphabet.
     private final byte[] codeLengthCodeLengths = new byte[LosslessConstants.CODE_LENGTH_CODES];
     /// Growable code-length storage reused across alphabets.
@@ -302,8 +320,11 @@ public final class LosslessDecoder {
                     int blockXSize = LosslessTransforms.subsampleSize(xsize, sizeBits);
                     int blockYSize = LosslessTransforms.subsampleSize(height, sizeBits);
                     IntBuffer decoded = decodeMetadataImage(blockXSize, blockYSize, scratch);
-                    byte[] predictorData = new byte[decoded.limit()];
-                    for (int i = 0; i < predictorData.length; i++) {
+                    int count = decoded.limit();
+                    if (predictorData.length < count) {
+                        predictorData = new byte[count];
+                    }
+                    for (int i = 0; i < count; i++) {
                         predictorData[i] = (byte) Argb.green(decoded.get(i));
                     }
                     transform = LosslessTransforms.Transform.predictor(sizeBits, predictorData);
@@ -313,7 +334,11 @@ public final class LosslessDecoder {
                     int blockXSize = LosslessTransforms.subsampleSize(xsize, sizeBits);
                     int blockYSize = LosslessTransforms.subsampleSize(height, sizeBits);
                     IntBuffer decoded = decodeMetadataImage(blockXSize, blockYSize, scratch);
-                    byte[] transformData = new byte[decoded.limit() * 3];
+                    int count = decoded.limit() * 3;
+                    if (colorTransformData.length < count) {
+                        colorTransformData = new byte[count];
+                    }
+                    byte[] transformData = colorTransformData;
                     for (int i = 0, offset = 0; i < decoded.limit(); i++) {
                         int value = decoded.get(i);
                         transformData[offset++] = (byte) Argb.red(value);
@@ -325,9 +350,14 @@ public final class LosslessDecoder {
                 case LosslessTransforms.SUBTRACT_GREEN -> transform = LosslessTransforms.Transform.subtractGreen();
                 case LosslessTransforms.COLOR_INDEXING -> {
                     int colorTableSize = bitReader.readBits(8) + 1;
-                    int[] colorMap = new int[colorTableSize > 16 ? 256 : colorTableSize];
+                    int capacity = colorTableSize > 16 ? 256 : colorTableSize;
+                    if (colorMap.length < capacity) {
+                        colorMap = new int[capacity];
+                    }
                     IntBuffer decoded = decodeMetadataImage(colorTableSize, 1, scratch);
                     decoded.get(0, colorMap, 0, colorTableSize);
+                    // Byte-wide palette indexes outside the encoded palette represent transparent black.
+                    Arrays.fill(colorMap, colorTableSize, colorMap.length, 0);
 
                     int bits;
                     if (colorTableSize <= 2) {
@@ -412,8 +442,12 @@ public final class LosslessDecoder {
             huffmanYSize = LosslessTransforms.subsampleSize(ysize, huffmanBits);
 
             IntBuffer decoded = decodeMetadataImage(huffmanXSize, huffmanYSize, scratch);
-            entropyImage = new char[decoded.limit()];
-            for (int i = 0; i < entropyImage.length; i++) {
+            int count = decoded.limit();
+            if (entropyImageData.length < count) {
+                entropyImageData = new char[count];
+            }
+            entropyImage = entropyImageData;
+            for (int i = 0; i < count; i++) {
                 int value = decoded.get(i);
                 int metaHuffCode = (Argb.red(value) << 8) | Argb.green(value);
                 if (metaHuffCode >= numHuffGroups) {
@@ -423,6 +457,9 @@ public final class LosslessDecoder {
             }
         }
 
+        // Any recursive entropy-image decode has finished before the main trees are built.
+        // Metadata trees are no longer read and their lookup storage can now be overwritten.
+        nextHuffmanTable = 0;
         LosslessHuffmanTree[][] groups = new LosslessHuffmanTree[numHuffGroups][];
         for (int groupIndex = 0; groupIndex < numHuffGroups; groupIndex++) {
             LosslessHuffmanTree[] group = new LosslessHuffmanTree[HUFFMAN_CODES_PER_META_CODE];
@@ -481,7 +518,8 @@ public final class LosslessDecoder {
         LosslessHuffmanTree table = LosslessHuffmanTree.implicit(
                 codeLengthCodeLengths,
                 codeLengthCodeLengths.length,
-                huffmanBuildWorkspace
+                huffmanBuildWorkspace,
+                codeLengthTableStorage
         );
         int maxSymbol;
         if (bitReader.readBits(1) == 1) {
@@ -542,7 +580,17 @@ public final class LosslessDecoder {
                 }
             }
         }
-        return LosslessHuffmanTree.implicit(codeLengths, symbol, huffmanBuildWorkspace);
+        return LosslessHuffmanTree.implicit(codeLengths, symbol, huffmanBuildWorkspace, acquireHuffmanTableStorage());
+    }
+
+    /// Acquires a distinct lookup-storage slot for a tree in the current image stream.
+    ///
+    /// @return storage not yet used by another live tree in this stream
+    private LosslessHuffmanTree.TableStorage acquireHuffmanTableStorage() {
+        if (nextHuffmanTable == huffmanTableStorage.size()) {
+            huffmanTableStorage.add(new LosslessHuffmanTree.TableStorage());
+        }
+        return huffmanTableStorage.get(nextHuffmanTable++);
     }
 
     /// Decodes entropy-coded pixels into an integer array.
@@ -824,6 +872,7 @@ public final class LosslessDecoder {
         return Math.max(distance, 1);
     }
 
+    /// Describes trees and metadata that remain valid for the current image-stream decode.
     @NotNullByDefault
     private static final class HuffmanInfo {
         /// Width of the entropy-group image.
@@ -833,7 +882,7 @@ public final class LosslessDecoder {
         final @Nullable ColorCache colorCache;
 
         /// Entropy-group indexes in subsampled raster order.
-        final char @Unmodifiable [] image;
+        final char @UnmodifiableView [] image;
 
         /// Log2 entropy-group tile size, or zero when one group covers the image.
         final int bits;
@@ -844,7 +893,7 @@ public final class LosslessDecoder {
         /// Huffman trees indexed first by entropy group and then by channel.
         final LosslessHuffmanTree @Unmodifiable [] @Unmodifiable [] huffmanCodeGroups;
 
-        /// Creates immutable Huffman metadata for one image stream.
+        /// Creates Huffman metadata retaining the current stream's entropy-image storage.
         ///
         /// @param xsize the entropy-group image width
         /// @param colorCache the optional color cache
@@ -852,7 +901,7 @@ public final class LosslessDecoder {
         /// @param bits the log2 entropy-group tile size
         /// @param mask the pixel-coordinate tile mask
         /// @param huffmanCodeGroups trees indexed first by entropy group and then by channel
-        private HuffmanInfo(int xsize, @Nullable ColorCache colorCache, char @Unmodifiable [] image, int bits, int mask,
+        private HuffmanInfo(int xsize, @Nullable ColorCache colorCache, char @UnmodifiableView [] image, int bits, int mask,
                             LosslessHuffmanTree @Unmodifiable [] @Unmodifiable [] huffmanCodeGroups) {
             this.xsize = xsize;
             this.colorCache = colorCache;

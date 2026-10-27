@@ -4,7 +4,7 @@ package org.glavo.webp.internal.lossless;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.Unmodifiable;
+import org.jetbrains.annotations.UnmodifiableView;
 
 import org.glavo.webp.internal.Argb;
 
@@ -33,6 +33,9 @@ public final class LosslessTransforms {
     }
 
     /// Encoded reverse-transform description.
+    ///
+    /// Descriptions retain their metadata arrays without copying. Their contents must remain
+    /// unchanged while the description is used to reverse a transform.
     @NotNullByDefault
     public static final class Transform {
         /// Transform kind.
@@ -42,21 +45,21 @@ public final class LosslessTransforms {
         final int sizeBits;
 
         /// Predictor modes or packed color multipliers, depending on [#kind].
-        final byte @Nullable @Unmodifiable [] blockData;
+        final byte @Nullable @UnmodifiableView [] blockData;
 
-        /// Number of entries in [#colorTable].
+        /// Number of encoded entries in [#colorTable].
         final int tableSize;
 
         /// Color-indexing table, or `null` for other transform kinds.
-        final int @Nullable @Unmodifiable [] colorTable;
+        final int @Nullable @UnmodifiableView [] colorTable;
 
         /// Creates a transform description.
         private Transform(
                 int kind,
                 int sizeBits,
-                byte @Nullable @Unmodifiable [] blockData,
+                byte @Nullable @UnmodifiableView [] blockData,
                 int tableSize,
-                int @Nullable @Unmodifiable [] colorTable
+                int @Nullable @UnmodifiableView [] colorTable
         ) {
             this.kind = kind;
             this.sizeBits = sizeBits;
@@ -66,12 +69,12 @@ public final class LosslessTransforms {
         }
 
         /// Creates a predictor-transform description.
-        public static Transform predictor(int sizeBits, byte @Unmodifiable [] data) {
+        public static Transform predictor(int sizeBits, byte @UnmodifiableView [] data) {
             return new Transform(PREDICTOR, sizeBits, data, 0, null);
         }
 
         /// Creates a color-transform description.
-        public static Transform color(int sizeBits, byte @Unmodifiable [] data) {
+        public static Transform color(int sizeBits, byte @UnmodifiableView [] data) {
             return new Transform(COLOR, sizeBits, data, 0, null);
         }
 
@@ -81,7 +84,7 @@ public final class LosslessTransforms {
         }
 
         /// Creates a color-indexing-transform description.
-        public static Transform colorIndexing(int tableSize, int @Unmodifiable [] data) {
+        public static Transform colorIndexing(int tableSize, int @UnmodifiableView [] data) {
             return new Transform(COLOR_INDEXING, 0, null, tableSize, data);
         }
     }
@@ -107,7 +110,7 @@ public final class LosslessTransforms {
             int width,
             int height,
             int sizeBits,
-            byte @Unmodifiable [] predictorData
+            byte @UnmodifiableView [] predictorData
     ) {
         int blockXSize = subsampleSize(width, sizeBits);
         imageData.put(0, Argb.add(imageData.get(0), 0xFF00_0000));
@@ -154,7 +157,7 @@ public final class LosslessTransforms {
             IntBuffer imageData,
             int width,
             int sizeBits,
-            byte @Unmodifiable [] transformData
+            byte @UnmodifiableView [] transformData
     ) {
         int blockXSize = subsampleSize(width, sizeBits);
         for (int y = 0; y < imageData.limit() / width; y++) {
@@ -245,7 +248,7 @@ public final class LosslessTransforms {
             int width,
             int height,
             int sizeBits,
-            byte @Unmodifiable [] predictorData
+            byte @UnmodifiableView [] predictorData
     ) {
         int blockXSize = subsampleSize(width, sizeBits);
         imageData[0] = Argb.add(imageData[0], 0xFF00_0000);
@@ -287,7 +290,7 @@ public final class LosslessTransforms {
             int[] imageData,
             int width,
             int sizeBits,
-            byte @Unmodifiable [] transformData
+            byte @UnmodifiableView [] transformData
     ) {
         int height = imageData.length / width;
         int blockSize = 1 << sizeBits;
